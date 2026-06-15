@@ -6,7 +6,6 @@ namespace Robbi\RobbiCopy\Service;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use Robbi\RobbiCopy\Domain\PageLinkRewriter;
 use Robbi\RobbiCopy\Event\ModifyExportDataEvent;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -35,6 +34,7 @@ class ExportService
         private readonly SiteFinder $siteFinder,
         private readonly IntegrityService $integrityService,
         private readonly TcaSchemaFactory $tcaSchemaFactory,
+        private readonly ExportWriter $exportWriter,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -63,28 +63,12 @@ class ExportService
         $this->bootstrapService->initializeBackendContext();
         $finalData = $this->collectAndDispatch($startPid, $options);
 
-        if (!empty($options['jsonl']) || str_ends_with($filePath, '.jsonl')) {
-            $this->writeJsonlFile($finalData, $filePath);
-        } else {
-            $jsonContent = json_encode($finalData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-            if (file_put_contents($filePath, $jsonContent) === false) {
-                throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
-            }
-        }
-
-        $baseDir = dirname($filePath);
-        $this->writeAssetsList($finalData, $baseDir);
-        $this->writeBrokenLinksReport($finalData, $baseDir);
-
-        if (!empty($options['csv'])) {
-            $this->writeCsvExport($finalData, $baseDir);
-        }
-
-        $this->logger->info('Export abgeschlossen', [
-            'pages' => count($finalData['pages'] ?? []),
-            'tt_content' => count($finalData['tt_content'] ?? []),
-            'file' => $filePath,
-        ]);
+        $this->exportWriter->write(
+            $finalData,
+            $filePath,
+            !empty($options['jsonl']),
+            !empty($options['csv'])
+        );
     }
 
     private function collectAndDispatch(int $startPid, array $options): array
@@ -405,72 +389,6 @@ class ExportService
         ];
     }
 
-    /**
-     * CSV-Export: Flache Tabellenübersicht für Tabellenvergleich.
-     */
-    private function writeCsvExport(array $data, string $baseDir): void
-    {
-        foreach (['pages', 'tt_content'] as $table) {
-            $records = $data[$table] ?? [];
-            if (empty($records)) {
-                continue;
-            }
-
-            $file = $baseDir . '/robbicopy_' . $table . '.csv';
-            $fp = fopen($file, 'w');
-            fputcsv($fp, array_map([$this, 'sanitizeCsvValue'], array_keys($records[0])));
-            foreach ($records as $row) {
-                fputcsv($fp, array_map(fn($v) => $this->sanitizeCsvValue(is_string($v) ? mb_substr($v, 0, 500) : $v), $row));
-            }
-            fclose($fp);
-        }
-        $this->logger->info('CSV-Export geschrieben', ['dir' => $baseDir]);
-    }
-
-    /**
-     * Schutz vor CSV-Formula-Injection: Werte, die mit einem Formel-Trigger
-     * beginnen (= + - @ TAB CR), werden mit einem führenden Apostroph entschärft,
-     * sodass Tabellenkalkulationen sie nicht als Formel ausführen.
-     */
-    private function sanitizeCsvValue(mixed $value): mixed
-    {
-        if (!is_string($value) || $value === '') {
-            return $value;
-        }
-        if (in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
-            return "'" . $value;
-        }
-        return $value;
-    }
-
-    /**
-     * Schreibt den Export zeilenweise als JSONL (ein JSON-Objekt pro Zeile).
-     * Vermeidet den monolithischen Encode-String und hält den Speicher-Peak
-     * bei großen Bäumen niedriger als der JSON-Export.
-     *
-     * @param array<string, mixed> $data
-     */
-    private function writeJsonlFile(array $data, string $filePath): void
-    {
-        $handle = fopen($filePath, 'w');
-        if ($handle === false) {
-            throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
-        }
-        try {
-            fwrite($handle, (string)json_encode(['_meta' => $data['_meta'] ?? []], JSON_UNESCAPED_UNICODE) . "\n");
-            foreach ($data as $table => $value) {
-                if ($table === '_meta' || !is_array($value)) {
-                    continue;
-                }
-                foreach ($value as $record) {
-                    fwrite($handle, (string)json_encode(['_t' => $table, '_r' => $record], JSON_UNESCAPED_UNICODE) . "\n");
-                }
-            }
-        } finally {
-            fclose($handle);
-        }
-    }
-
     protected function parseSince(?string $since): int
     {
         if (empty($since)) {
@@ -502,34 +420,6 @@ class ExportService
             }
         }
         return $refs;
-    }
-
-    private function writeAssetsList(array $data, string $dir): void
-    {
-        $ids = array_unique(array_filter(array_map(fn($r) => ltrim($r['identifier'] ?? '', '/'), $data['sys_file_reference'] ?? [])));
-        sort($ids);
-        if (file_put_contents($dir . '/robbicopy_assets.txt', implode("\n", $ids) . "\n") === false) {
-            $this->logger->warning('Asset-Liste konnte nicht geschrieben werden: ' . $dir . '/robbicopy_assets.txt');
-        }
-    }
-
-    private function writeBrokenLinksReport(array $data, string $dir): void
-    {
-        $exp = array_column($data['pages'] ?? [], 'uid');
-        $broken = [];
-        foreach ($data['tt_content'] ?? [] as $c) {
-            foreach (['bodytext', 'header_link', 'pi_flexform'] as $f) {
-                if (empty($c[$f]) || !is_string($c[$f])) {
-                    continue;
-                }
-                foreach (PageLinkRewriter::extractPageUids($c[$f]) as $uid) {
-                    if (!in_array($uid, $exp, true)) {
-                        $broken[] = "tt_content uid={$c['uid']}: t3://page?uid=$uid";
-                    }
-                }
-            }
-        }
-        file_put_contents($dir . '/robbicopy_broken_links.txt', !empty($broken) ? implode("\n", array_unique($broken)) . "\n" : "Keine gebrochenen Links.\n");
     }
 
     private function checkDependencies(array $pageUids): void
