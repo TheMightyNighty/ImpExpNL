@@ -1,6 +1,6 @@
-# Robbi Copy v4.0.0
+# Robbi Copy v5.0.0 (TYPO3 v13)
 
-Robbi Copy ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Die Extension wurde für den Einsatz mit TYPO3 v12 LTS, TYPO3 v13 LTS und dem Government Site Builder 11 (GSB 11) entwickelt.
+Robbi Copy ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist gezielt für **TYPO3 v13.4 LTS** und den Government Site Builder 11 (GSB 11) entwickelt (Doctrine DBAL 4).
 
 Beim Export wird ein vollständiger Seitenbaum einschließlich aller Inhaltselemente, FAL-Referenzen, Systemkategorien, Redirects, Container-Layouts und IRRE-Relationen als JSON-Datei gespeichert. Beim Import werden alle internen Verknüpfungen (UIDs, Seiten-Links, Sprach-Overlays, Container-Hierarchien, Kategorie-Zuordnungen) automatisch auf die Zielstruktur umgeschrieben.
 
@@ -17,7 +17,7 @@ Die Extension adressiert den Bedarf, Inhalte kontrolliert zwischen TYPO3-Instanz
 ## Systemvoraussetzungen
 
 - PHP 8.2 oder höher
-- TYPO3 12.4 LTS oder 13.4 LTS
+- TYPO3 13.4 LTS
 - Composer-basierte TYPO3-Installation
 
 ---
@@ -35,7 +35,7 @@ ddev exec vendor/bin/typo3 database:updateschema
 ddev exec vendor/bin/typo3 cache:flush
 ```
 
-Durch `database:updateschema` werden die Tabelle `tx_robbicopy_import_log` sowie das Feld `tx_robbicopy_remote_uid` in den Tabellen `pages` und `tt_content` angelegt. Das Feld dient der Erkennung bereits importierter Records bei wiederholten Imports.
+Durch `database:updateschema` werden die Tabellen `tx_robbicopy_import_log` und `tx_robbicopy_lock` sowie das Feld `tx_robbicopy_remote_uid` in den Tabellen `pages` und `tt_content` angelegt. Das Feld dient der Erkennung bereits importierter Records bei wiederholten Imports. Die Tabelle `tx_robbicopy_lock` realisiert den cluster-weiten Import-Lock.
 
 Die Installation wird geprüft mit:
 
@@ -114,7 +114,7 @@ Jeder Export erzeugt neben der JSON-Datei zwei Hilfsdateien:
 
 ### Integritätsprüfung
 
-Die JSON-Datei enthält einen `_meta`-Block mit Exportdatum, Quellsystem, TYPO3-Version und einer SHA256-Prüfsumme. Beim Import wird die Prüfsumme verifiziert. Falls die Datei nach dem Export verändert wurde, wird der Import abgebrochen.
+Die JSON-Datei enthält einen `_meta`-Block mit Exportdatum, Quellsystem, TYPO3-Version und einer Prüfsumme über den gesamten Datenblock. Beim Import wird die Prüfsumme verifiziert. Falls die Datei nach dem Export beschädigt wurde, wird der Import abgebrochen. Mit konfiguriertem `ROBBICOPY_SIGNING_KEY` wird daraus ein HMAC-Signaturschutz (siehe Abschnitt „Sicherheitsfunktionen").
 
 ### Multi-Site
 
@@ -169,6 +169,8 @@ Der Import in einen Workspace (z.B. `--target-workspace=1`) entspricht dem Freig
 
 Bei großen Seitenbäumen (mehrere tausend Records) werden die Daten automatisch in Batches à 500 Records verarbeitet. Seiten werden vor den Inhalten verarbeitet, damit die PID-Zuordnung beim Import der Inhalte bereits aufgelöst ist. Eine Fortschrittsanzeige gibt Rückmeldung über den Verarbeitungsstand.
 
+Die Prüfsummenberechnung erfolgt inkrementell pro Record, sodass der Speicherbedarf nicht mit der Gesamtgröße des Exports skaliert. Die JSON-Datei selbst wird jedoch vollständig in den Speicher geladen; bei extrem großen Bäumen (deutlich über 50.000 Records) ist perspektivisch ein streamingfähiges Format (JSONL) vorgesehen.
+
 ### Slug-Regenerierung
 
 Nach dem Import werden die `slug`-Felder aller importierten Seiten automatisch über den TYPO3 SlugHelper regeneriert. Damit wird sichergestellt, dass die Slugs zur Site-Konfiguration des Zielsystems passen, insbesondere beim Transfer zwischen verschiedenen Sites.
@@ -194,7 +196,13 @@ Der Aufruf erfolgt ohne weitere Argumente:
 ddev exec vendor/bin/typo3 robbicopy:import --profile=dev_to_referenz
 ```
 
-Alle Parameter des Profils überschreiben die Kommandozeilen-Argumente. Verfügbare Felder: `source_file`, `target_pid`, `workspace`, `delta`, `conflict`, `depth`.
+Das Profil liefert die Import-Konfiguration. Verfügbare Felder: `source_file`, `target_pid`, `workspace`, `delta`, `conflict`. Diese Profilwerte haben Vorrang vor den entsprechenden Kommandozeilen-Argumenten/-Optionen.
+
+Die Laufzeit-Flags `--dry-run` und `--verbose` werden weiterhin über die Kommandozeile gesteuert und mit dem Profil kombiniert. So lässt sich ein Profil gefahrlos zuerst im Dry-Run prüfen:
+
+```bash
+ddev exec vendor/bin/typo3 robbicopy:import --profile=dev_to_referenz --dry-run
+```
 
 ---
 
@@ -203,12 +211,17 @@ Alle Parameter des Profils überschreiben die Kommandozeilen-Argumente. Verfügb
 Jeder Import wird in der Datenbanktabelle `tx_robbicopy_import_log` protokolliert. Das Protokoll enthält die vollständige UID-Zuordnung zwischen Quell- und Ziel-UIDs.
 
 ```bash
-# Letzten Import rückgängig machen
+# Letzten Import rückgängig machen (mit Vorschau und Sicherheitsabfrage)
 ddev exec vendor/bin/typo3 robbicopy:undo
 
-# Bestimmten Import rückgängig machen
-ddev exec vendor/bin/typo3 robbicopy:undo 20260329_142348
+# Nur Vorschau, ohne zu löschen
+ddev exec vendor/bin/typo3 robbicopy:undo --dry-run
+
+# Bestimmten Import ohne Rückfrage rückgängig machen
+ddev exec vendor/bin/typo3 robbicopy:undo 20260329_142348_a1b2c3 --force
 ```
+
+Vor dem Löschen zeigt `undo` eine Vorschau (betroffene Anzahl, Quelldatei) und warnt, falls importierte Records nach dem Import lokal bearbeitet wurden – deren Änderungen gingen sonst unbemerkt verloren. Ohne `--force` wird interaktiv bestätigt; `--dry-run` zeigt nur die Vorschau.
 
 Der Rollback entfernt in fester Reihenfolge:
 
@@ -366,9 +379,23 @@ robbicopy:
 
 ## Sicherheitsfunktionen
 
-**Integritätsprüfung.** Jede JSON-Datei enthält eine SHA256-Prüfsumme über die Seiten- und Inhaltsdaten. Beim Import wird die Prüfsumme verifiziert. Bei Abweichung wird der Import abgebrochen.
+**Korruptionsschutz (Standard).** Jede JSON-Datei enthält eine SHA256-Prüfsumme über den **gesamten Datenblock** (alle Tabellen: `pages`, `tt_content`, `sys_file_reference`, IRRE-Relationen und alle Registry-Tabellen – nicht nur Seiten und Inhalte). Beim Import wird die Prüfsumme verifiziert; bei Abweichung wird der Import abgebrochen. Dies erkennt **versehentliche Beschädigung**. Es ist kein Schutz gegen gezielte Manipulation, da die reine Prüfsumme von jedem neu berechnet werden kann.
 
-**Concurrency Lock.** Während eines Imports wird eine Lock-Datei gesetzt. Ein paralleler Import-Versuch wird mit einer Fehlermeldung abgewiesen. Der Dry-Run setzt keinen Lock.
+**Manipulationsschutz (optional).** Ist ein geheimer Schlüssel konfiguriert, wird statt der SHA256-Prüfsumme ein **HMAC-SHA256** gebildet. Ohne Kenntnis des Schlüssels lässt sich die Signatur nach einer Veränderung nicht neu erzeugen – der Import einer manipulierten Datei schlägt fehl. Der Schlüssel wird auf Quell- und Zielsystem identisch gesetzt, entweder per Umgebungsvariable `ROBBICOPY_SIGNING_KEY` oder in `config/system/additional.php`:
+
+```php
+$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['robbi_copy']['signingKey'] = 'ein-langes-geheimnis';
+```
+
+Wird eine signierte Datei auf einem System ohne (passenden) Schlüssel importiert, wird der Import abgewiesen.
+
+**Cluster-weiter Concurrency-Lock.** Während eines Imports wird ein Lock in der Datenbanktabelle `tx_robbicopy_lock` gesetzt (wirkt über alle Pods/Knoten hinweg) und zusätzlich ein lokaler Datei-Lock. Ein paralleler Import-Versuch wird abgewiesen. Lang laufende Importe halten den Lock per Heartbeat frisch; bei einem Crash oder fataler Fehler wird der Lock über einen Shutdown-Handler bzw. nach einem konfigurierbaren Timeout automatisch freigegeben (Standard: 3600 s, einstellbar über `import.lock_stale_seconds` in der `robbi_copy.yaml`). Der Dry-Run setzt keinen Lock.
+
+**Abbruchsicheres Rollback-Protokoll.** Bricht ein Import nach dem Anlegen erster Records ab (Fehler, Timeout), wird automatisch ein Notfall-Protokoll mit der bis dahin angelegten UID-Zuordnung geschrieben. Die Teil-Daten lassen sich damit per `robbicopy:undo <Import-ID>` vollständig entfernen – es entstehen keine nicht-rückrollbaren Geisterdaten.
+
+**Pfad-Begrenzung.** Sowohl der Export-Zielpfad als auch die Import-Quelldatei müssen innerhalb des Projektverzeichnisses liegen. Profilnamen werden gegen Path-Traversal abgesichert.
+
+**CSV-Injection-Schutz.** Beim CSV-Export werden Werte mit führenden Formel-Triggern (`= + - @`) entschärft, sodass sie in Tabellenkalkulationen nicht als Formel ausgeführt werden.
 
 **Konflikterkennung.** Im Delta-Modus werden Records mit lokal neuerem Zeitstempel als Konflikte erkannt. Die Behandlung ist über die Option `--conflict` konfigurierbar.
 
@@ -403,6 +430,23 @@ Alle Services loggen über den PSR-3 Logger unter dem Namespace `Robbi\RobbiCopy
 | `var/log/typo3_robbicopy_<hash>.log` | Alle Robbi-Copy-Meldungen (eigener Logger-Channel) |
 | `var/log/robbicopy_transactions.log` | Menschenlesbare Import-/Rollback-Historie mit UID-Mappings |
 | `tx_robbicopy_import_log` (Datenbanktabelle) | UID-Map für den Rollback, persistent über Container-Neustarts |
+
+### Log-Rotation
+
+Die Datei `var/log/robbicopy_transactions.log` wird fortlaufend ergänzt (Append) und nicht automatisch rotiert. Im Dauerbetrieb sollte sie über das System-`logrotate` einbezogen werden:
+
+```
+/var/www/html/var/log/robbicopy_transactions.log {
+    weekly
+    rotate 12
+    compress
+    missingok
+    notifempty
+    copytruncate
+}
+```
+
+Der Logger-Channel (`typo3_robbicopy_<hash>.log`) wird über das TYPO3-Logging-Framework geschrieben; alternativ kann dort ein rotierender bzw. zentraler Writer konfiguriert werden (siehe unten). In Kubernetes-Umgebungen empfiehlt sich ohnehin ein stdout-/Syslog-Writer ohne lokale Dateien.
 
 ### Logger-Konfiguration anpassen
 
@@ -499,8 +543,10 @@ Die Testdatenbank wird pro Testlauf automatisch erstellt und nach Abschluss gel�
 
 ### Voraussetzungen
 
+Das `typo3/testing-framework` (`^8.0` für TYPO3 v13) ist bereits als `require-dev` in der `composer.json` eingetragen und wird durch `composer install` mitinstalliert. Bei Bedarf manuell:
+
 ```bash
-ddev composer require --dev typo3/testing-framework
+ddev composer require --dev typo3/testing-framework:^8.0
 ```
 
 ### Datenbank-Konfiguration
