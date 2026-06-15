@@ -22,3 +22,16 @@ CREATE TABLE tx_robbicopy_import_log (
     PRIMARY KEY (uid),
     KEY import_id (import_id)
 );
+
+#
+# Cluster-weiter Import-Lock (Concurrency-Schutz über alle Pods/Knoten hinweg).
+# Eine eindeutige lock_id verhindert parallele Importe; veraltete Locks werden
+# nach einer Zeitspanne automatisch freigegeben.
+#
+CREATE TABLE tx_robbicopy_lock (
+    lock_id varchar(64) DEFAULT '' NOT NULL,
+    info varchar(255) DEFAULT '' NOT NULL,
+    created int DEFAULT 0 NOT NULL,
+
+    PRIMARY KEY (lock_id)
+);
