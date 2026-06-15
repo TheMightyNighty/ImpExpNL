@@ -33,6 +33,9 @@ class ImportService
     /** @var array<string, array<int,int>> Rollback-Basis (erstellte Records inkl. Registry). */
     private array $rollbackMap = [];
 
+    /** Anzahl der vom DataHandler gemeldeten Fehler. */
+    private int $dataHandlerErrors = 0;
+
     /**
      * Felder die beim Import grundsätzlich ignoriert werden (Systemfelder).
      * Ergänzt wird dynamisch durch buildRecordData() anhand des tatsächlichen TCA.
@@ -86,6 +89,7 @@ class ImportService
         $this->uidMap = new UidMap();
         $this->createdMap = new UidMap();
         $this->rollbackMap = [];
+        $this->dataHandlerErrors = 0;
         $this->batchSize = $this->configurationService->getBatchSize();
 
         if ($dryRun) {
@@ -140,7 +144,7 @@ class ImportService
      * Führt die eigentlichen Schreiboperationen aus und liefert die Statistik zurück.
      * Die Protokollierung erfolgt in executeImport() (auch im Fehlerfall).
      *
-     * @return array{new:int, updated:int, skipped:int, conflict_skipped:int}
+     * @return array{new:int, updated:int, skipped:int, conflict_skipped:int, errors:int}
      */
     private function processImport(ExportManifest $manifest, int $targetPid, array $options, array $config): array
     {
@@ -159,7 +163,7 @@ class ImportService
 
         $exportedPageUids = array_column($pages, 'uid');
         $exportedContentUids = array_column($ttContent, 'uid');
-        $stats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0];
+        $stats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0, 'errors' => 0];
 
         $pageDatamap = [];
         foreach ($pages as $page) {
@@ -319,6 +323,7 @@ class ImportService
         $this->rollbackMap = $this->buildRollbackMap($uidArray);
         $this->eventDispatcher->dispatch(new ModifyImportDataEvent($rawData, $uidArray));
 
+        $stats['errors'] = $this->dataHandlerErrors;
         return $stats;
     }
 
@@ -444,6 +449,7 @@ class ImportService
             $dataHandler->process_datamap();
 
             if (!empty($dataHandler->errorLog)) {
+                $this->dataHandlerErrors += count($dataHandler->errorLog);
                 foreach ($dataHandler->errorLog as $error) {
                     $this->logger->error("DataHandler ($table): $error");
                 }

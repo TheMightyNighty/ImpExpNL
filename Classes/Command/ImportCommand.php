@@ -125,12 +125,17 @@ class ImportCommand extends Command
                 $output->writeln('');
             }
 
+            $errors = (int)($result['stats']['errors'] ?? 0);
+
             if ($jsonOutput) {
-                $output->writeln((string)json_encode(['success' => true] + $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                $output->writeln((string)json_encode(['success' => $errors === 0] + $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            } elseif ($errors > 0) {
+                $io->warning(sprintf('Import abgeschlossen, aber %d DataHandler-Fehler aufgetreten (siehe Log).', $errors));
             } else {
                 $io->success('Import abgeschlossen.');
             }
-            return Command::SUCCESS;
+
+            return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
         } catch (\Exception $e) {
             if ($progressBar) {
                 $progressBar->finish();
