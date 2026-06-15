@@ -1,0 +1,7 @@
+"pages",,,,,,,
+,"uid","pid","title","slug","sorting","hidden","deleted"
+,1,0,"Startseite","/",256,0,0
+,2,1,"Über uns","/ueber-uns",256,0,0
+,3,1,"Kontakt","/kontakt",512,0,0
+,4,2,"Team","/ueber-uns/team",256,0,0
+,5,1,"Versteckte Seite","/versteckt",768,1,0

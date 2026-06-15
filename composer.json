@@ -1,0 +1,35 @@
+{
+    "name": "robbi/robbi-copy",
+    "type": "typo3-cms-extension",
+    "description": "Enterprise CLI Exporter für TYPO3 & GSB 11",
+    "version": "4.14.0",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "ITZBund",
+            "role": "Fancy Behörde"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "typo3/cms-core": "^12.4 || ^13.4 || ^14.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Robbi\\RobbiCopy\\": "Classes/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Robbi\\RobbiCopy\\Tests\\": "Tests/"
+        }
+    },
+    "extra": {
+        "typo3/cms": {
+            "extension-key": "robbi_copy",
+            "Package": {
+                "providesPackages": {}
+            }
+        }
+    }
+}

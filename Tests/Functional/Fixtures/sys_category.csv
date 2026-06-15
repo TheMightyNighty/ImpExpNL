@@ -1,0 +1,6 @@
+"sys_category",,,,,
+,"uid","pid","title","parent","deleted"
+,1,0,"Themen",0,0
+,2,0,"Digitalisierung",1,0
+,3,0,"E-Government",2,0
+,4,0,"Barrierefreiheit",1,0

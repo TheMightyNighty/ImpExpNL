@@ -1,0 +1,4 @@
+"sys_category_record_mm",,,,
+,"uid_local","uid_foreign","tablenames","fieldname"
+,3,2,"pages","categories"
+,2,10,"tt_content","categories"

@@ -1,0 +1,9 @@
+# packages/robbi_copy/Configuration/Services.yaml
+services:
+  _defaults:
+    autowire: true
+    autoconfigure: true
+    public: false
+
+  Robbi\RobbiCopy\:
+    resource: '../Classes/*'

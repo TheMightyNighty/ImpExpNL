@@ -1,0 +1,6 @@
+"tt_content",,,,,,,,
+,"uid","pid","CType","header","bodytext","sorting","hidden","deleted"
+,10,2,"text","Willkommen","Hallo Welt mit t3://page?uid=3",256,0,0
+,11,2,"textmedia","Bild-Text","Inhalt mit Bild",512,0,0
+,12,3,"text","Kontaktformular","Schreiben Sie uns",256,0,0
+,13,4,"text","Teamliste","Unsere Mitarbeiter",256,0,0

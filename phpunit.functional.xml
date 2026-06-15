@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+    bootstrap="../../vendor/typo3/testing-framework/Resources/Core/Build/FunctionalTestsBootstrap.php"
+    colors="true"
+    cacheDirectory=".phpunit.cache"
+>
+    <testsuites>
+        <testsuite name="functional">
+            <directory>Tests/Functional</directory>
+        </testsuite>
+    </testsuites>
+
+    <php>
+        <env name="typo3DatabaseDriver" value="mysqli" force="false"/>
+        <env name="typo3DatabaseHost" value="db" force="false"/>
+        <env name="typo3DatabasePort" value="3306" force="false"/>
+        <env name="typo3DatabaseUsername" value="root" force="false"/>
+        <env name="typo3DatabasePassword" value="root" force="false"/>
+        <env name="typo3DatabaseName" value="test_robbicopy" force="false"/>
+    </php>
+</phpunit>

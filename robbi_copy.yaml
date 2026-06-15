@@ -1,0 +1,59 @@
+# packages/robbi_copy/robbi_copy.yaml
+#
+# Hauptkonfiguration für Robbi Copy.
+# Weitere Extensions können eigene Tabellen registrieren unter:
+#   Configuration/RobbiCopy.yaml (im jeweiligen Extension-Ordner)
+
+export:
+  include:
+    file_references: true     # FAL-Referenzen mit Datei-Identifier exportieren
+
+import:
+  include:
+    file_references: true     # FAL-Referenzen über Dateipfad auflösen
+  container_support: true     # b13/container: tx_container_parent remappen
+  link_rewrite:
+    fields:
+      - bodytext
+      - pi_flexform
+      - tx_gsb_accordion_text
+
+# ============================================================================
+# Table-Registry: Deklarativer Export/Import beliebiger Tabellen.
+#
+# type: mm      → MM-Tabellen (z.B. sys_category_record_mm)
+#                  match_field: Welches Feld die Foreign-UID enthält
+#                  match_tablenames_field: Feld das den Tabellennamen enthält
+#                  match_tables: Welche Tabellen relevant sind
+#
+# type: record  → Normale Record-Tabellen (z.B. sys_redirect, tx_news_*)
+#                  pid_field: Welches Feld die Seiten-Zuordnung enthält
+#                  uid_remap: true → UIDs werden gemapped (für Rollback)
+#                  rewrite_links: Felder in denen t3://page-Links umgeschrieben werden
+# ============================================================================
+
+robbicopy:
+  tables:
+
+    # --- Systemkategorien (MM-Tabelle mit Pfad-Matching) ---
+    # category_match: path → Kategorien werden über ihren Pfad gemapped
+    # (z.B. "Themen > Digitalisierung") statt über uid_local.
+    # Fehlende Kategorien werden auf dem Zielsystem automatisch angelegt.
+    sys_category_record_mm:
+      type: mm
+      match_field: uid_foreign
+      match_tablenames_field: tablenames
+      match_tables:
+        - pages
+        - tt_content
+      category_match: path
+
+    # --- Redirects (Record-Tabelle) ---
+    # Exportiert alle sys_redirect-Einträge, deren pid im exportierten Baum liegt.
+    # Links im 'target'-Feld (z.B. t3://page?uid=123) werden automatisch umgeschrieben.
+    sys_redirect:
+      type: record
+      pid_field: pid
+      uid_remap: true
+      rewrite_links:
+        - target
