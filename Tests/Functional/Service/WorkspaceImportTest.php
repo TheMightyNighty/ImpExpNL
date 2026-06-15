@@ -18,13 +18,13 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  *
  * Verifiziert, dass das Link-Rewriting beim Workspace-Import auf der
  * Workspace-Version arbeitet (nicht auf der Live-Platzhalterzeile).
- *
- * Opt-in: Zum Ausführen 'workspaces' zu $coreExtensionsToLoad hinzufügen.
- * Standardmäßig wird der Test übersprungen, damit die Basis-Suite ohne die
- * workspaces-Extension grün bleibt.
  */
 class WorkspaceImportTest extends FunctionalTestCase
 {
+    protected array $coreExtensionsToLoad = [
+        'workspaces',
+    ];
+
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/robbi_copy',
     ];
@@ -33,7 +33,7 @@ class WorkspaceImportTest extends FunctionalTestCase
     {
         parent::setUp();
         if (!ExtensionManagementUtility::isLoaded('workspaces')) {
-            self::markTestSkipped('Extension "workspaces" nicht geladen – Test ist opt-in (siehe Klassendoc).');
+            self::markTestSkipped('Extension "workspaces" nicht geladen.');
         }
         $this->importCSVDataSet(__DIR__ . '/../Fixtures/pages.csv');
         $this->importCSVDataSet(__DIR__ . '/../Fixtures/tt_content.csv');
@@ -49,7 +49,8 @@ class WorkspaceImportTest extends FunctionalTestCase
     public function workspaceImportRewritesLinksOnVersionedRecord(): void
     {
         $json = $this->get(ExportService::class)->exportTree(1);
-        $tempFile = tempnam(sys_get_temp_dir(), 'robbicopy_ws_') . '.json';
+        $tempFile = $this->instancePath . '/var/workspace.json';
+        @mkdir(dirname($tempFile), 0775, true);
         file_put_contents($tempFile, $json);
 
         $this->get(ImportService::class)->runImport($tempFile, 0, ['workspaceId' => 1]);

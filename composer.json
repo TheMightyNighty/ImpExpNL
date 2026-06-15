@@ -7,7 +7,7 @@
     "authors": [
         {
             "name": "ITZBund",
-            "role": "Fancy Behörde"
+            "role": "Entwicklung"
         }
     ],
     "require": {
@@ -16,6 +16,7 @@
     },
     "require-dev": {
         "typo3/testing-framework": "^8.0",
+        "typo3/cms-workspaces": "^13.4",
         "typo3/coding-standards": "^0.8",
         "friendsofphp/php-cs-fixer": "^3.64",
         "phpstan/phpstan": "^2.0",

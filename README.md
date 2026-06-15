@@ -43,7 +43,7 @@ Die Installation wird geprüft mit:
 ddev exec vendor/bin/typo3 list robbicopy
 ```
 
-Es werden sechs Befehle ausgegeben: `robbicopy:export`, `robbicopy:import`, `robbicopy:undo`, `robbicopy:status`, `robbicopy:list` und `robbicopy:check`.
+Es werden sieben Befehle ausgegeben: `robbicopy:export`, `robbicopy:import`, `robbicopy:undo`, `robbicopy:status`, `robbicopy:list`, `robbicopy:unlock` und `robbicopy:check`.
 
 Auf Systemen ohne DDEV wird das Präfix `ddev exec` weggelassen.
 
@@ -240,13 +240,17 @@ Das Import-Protokoll wird nach erfolgreichem Rollback aus der Datenbank entfernt
 ```bash
 # Aktueller Status: Lock, offene Imports, letzter Import
 ddev exec vendor/bin/typo3 robbicopy:status
+ddev exec vendor/bin/typo3 robbicopy:status --json
 
 # Import-Historie als Tabelle
 ddev exec vendor/bin/typo3 robbicopy:list
-ddev exec vendor/bin/typo3 robbicopy:list --limit=50
+ddev exec vendor/bin/typo3 robbicopy:list --limit=50 --json
+
+# Hängenden Import-Lock lösen
+ddev exec vendor/bin/typo3 robbicopy:unlock
 ```
 
-Der Befehl `robbicopy:status` zeigt den Lock-Status, die Anzahl rollback-fähiger Imports und die Details des letzten Imports. Der Befehl `robbicopy:list` gibt die gesamte Import-Historie tabellarisch aus (Import-ID, Datum, Modus, Workspace, Anzahl Records, Quelldatei).
+Der Befehl `robbicopy:status` zeigt den DB-Lock (Inhaber, Alter, Stale-Status), die Anzahl rollback-fähiger Imports und die Details des letzten Imports. `robbicopy:list` gibt die Import-Historie tabellarisch aus (Import-ID, Datum, Modus, Workspace, Anzahl Records, Quelldatei). `robbicopy:unlock` löst einen hängenden Import-Lock (mit Bestätigung, `--force` ohne Rückfrage). Alle drei unterstützen `--json` für die maschinenlesbare Ausgabe.
 
 ---
 

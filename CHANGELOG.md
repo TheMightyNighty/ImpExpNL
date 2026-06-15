@@ -60,4 +60,9 @@ Dedizierte, gehärtete Version für **TYPO3 v13.4 LTS** (Doctrine DBAL 4).
 - `robbicopy:list` mit `--json`; Registry-Konfiguration wird von `robbicopy:check`
   validiert.
 - Zusätzliche Functional-Tests: Delta-Undo, Registry/Kategorie-Pfad, conflict=ask,
-  JSONL-Round-Trip.
+  JSONL-Round-Trip, Workspace-Import.
+- `robbicopy:status` wertet den cluster-weiten DB-Lock aus (Inhaber, Alter,
+  Stale-Status); neuer Befehl `robbicopy:unlock` löst einen hängenden Lock.
+- DataHandler-Fehler werden gezählt, in Stats/`--json` ausgewiesen und führen bei
+  `robbicopy:import` zu einem Fehler-Exit-Code.
+- `ExportWriter` aus `ExportService` herausgelöst (Schreib-Formate getrennt).
