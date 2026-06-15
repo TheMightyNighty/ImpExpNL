@@ -591,6 +591,25 @@ ddev exec vendor/bin/phpunit -c packages/robbi_copy/phpunit.functional.xml
 ddev exec vendor/bin/phpunit -c packages/robbi_copy/phpunit.unit.xml --filter testDryRunDoesNotWriteToDatabase
 ```
 
+### Testdaten generieren
+
+Für Last- und Entwicklungstests ohne große Quell-Instanz erzeugt ein Dev-Werkzeug synthetische Importdateien beliebiger Größe (mit gültiger Prüfsumme):
+
+```bash
+# JSON
+php Build/generate-testdata.php --pages=5000 --content-per-page=8 --out=var/big.json
+# JSONL (kompakter, speicherschonend)
+php Build/generate-testdata.php --pages=20000 --content-per-page=5 --format=jsonl --out=var/big.jsonl
+```
+
+Die erzeugte Datei wird wie ein regulärer Export importiert:
+
+```bash
+vendor/bin/typo3 robbicopy:import var/big.json <ziel-pid>
+```
+
+Der Functional-Test `LargeTreeImportTest` nutzt denselben Generator und ist über Umgebungsvariablen skalierbar (`ROBBICOPY_PERF_PAGES`, `ROBBICOPY_PERF_CONTENT`, `ROBBICOPY_PERF_FORMAT=jsonl`); er gibt Laufzeit und Speicher-Peak aus.
+
 ### Unit-Tests
 
 Die Unit-Tests prüfen die interne Logik der Service-Klassen:
