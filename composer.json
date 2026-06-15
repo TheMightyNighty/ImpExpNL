@@ -1,8 +1,8 @@
 {
     "name": "robbi/robbi-copy",
     "type": "typo3-cms-extension",
-    "description": "Enterprise CLI Exporter für TYPO3 & GSB 11",
-    "version": "4.14.0",
+    "description": "Enterprise CLI Exporter für TYPO3 v13 & GSB 11",
+    "version": "5.0.0",
     "license": "GPL-2.0-or-later",
     "authors": [
         {
@@ -12,7 +12,15 @@
     ],
     "require": {
         "php": "^8.2",
-        "typo3/cms-core": "^12.4 || ^13.4 || ^14.0"
+        "typo3/cms-core": "^13.4"
+    },
+    "require-dev": {
+        "typo3/testing-framework": "^8.0",
+        "typo3/coding-standards": "^0.8",
+        "friendsofphp/php-cs-fixer": "^3.64",
+        "phpstan/phpstan": "^2.0",
+        "saschaegerer/phpstan-typo3": "^2.0",
+        "ssch/typo3-rector": "^3.0"
     },
     "autoload": {
         "psr-4": {
@@ -23,6 +31,26 @@
         "psr-4": {
             "Robbi\\RobbiCopy\\Tests\\": "Tests/"
         }
+    },
+    "config": {
+        "allow-plugins": {
+            "typo3/class-alias-loader": true,
+            "typo3/cms-composer-installers": true
+        }
+    },
+    "scripts": {
+        "ci:php:cs": "php-cs-fixer fix --dry-run --diff",
+        "ci:php:cs-fix": "php-cs-fixer fix",
+        "ci:php:stan": "phpstan analyse --no-progress --memory-limit=1G",
+        "ci:php:rector": "rector process --dry-run",
+        "ci:php:rector-fix": "rector process",
+        "ci:test:unit": "phpunit -c phpunit.unit.xml",
+        "ci:test:functional": "phpunit -c phpunit.functional.xml",
+        "ci": [
+            "@ci:php:cs",
+            "@ci:php:stan",
+            "@ci:test:unit"
+        ]
     },
     "extra": {
         "typo3/cms": {

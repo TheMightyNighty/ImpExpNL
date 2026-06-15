@@ -1,0 +1,12 @@
+includes:
+    - vendor/saschaegerer/phpstan-typo3/extension.neon
+
+parameters:
+    # Level 5 als grüne Baseline. Level 6 (vollständige array<...>-Typisierung)
+    # ist ein Folgeschritt zusammen mit dem typisierten Domänenmodell (DTOs).
+    level: 5
+    paths:
+        - Classes
+    excludePaths:
+        analyse:
+            - Tests/*

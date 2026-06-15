@@ -1,0 +1,21 @@
+# Composer / TYPO3 testing-framework
+/.Build/
+/vendor/
+/public/
+/composer.lock
+
+# Runtime
+/var/
+
+# Tool caches
+/.php-cs-fixer.cache
+/.phpunit.result.cache
+/.phpunit.cache/
+
+# Lokale Notizen / nicht Teil der Auslieferung
+/claude.md
+/CLAUDE.md
+
+# Editor
+/.idea/
+/.vscode/
