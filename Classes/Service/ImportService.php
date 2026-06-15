@@ -27,6 +27,12 @@ class ImportService
 
     private UidMap $uidMap;
 
+    /** Nur tatsächlich neu angelegte Records – Basis für den Rollback. */
+    private UidMap $createdMap;
+
+    /** @var array<string, array<int,int>> Rollback-Basis (erstellte Records inkl. Registry). */
+    private array $rollbackMap = [];
+
     /**
      * Felder die beim Import grundsätzlich ignoriert werden (Systemfelder).
      * Ergänzt wird dynamisch durch buildRecordData() anhand des tatsächlichen TCA.
@@ -54,6 +60,7 @@ class ImportService
         private readonly ImportLogRepository $importLogRepository,
         private readonly ConflictResolver $conflictResolver,
         private readonly TcaSchemaFactory $tcaSchemaFactory,
+        private readonly RollbackService $rollbackService,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -77,6 +84,9 @@ class ImportService
 
         $this->bootstrapService->initializeBackendContext($workspaceId);
         $this->uidMap = new UidMap();
+        $this->createdMap = new UidMap();
+        $this->rollbackMap = [];
+        $this->batchSize = $this->configurationService->getBatchSize();
 
         if ($dryRun) {
             $manifest = $this->loadAndValidateJson($jsonPath);
@@ -112,19 +122,13 @@ class ImportService
         try {
             $stats = $this->processImport($manifest, $targetPid, $options, $config);
         } catch (\Throwable $e) {
-            // Wurden bereits Records angelegt, muss ein Rollback-Protokoll existieren,
-            // damit die Teil-Daten per robbicopy:undo entfernbar bleiben.
             if ($this->hasMappedRecords()) {
-                $this->importLogRepository->save($timestamp, (int)($options['workspaceId'] ?? 0), $jsonPath . ' [ABGEBROCHEN]', (bool)($options['deltaMode'] ?? false), $this->uidMap->toArray());
-                $this->logger->error('Import abgebrochen – Notfall-Protokoll geschrieben (Rollback via robbicopy:undo ' . $timestamp . ' möglich).', [
-                    'importId' => $timestamp,
-                    'error' => $e->getMessage(),
-                ]);
+                $this->handleAbortedImport($timestamp, $jsonPath, $options, $e);
             }
             throw $e;
         }
 
-        $this->importLogRepository->save($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->uidMap->toArray());
+        $this->importLogRepository->save($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->rollbackMap);
         $this->writeTransactionLog($timestamp, $workspaceId, $jsonPath, $stats, $deltaMode);
 
         $this->logger->info('Import abgeschlossen', array_merge($stats, ['importId' => $timestamp]));
@@ -300,7 +304,7 @@ class ImportService
         $fileReferences = $manifest->getFileReferences();
         if (!empty($config['import']['include']['file_references']) && !empty($fileReferences)) {
             $dh = GeneralUtility::makeInstance(DataHandler::class);
-            $this->falResolverService->importReferences($fileReferences, $uidArray, $dh, ['storageId' => 1, 'upsert' => $deltaMode]);
+            $this->falResolverService->importReferences($fileReferences, $uidArray, $dh, ['storageId' => $this->configurationService->getFalStorageId(), 'upsert' => $deltaMode]);
         }
 
         if (!empty($manifest->getIrreRelations())) {
@@ -312,6 +316,7 @@ class ImportService
         $this->linkRewriterService->rewriteLinks($uidArray, $workspaceId);
 
         $this->uidMap = UidMap::fromArray($uidArray);
+        $this->rollbackMap = $this->buildRollbackMap($uidArray);
         $this->eventDispatcher->dispatch(new ModifyImportDataEvent($rawData, $uidArray));
 
         return $stats;
@@ -354,7 +359,68 @@ class ImportService
 
     private function hasMappedRecords(): bool
     {
-        return !$this->uidMap->isEmpty();
+        return !$this->createdMap->isEmpty();
+    }
+
+    /**
+     * Behandelt einen abgebrochenen Import: schreibt ein Protokoll der bereits
+     * angelegten Records und rollt diese – sofern aktiviert (Standard) – sofort
+     * automatisch zurück, sodass kein halber Baum zurückbleibt.
+     */
+    private function handleAbortedImport(string $timestamp, string $jsonPath, array $options, \Throwable $e): void
+    {
+        $this->importLogRepository->save(
+            $timestamp,
+            (int)($options['workspaceId'] ?? 0),
+            $jsonPath . ' [ABGEBROCHEN]',
+            (bool)($options['deltaMode'] ?? false),
+            $this->createdMap->toArray()
+        );
+
+        if ($this->configurationService->isAutoRollbackOnFailure()) {
+            try {
+                $this->rollbackService->runRollback($timestamp);
+                $this->logger->error('Import abgebrochen – Teilimport automatisch zurückgerollt.', [
+                    'importId' => $timestamp,
+                    'error' => $e->getMessage(),
+                ]);
+                return;
+            } catch (\Throwable $rollbackError) {
+                $this->logger->critical('Import abgebrochen UND automatischer Rollback fehlgeschlagen – manueller Eingriff nötig (robbicopy:undo ' . $timestamp . ').', [
+                    'importId' => $timestamp,
+                    'error' => $e->getMessage(),
+                    'rollbackError' => $rollbackError->getMessage(),
+                ]);
+                return;
+            }
+        }
+
+        $this->logger->error('Import abgebrochen – Notfall-Protokoll geschrieben (Rollback via robbicopy:undo ' . $timestamp . ' möglich).', [
+            'importId' => $timestamp,
+            'error' => $e->getMessage(),
+        ]);
+    }
+
+    /**
+     * Rollback-Basis: ausschließlich neu angelegte Records. Gematchte/aktualisierte
+     * Bestands-Records werden bewusst NICHT aufgenommen, damit ein Rollback keine
+     * vorbestehenden Daten löscht.
+     *
+     * @param array<string, array<int,int>> $uidArray vollständige UID-Map nach dem Import
+     * @return array<string, array<int,int>>
+     */
+    private function buildRollbackMap(array $uidArray): array
+    {
+        $rollback = $this->createdMap->toArray();
+        foreach ($uidArray as $table => $entries) {
+            // pages/tt_content stammen aus createdMap; sys_file referenziert Bestandsdateien.
+            if (in_array($table, ['pages', 'tt_content', 'sys_file'], true)) {
+                continue;
+            }
+            // Registry-Record-Tabellen enthalten nur neu angelegte (NEW_REG) UIDs.
+            $rollback[$table] = $entries;
+        }
+        return $rollback;
     }
 
     /**
@@ -388,6 +454,7 @@ class ImportService
                 if (str_starts_with($placeholder, $prefix)) {
                     $oldUid = (int)str_replace($prefix, '', $placeholder);
                     $this->uidMap->set($table, $oldUid, (int)$newUid);
+                    $this->createdMap->set($table, $oldUid, (int)$newUid);
                 }
             }
 
@@ -434,7 +501,7 @@ class ImportService
 
             foreach ($pages as $page) {
                 try {
-                    $newSlug = $slugHelper->generate($page, (int)$page['pid']);
+                    $newSlug = $this->generateUniqueSlug($slugHelper, $slugConfig, $page);
                     if ($newSlug !== ($page['slug'] ?? '')) {
                         $datamap['pages'][(int)$page['uid']] = ['slug' => $newSlug];
                     }
@@ -452,6 +519,34 @@ class ImportService
         }
     }
 
+    /**
+     * Erzeugt einen für die Ziel-Site eindeutigen Slug, damit beim Einspielen in
+     * einen bestehenden Baum keine Slug-Kollisionen entstehen.
+     *
+     * @param array<string, mixed> $slugConfig
+     * @param array<string, mixed> $page
+     */
+    private function generateUniqueSlug(\TYPO3\CMS\Core\DataHandling\SlugHelper $slugHelper, array $slugConfig, array $page): string
+    {
+        $pid = (int)$page['pid'];
+        $slug = $slugHelper->generate($page, $pid);
+
+        $state = \TYPO3\CMS\Core\DataHandling\Model\RecordStateFactory::forName('pages')
+            ->fromArray($page, $pid, (int)$page['uid']);
+
+        $eval = (string)($slugConfig['eval'] ?? '');
+        if (str_contains($eval, 'uniqueInSite')) {
+            return $slugHelper->buildSlugForUniqueInSite($slug, $state);
+        }
+        if (str_contains($eval, 'uniqueInPid')) {
+            return $slugHelper->buildSlugForUniqueInPid($slug, $state);
+        }
+        if (str_contains($eval, 'uniqueInTable')) {
+            return $slugHelper->buildSlugForUniqueInTable($slug, $state);
+        }
+        return $slug;
+    }
+
     // =========================================================================
     // HILFSMETHODEN
     // =========================================================================
@@ -464,8 +559,9 @@ class ImportService
 
         // Schutz vor Symlink-/Path-Traversal.
         $realPath = realpath($jsonPath);
-        if ($realPath === false || !str_ends_with($realPath, '.json')) {
-            throw new \RuntimeException("Ungültiger Dateipfad oder keine JSON-Datei: $jsonPath");
+        $isJsonl = $realPath !== false && str_ends_with($realPath, '.jsonl');
+        if ($realPath === false || (!str_ends_with($realPath, '.json') && !$isJsonl)) {
+            throw new \RuntimeException("Ungültiger Dateipfad oder keine JSON/JSONL-Datei: $jsonPath");
         }
 
         $projectPath = Environment::getProjectPath();
@@ -473,12 +569,9 @@ class ImportService
             throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
         }
 
-        $data = json_decode(file_get_contents($realPath), true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException('JSON-Fehler: ' . json_last_error_msg());
-        }
+        $data = $isJsonl ? $this->parseJsonlFile($realPath) : $this->parseJsonFile($realPath);
 
-        $manifest = ExportManifest::fromArray(is_array($data) ? $data : []);
+        $manifest = ExportManifest::fromArray($data);
         if (!$manifest->hasPages()) {
             throw new \RuntimeException('"pages" muss ein nicht-leeres Array sein.');
         }
@@ -491,6 +584,55 @@ class ImportService
             );
         }
         return $manifest;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function parseJsonFile(string $path): array
+    {
+        $data = json_decode((string)file_get_contents($path), true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \RuntimeException('JSON-Fehler: ' . json_last_error_msg());
+        }
+        return is_array($data) ? $data : [];
+    }
+
+    /**
+     * Liest eine JSONL-Datei zeilenweise ein (ein JSON-Objekt pro Zeile),
+     * ohne die gesamte Datei als einen String zu dekodieren.
+     *
+     * @return array<string, mixed>
+     */
+    private function parseJsonlFile(string $path): array
+    {
+        $handle = fopen($path, 'r');
+        if ($handle === false) {
+            throw new \RuntimeException("Datei nicht lesbar: $path");
+        }
+        $data = [];
+        try {
+            while (($line = fgets($handle)) !== false) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $obj = json_decode($line, true);
+                if (json_last_error() !== JSON_ERROR_NONE || !is_array($obj)) {
+                    throw new \RuntimeException('JSONL-Fehler: ungültige Zeile.');
+                }
+                if (array_key_exists('_meta', $obj)) {
+                    $data['_meta'] = $obj['_meta'];
+                    continue;
+                }
+                if (isset($obj['_t']) && array_key_exists('_r', $obj)) {
+                    $data[(string)$obj['_t']][] = $obj['_r'];
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+        return $data;
     }
 
     private function findExistingRecordsByRemoteUid(string $table, array $records): array

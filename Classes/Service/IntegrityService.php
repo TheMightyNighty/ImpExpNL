@@ -83,6 +83,11 @@ class IntegrityService
         $ctx = $key !== null ? hash_init('sha256', HASH_HMAC, $key) : hash_init('sha256');
 
         foreach ($data as $tableName => $value) {
+            // Leere Tabellen überspringen, damit JSON- und JSONL-Format (in dem
+            // leere Tabellen schlicht keine Zeilen erzeugen) denselben Hash liefern.
+            if ($value === [] || $value === null) {
+                continue;
+            }
             hash_update($ctx, $tableName . "\x00");
             if (is_array($value) && array_is_list($value)) {
                 foreach ($value as $record) {
