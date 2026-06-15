@@ -10,6 +10,7 @@ use Robbi\RobbiCopy\Domain\PageLinkRewriter;
 use Robbi\RobbiCopy\Event\ModifyExportDataEvent;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Database\Query\QueryBuilder;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\DataHandling\TableColumnType;
 use TYPO3\CMS\Core\Information\Typo3Version;
@@ -62,9 +63,13 @@ class ExportService
         $this->bootstrapService->initializeBackendContext();
         $finalData = $this->collectAndDispatch($startPid, $options);
 
-        $jsonContent = json_encode($finalData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        if (file_put_contents($filePath, $jsonContent) === false) {
-            throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
+        if (!empty($options['jsonl']) || str_ends_with($filePath, '.jsonl')) {
+            $this->writeJsonlFile($finalData, $filePath);
+        } else {
+            $jsonContent = json_encode($finalData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            if (file_put_contents($filePath, $jsonContent) === false) {
+                throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
+            }
         }
 
         $baseDir = dirname($filePath);
@@ -312,7 +317,7 @@ class ExportService
         }
     }
 
-    protected function applyRestrictions($qb, bool $includeHidden): void
+    protected function applyRestrictions(QueryBuilder $qb, bool $includeHidden): void
     {
         if ($includeHidden) {
             $qb->getRestrictions()->removeAll()->add(
@@ -436,6 +441,34 @@ class ExportService
             return "'" . $value;
         }
         return $value;
+    }
+
+    /**
+     * Schreibt den Export zeilenweise als JSONL (ein JSON-Objekt pro Zeile).
+     * Vermeidet den monolithischen Encode-String und hält den Speicher-Peak
+     * bei großen Bäumen niedriger als der JSON-Export.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function writeJsonlFile(array $data, string $filePath): void
+    {
+        $handle = fopen($filePath, 'w');
+        if ($handle === false) {
+            throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
+        }
+        try {
+            fwrite($handle, (string)json_encode(['_meta' => $data['_meta'] ?? []], JSON_UNESCAPED_UNICODE) . "\n");
+            foreach ($data as $table => $value) {
+                if ($table === '_meta' || !is_array($value)) {
+                    continue;
+                }
+                foreach ($value as $record) {
+                    fwrite($handle, (string)json_encode(['_t' => $table, '_r' => $record], JSON_UNESCAPED_UNICODE) . "\n");
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
     }
 
     protected function parseSince(?string $since): int

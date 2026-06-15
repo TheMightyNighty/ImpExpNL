@@ -2,11 +2,15 @@ includes:
     - vendor/saschaegerer/phpstan-typo3/extension.neon
 
 parameters:
-    # Level 5 als grüne Baseline. Level 6 (vollständige array<...>-Typisierung)
-    # ist ein Folgeschritt zusammen mit dem typisierten Domänenmodell (DTOs).
-    level: 5
+    level: 6
     paths:
         - Classes
     excludePaths:
         analyse:
             - Tests/*
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        # Wertetypen generischer TYPO3-Record-Arrays (array<string,mixed>) werden nicht
+        # erzwungen: hoher Churn, geringer Gewinn. Fachliche Strukturen sind über die
+        # Domain-Value-Objects typisiert.
+        - identifier: missingType.iterableValue

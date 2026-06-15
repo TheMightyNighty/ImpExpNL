@@ -12,6 +12,11 @@ import:
   include:
     file_references: true     # FAL-Referenzen über Dateipfad auflösen
   container_support: true     # b13/container: tx_container_parent remappen
+  batch_size: 500             # Records pro DataHandler-Batch
+  lock_stale_seconds: 3600    # nach dieser Zeit gilt ein hängender Lock als veraltet
+  auto_rollback_on_failure: true  # abgebrochenen Teilimport automatisch zurückrollen
+  fal:
+    storage_id: 1             # Default-Storage, falls eine Referenz keine eigene Angabe trägt
   link_rewrite:
     fields:
       - bodytext

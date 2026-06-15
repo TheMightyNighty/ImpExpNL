@@ -38,7 +38,8 @@ class FalResolverService
             }
 
             $newForeignUid = $uidMap[$tableName][$oldForeignUid];
-            $storageId = $options['storageId'] ?? 1;
+            // Storage der Quelle bevorzugen (Multi-Storage), sonst konfigurierter Default.
+            $storageId = (int)($ref['storage'] ?? 0) ?: (int)($options['storageId'] ?? 1);
 
             $identifier = $ref['identifier'] ?? '';
             if (empty($identifier)) {

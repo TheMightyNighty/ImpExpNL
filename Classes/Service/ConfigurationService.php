@@ -71,6 +71,33 @@ class ConfigurationService
     }
 
     /**
+     * Records pro DataHandler-Batch.
+     */
+    public function getBatchSize(int $default = 500): int
+    {
+        $value = (int)($this->getConfig()['import']['batch_size'] ?? 0);
+        return $value > 0 ? $value : $default;
+    }
+
+    /**
+     * Standard-FAL-Storage, falls eine Referenz keine eigene Storage-Angabe trägt.
+     */
+    public function getFalStorageId(int $default = 1): int
+    {
+        $value = (int)($this->getConfig()['import']['fal']['storage_id'] ?? 0);
+        return $value > 0 ? $value : $default;
+    }
+
+    /**
+     * Soll ein abgebrochener Import automatisch zurückgerollt werden?
+     * (Standard: ja – es bleibt kein halber Baum zurück.)
+     */
+    public function isAutoRollbackOnFailure(): bool
+    {
+        return (bool)($this->getConfig()['import']['auto_rollback_on_failure'] ?? true);
+    }
+
+    /**
      * Felder, in denen t3://page-Links umgeschrieben werden.
      *
      * @param string[] $fallback

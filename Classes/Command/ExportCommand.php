@@ -35,7 +35,8 @@ class ExportCommand extends Command
             ->addOption('exclude-pages', null, InputOption::VALUE_OPTIONAL, 'PIDs ausschließen (komma-separiert)')
             ->addOption('since', null, InputOption::VALUE_OPTIONAL, 'Nur seit Datum geänderte Records (Y-m-d)')
             ->addOption('content-types', null, InputOption::VALUE_OPTIONAL, 'Nur bestimmte CTypes (komma-separiert)')
-            ->addOption('csv', null, InputOption::VALUE_NONE, 'Zusätzlich CSV-Dateien für Tabellenvergleich erzeugen');
+            ->addOption('csv', null, InputOption::VALUE_NONE, 'Zusätzlich CSV-Dateien für Tabellenvergleich erzeugen')
+            ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -48,6 +49,7 @@ class ExportCommand extends Command
             'depth' => (int)$input->getOption('depth'),
             'includeHidden' => (bool)$input->getOption('include-hidden'),
             'csv' => (bool)$input->getOption('csv'),
+            'jsonl' => (bool)$input->getOption('jsonl'),
         ];
 
         if ($input->getOption('pages')) {
@@ -97,13 +99,7 @@ class ExportCommand extends Command
             $progressBar->finish();
             $output->writeln('');
 
-            $data = json_decode(file_get_contents($absolutePath), true);
-            $io->success(sprintf(
-                'Export: %d Seiten, %d Inhalte → %s',
-                count($data['pages'] ?? []),
-                count($data['tt_content'] ?? []),
-                $outputFile
-            ));
+            $io->success(sprintf('Export geschrieben → %s', $outputFile));
 
             return Command::SUCCESS;
         } catch (\Exception $e) {

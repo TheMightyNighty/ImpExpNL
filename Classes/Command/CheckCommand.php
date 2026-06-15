@@ -118,6 +118,10 @@ class CheckCommand extends Command
                 foreach ($tables as $tableName => $tableConfig) {
                     $type = $tableConfig['type'] ?? 'record';
                     $io->text("     $tableName (type: $type)");
+                    foreach ($this->validateTableConfig((string)$tableName, $tableConfig) as $problem) {
+                        $io->error($problem);
+                        $errors++;
+                    }
                 }
             } else {
                 $io->text('[--] Keine Tabellen in der Registry (optional).');
@@ -157,5 +161,40 @@ class CheckCommand extends Command
 
         $io->error("$errors Fehler, $warnings Hinweise. Die Fehler müssen vor dem Einsatz behoben werden.");
         return Command::FAILURE;
+    }
+
+    /**
+     * Prüft eine einzelne Registry-Definition auf grobe Fehlkonfiguration.
+     *
+     * @param array<string, mixed> $config
+     * @return string[] Liste gefundener Probleme
+     */
+    private function validateTableConfig(string $tableName, array $config): array
+    {
+        $problems = [];
+        $type = $config['type'] ?? 'record';
+
+        if (!in_array($type, ['mm', 'record'], true)) {
+            $problems[] = "Registry '$tableName': ungültiger type '$type' (erlaubt: mm, record).";
+            return $problems;
+        }
+
+        if ($type === 'mm') {
+            if (isset($config['match_tables']) && !is_array($config['match_tables'])) {
+                $problems[] = "Registry '$tableName': match_tables muss eine Liste sein.";
+            }
+            if (isset($config['category_match']) && $config['category_match'] !== 'path') {
+                $problems[] = "Registry '$tableName': category_match unterstützt nur 'path'.";
+            }
+        } else {
+            if (isset($config['rewrite_links']) && !is_array($config['rewrite_links'])) {
+                $problems[] = "Registry '$tableName': rewrite_links muss eine Liste sein.";
+            }
+            if (isset($config['uid_remap']) && !is_bool($config['uid_remap'])) {
+                $problems[] = "Registry '$tableName': uid_remap muss true/false sein.";
+            }
+        }
+
+        return $problems;
     }
 }
