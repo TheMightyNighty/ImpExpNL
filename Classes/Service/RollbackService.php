@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Service;
@@ -16,8 +17,80 @@ class RollbackService
         private readonly BootstrapService $bootstrapService,
         private readonly ConnectionPool $connectionPool,
         private readonly TableRegistryService $tableRegistry,
+        private readonly ImportLogRepository $importLogRepository,
         private readonly LoggerInterface $logger
     ) {}
+
+    /**
+     * Liefert eine Vorschau, was ein Rollback entfernen würde, ohne etwas zu ändern.
+     *
+     * @return array{importId:string, date:string, sourceFile:string, counts:array{pages:int, tt_content:int}, modified:string[]}
+     */
+    public function preview(?string $importId = null): array
+    {
+        $record = $importId
+            ? $this->importLogRepository->findById($importId)
+            : $this->importLogRepository->findLatest();
+
+        if (!$record) {
+            throw new \RuntimeException($importId
+                ? "Import-Protokoll für ID '$importId' nicht gefunden."
+                : 'Keine Import-Protokolle gefunden.');
+        }
+
+        $uidMap = json_decode($record['uid_map'], true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \RuntimeException('Fehler beim Parsen der UID-Map: ' . json_last_error_msg());
+        }
+
+        $importTstamp = (int)($record['tstamp'] ?? 0);
+
+        return [
+            'importId' => (string)$record['import_id'],
+            'date' => date('Y-m-d H:i:s', $importTstamp),
+            'sourceFile' => (string)($record['source_file'] ?? ''),
+            'counts' => [
+                'pages' => count($uidMap['pages'] ?? []),
+                'tt_content' => count($uidMap['tt_content'] ?? []),
+            ],
+            'modified' => $this->findLocallyModifiedRecords($uidMap, $importTstamp),
+        ];
+    }
+
+    /**
+     * Records, die nach dem Import lokal bearbeitet wurden (tstamp neuer als Import).
+     * Ihre Änderungen gingen beim Rollback verloren.
+     *
+     * @return string[]
+     */
+    private function findLocallyModifiedRecords(array $uidMap, int $importTstamp): array
+    {
+        if ($importTstamp <= 0) {
+            return [];
+        }
+        $modified = [];
+        foreach (['pages', 'tt_content'] as $table) {
+            $uids = array_map('intval', array_values($uidMap[$table] ?? []));
+            if (empty($uids)) {
+                continue;
+            }
+            $labelField = $table === 'pages' ? 'title' : 'header';
+            foreach (array_chunk($uids, 1000) as $chunk) {
+                $qb = $this->connectionPool->getQueryBuilderForTable($table);
+                $qb->getRestrictions()->removeAll();
+                $rows = $qb->select('uid', 'tstamp', $labelField)->from($table)
+                    ->where(
+                        $qb->expr()->in('uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)),
+                        $qb->expr()->gt('tstamp', $qb->createNamedParameter($importTstamp, Connection::PARAM_INT))
+                    )
+                    ->executeQuery()->fetchAllAssociative();
+                foreach ($rows as $row) {
+                    $modified[] = sprintf('%s uid=%d ("%s")', $table, (int)$row['uid'], (string)($row[$labelField] ?? ''));
+                }
+            }
+        }
+        return $modified;
+    }
 
     /**
      * Macht einen Import vollständig rückgängig.
@@ -27,35 +100,16 @@ class RollbackService
     {
         $this->bootstrapService->initializeBackendContext();
 
-        $connection = $this->connectionPool->getConnectionForTable('tx_robbicopy_import_log');
+        $record = $importId
+            ? $this->importLogRepository->findById($importId)
+            : $this->importLogRepository->findLatest();
 
-        // 1. Import-Protokoll finden
-        if ($importId) {
-            $qb = $this->connectionPool->getQueryBuilderForTable('tx_robbicopy_import_log');
-            $record = $qb->select('*')
-                ->from('tx_robbicopy_import_log')
-                ->where($qb->expr()->eq('import_id', $qb->createNamedParameter($importId)))
-                ->executeQuery()
-                ->fetchAssociative();
-
-            if (!$record) {
-                throw new \RuntimeException("Import-Protokoll für ID '$importId' nicht gefunden.");
-            }
-        } else {
-            $qb = $this->connectionPool->getQueryBuilderForTable('tx_robbicopy_import_log');
-            $record = $qb->select('*')
-                ->from('tx_robbicopy_import_log')
-                ->orderBy('tstamp', 'DESC')
-                ->setMaxResults(1)
-                ->executeQuery()
-                ->fetchAssociative();
-
-            if (!$record) {
-                throw new \RuntimeException('Keine Import-Protokolle gefunden.');
-            }
-
-            $importId = $record['import_id'];
+        if (!$record) {
+            throw new \RuntimeException($importId
+                ? "Import-Protokoll für ID '$importId' nicht gefunden."
+                : 'Keine Import-Protokolle gefunden.');
         }
+        $importId = $record['import_id'];
 
         $this->logger->info('Lade Protokoll: ' . $importId);
 
@@ -66,16 +120,18 @@ class RollbackService
 
         if (empty($lastImport['pages']) && empty($lastImport['tt_content'])) {
             $this->logger->warning('Protokolldaten sind leer.');
-            $connection->delete('tx_robbicopy_import_log', ['import_id' => $importId]);
+            $this->importLogRepository->delete($importId);
             return;
         }
 
         $stats = ['pages' => 0, 'tt_content' => 0, 'sys_file_reference' => 0, 'registry' => 0];
 
-        // 2. FAL-Referenzen bereinigen (VOR dem Löschen der Records)
+        // FAL-Referenzen vor den Records selbst entfernen.
         foreach (['tt_content', 'pages'] as $tableName) {
             $uids = array_values($lastImport[$tableName] ?? []);
-            if (empty($uids)) continue;
+            if (empty($uids)) {
+                continue;
+            }
 
             foreach (array_chunk($uids, 1000) as $chunk) {
                 $qb = $this->connectionPool->getQueryBuilderForTable('sys_file_reference');
@@ -88,10 +144,8 @@ class RollbackService
             }
         }
 
-        // 3. Table-Registry: Alle registrierten Tabellen bereinigen
         $stats['registry'] = $this->tableRegistry->rollbackRegisteredTables($lastImport);
 
-        // 4. DataHandler: Inhalte + Seiten löschen
         $cmd = [];
         $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
 
@@ -115,13 +169,16 @@ class RollbackService
             $dataHandler->process_cmdmap();
         }
 
-        // 5. Protokoll entfernen + Log schreiben
-        $connection->delete('tx_robbicopy_import_log', ['import_id' => $importId]);
+        $this->importLogRepository->delete($importId);
         $this->writeRollbackLog($importId, $stats);
 
         $this->logger->info(sprintf(
             'Rollback %s: %d Seiten, %d Inhalte, %d FAL, %d Registry-Einträge gelöscht.',
-            $importId, $stats['pages'], $stats['tt_content'], $stats['sys_file_reference'], $stats['registry']
+            $importId,
+            $stats['pages'],
+            $stats['tt_content'],
+            $stats['sys_file_reference'],
+            $stats['registry']
         ));
     }
 

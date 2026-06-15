@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Command;
@@ -18,7 +19,10 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
 #[AsCommand(name: 'robbicopy:export', description: 'Exportiert einen Seitenbaum als JSON-Datei.')]
 class ExportCommand extends Command
 {
-    public function __construct(private readonly ExportService $exportService) { parent::__construct(); }
+    public function __construct(private readonly ExportService $exportService)
+    {
+        parent::__construct();
+    }
 
     protected function configure(): void
     {
@@ -75,10 +79,12 @@ class ExportCommand extends Command
         try {
             $absolutePath = GeneralUtility::getFileAbsFileName($outputFile) ?: Environment::getProjectPath() . '/' . ltrim($outputFile, '/');
 
-            // OWASP A01: Sicherstellen, dass der Zielpfad innerhalb des Projekts liegt
+            // Zielpfad muss innerhalb des Projektverzeichnisses liegen.
             $projectPath = Environment::getProjectPath();
             $dir = dirname($absolutePath);
-            if (!is_dir($dir)) mkdir($dir, 0775, true);
+            if (!is_dir($dir)) {
+                mkdir($dir, 0775, true);
+            }
             $resolvedDir = realpath($dir);
             if ($resolvedDir === false || !str_starts_with($resolvedDir, $projectPath)) {
                 $io->error("Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile");
@@ -92,8 +98,12 @@ class ExportCommand extends Command
             $output->writeln('');
 
             $data = json_decode(file_get_contents($absolutePath), true);
-            $io->success(sprintf('Export: %d Seiten, %d Inhalte → %s',
-                count($data['pages'] ?? []), count($data['tt_content'] ?? []), $outputFile));
+            $io->success(sprintf(
+                'Export: %d Seiten, %d Inhalte → %s',
+                count($data['pages'] ?? []),
+                count($data['tt_content'] ?? []),
+                $outputFile
+            ));
 
             return Command::SUCCESS;
         } catch (\Exception $e) {

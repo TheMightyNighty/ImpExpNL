@@ -1,19 +1,22 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Service;
 
+use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
-use TYPO3\CMS\Core\Resource\Exception\FileDoesNotExistException;
+use TYPO3\CMS\Core\Resource\File;
 use TYPO3\CMS\Core\Resource\ResourceFactory;
 
 class FalResolverService
 {
     public function __construct(
         private readonly ResourceFactory $resourceFactory,
-        private readonly ConnectionPool $connectionPool
+        private readonly ConnectionPool $connectionPool,
+        private readonly LoggerInterface $logger
     ) {}
 
     /**
@@ -54,30 +57,40 @@ class FalResolverService
 
             $liveSysFileUid = null;
             try {
-                $file = $this->resourceFactory->getFileObjectFromStorageByFileId($storageId, $identifier);
-                $liveSysFileUid = $file->getUid();
-            } catch (FileDoesNotExistException $e) {
                 $storage = $this->resourceFactory->getStorageObject($storageId);
                 if ($storage->hasFile($identifier)) {
-                    $liveSysFileUid = $storage->getFile($identifier)->getUid();
+                    $fileObject = $storage->getFile($identifier);
+                    if ($fileObject instanceof File) {
+                        $liveSysFileUid = $fileObject->getUid();
+                    }
                 }
-            } catch (\Exception $e) {
-                // Datei existiert nicht auf Zielsystem – überspringen
+            } catch (\Throwable $e) {
+                $this->logger->warning('FAL-Referenz übersprungen, Datei nicht auflösbar.', [
+                    'identifier' => $identifier,
+                    'storageId' => $storageId,
+                    'error' => $e->getMessage(),
+                ]);
                 continue;
             }
 
-            if ($liveSysFileUid !== null) {
-                $uidMap['sys_file'][$ref['uid_local']] = $liveSysFileUid;
-
-                $tempRefId = 'NEW_REF_' . $ref['uid'];
-                $dataMap['sys_file_reference'][$tempRefId] = [
-                    'uid_local' => $liveSysFileUid,
-                    'uid_foreign' => $newForeignUid,
-                    'tablenames' => $tableName,
-                    'fieldname' => $ref['fieldname'],
-                    'pid' => $uidMap['pages'][$ref['pid']] ?? $ref['pid'],
-                ];
+            if ($liveSysFileUid === null) {
+                $this->logger->warning('FAL-Referenz übersprungen, Datei auf Zielsystem nicht vorhanden.', [
+                    'identifier' => $identifier,
+                    'storageId' => $storageId,
+                ]);
+                continue;
             }
+
+            $uidMap['sys_file'][$ref['uid_local']] = $liveSysFileUid;
+
+            $tempRefId = 'NEW_REF_' . $ref['uid'];
+            $dataMap['sys_file_reference'][$tempRefId] = [
+                'uid_local' => $liveSysFileUid,
+                'uid_foreign' => $newForeignUid,
+                'tablenames' => $tableName,
+                'fieldname' => $ref['fieldname'],
+                'pid' => $uidMap['pages'][$ref['pid']] ?? $ref['pid'],
+            ];
         }
 
         if (!empty($cmdMap['sys_file_reference'])) {

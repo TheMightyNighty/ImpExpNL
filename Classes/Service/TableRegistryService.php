@@ -1,26 +1,27 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Service;
 
 use Psr\Log\LoggerInterface;
-use TYPO3\CMS\Core\Configuration\Loader\YamlFileLoader;
+use Robbi\RobbiCopy\Domain\PageLinkRewriter;
+use Robbi\RobbiCopy\Domain\SystemFields;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
-use TYPO3\CMS\Core\Package\PackageManager;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
- * Deklarative Table-Registry.
+ * Deklarative Table-Registry für Export, Import und Rollback beliebiger Tabellen.
  *
  * MM-Tabellen-Config:
  *   type: mm
  *   match_field: uid_foreign
  *   match_tablenames_field: tablenames
  *   match_tables: [pages, tt_content]
- *   category_match: path    # NEU: Kategorien über Pfad statt UID matchen
+ *   category_match: path    # Kategorien über Pfad statt UID matchen
  *
  * Record-Tabellen-Config:
  *   type: record
@@ -30,60 +31,20 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  */
 class TableRegistryService
 {
-    private ?array $registryCache = null;
-
-    private array $excludedFields = [
-        'uid', 'pid', 'tstamp', 'crdate',
-        't3ver_oid', 't3ver_wsid', 't3ver_state', 't3ver_stage', 't3ver_move_id',
-        't3_origuid', 'l10n_diffsource',
-    ];
-
     public function __construct(
         private readonly ConnectionPool $connectionPool,
-        private readonly YamlFileLoader $yamlFileLoader,
-        private readonly PackageManager $packageManager,
+        private readonly ConfigurationService $configurationService,
         private readonly LoggerInterface $logger
     ) {}
 
     /**
      * Gibt alle registrierten Tabellen-Definitionen zurück.
-     * Merged Konfigurationen aus robbi_copy.yaml und allen Extensions mit Configuration/RobbiCopy.yaml.
      *
      * @return array<string, array> Tabelle → Konfiguration
      */
     public function getRegisteredTables(): array
     {
-        if ($this->registryCache !== null) return $this->registryCache;
-
-        $tables = [];
-
-        // Haupt-YAML
-        try {
-            $main = $this->yamlFileLoader->load('EXT:robbi_copy/robbi_copy.yaml');
-            if (!empty($main['robbicopy']['tables'])) {
-                $tables = array_merge($tables, $main['robbicopy']['tables']);
-            }
-        } catch (\Exception $e) {}
-
-        // Extension-Scan
-        try {
-            foreach ($this->packageManager->getActivePackages() as $pkg) {
-                $file = $pkg->getPackagePath() . 'Configuration/RobbiCopy.yaml';
-                if (file_exists($file)) {
-                    try {
-                        $ext = $this->yamlFileLoader->load($file);
-                        if (!empty($ext['robbicopy']['tables'])) {
-                            $tables = array_merge($tables, $ext['robbicopy']['tables']);
-                        }
-                    } catch (\Exception $e) {
-                        $this->logger->warning('RobbiCopy.yaml Fehler', ['ext' => $pkg->getPackageKey()]);
-                    }
-                }
-            }
-        } catch (\Exception $e) {}
-
-        $this->registryCache = $tables;
-        return $tables;
+        return $this->configurationService->getRegisteredTables();
     }
 
     // =========================================================================
@@ -141,7 +102,9 @@ class TableRegistryService
                         ? $table . '_with_paths'
                         : $table;
 
-                    if (empty($exportedData[$dataKey])) continue;
+                    if (empty($exportedData[$dataKey])) {
+                        continue;
+                    }
 
                     if (!empty($config['category_match']) && $config['category_match'] === 'path') {
                         $this->importMmTableWithPathMatching($table, $config, $exportedData[$dataKey], $uidMap);
@@ -149,7 +112,9 @@ class TableRegistryService
                         $this->importMmTable($table, $config, $exportedData[$dataKey], $uidMap);
                     }
                 } elseif ($type === 'record') {
-                    if (empty($exportedData[$table])) continue;
+                    if (empty($exportedData[$table])) {
+                        continue;
+                    }
                     $this->importRecordTable($table, $config, $exportedData[$table], $uidMap);
                 }
             } catch (\Exception $e) {
@@ -199,7 +164,9 @@ class TableRegistryService
 
         foreach ($matchTables as $mt) {
             $uids = $uidSets[$mt] ?? [];
-            if (empty($uids)) continue;
+            if (empty($uids)) {
+                continue;
+            }
             foreach (array_chunk($uids, 1000) as $chunk) {
                 $qb = $this->connectionPool->getQueryBuilderForTable($table);
                 $qb->getRestrictions()->removeAll();
@@ -242,7 +209,9 @@ class TableRegistryService
                 ->where($qb->expr()->eq('uid', $qb->createNamedParameter($current, Connection::PARAM_INT)))
                 ->executeQuery()->fetchAssociative();
 
-            if (!$cat) break;
+            if (!$cat) {
+                break;
+            }
             array_unshift($parts, $cat['title']);
             $current = (int)$cat['parent'];
         }
@@ -256,8 +225,10 @@ class TableRegistryService
      */
     protected function resolveCategoryByPath(string $path): ?int
     {
-        $segments = array_map('trim', explode('>', $path));
-        if (empty($segments)) return null;
+        $segments = array_filter(array_map('trim', explode('>', $path)), static fn(string $s): bool => $s !== '');
+        if ($segments === []) {
+            return null;
+        }
 
         $parentUid = 0;
         foreach ($segments as $segment) {
@@ -283,7 +254,9 @@ class TableRegistryService
                 ]]], []);
                 $dh->process_datamap();
                 $parentUid = (int)($dh->substNEWwithIDs[$tempId] ?? 0);
-                if ($parentUid === 0) return null;
+                if ($parentUid === 0) {
+                    return null;
+                }
                 $this->logger->info("Kategorie angelegt: $segment (uid=$parentUid, parent=$parentUid)");
             }
         }
@@ -296,26 +269,56 @@ class TableRegistryService
         $matchField = $config['match_field'] ?? 'uid_foreign';
         $tnField = $config['match_tablenames_field'] ?? 'tablenames';
         $conn = $this->connectionPool->getConnectionForTable($table);
-        $imported = 0;
+        $rows = [];
 
         foreach ($records as $rec) {
             $relTable = $rec[$tnField] ?? '';
             $oldForeign = (int)($rec[$matchField] ?? 0);
-            if (!isset($uidMap[$relTable][$oldForeign])) continue;
+            if (!isset($uidMap[$relTable][$oldForeign])) {
+                continue;
+            }
             $newForeign = (int)$uidMap[$relTable][$oldForeign];
 
             $del = [$matchField => $newForeign, $tnField => $relTable];
-            if (!empty($rec['uid_local'])) $del['uid_local'] = (int)$rec['uid_local'];
-            if (!empty($rec['fieldname'])) $del['fieldname'] = $rec['fieldname'];
+            if (!empty($rec['uid_local'])) {
+                $del['uid_local'] = (int)$rec['uid_local'];
+            }
+            if (!empty($rec['fieldname'])) {
+                $del['fieldname'] = $rec['fieldname'];
+            }
             $conn->delete($table, $del);
 
             $ins = $rec;
             $ins[$matchField] = $newForeign;
-            unset($ins['_category_path']); // Meta-Feld nicht in DB schreiben
-            $conn->insert($table, $ins);
-            $imported++;
+            unset($ins['_category_path']);
+            $rows[] = $ins;
         }
-        if ($imported > 0) $this->logger->info("MM-Import: $table", ['imported' => $imported]);
+
+        $imported = $this->bulkInsertRows($table, $rows);
+        if ($imported > 0) {
+            $this->logger->info("MM-Import: $table", ['imported' => $imported]);
+        }
+    }
+
+    /**
+     * Fügt gleichförmige Zeilen gebündelt ein (chunked), statt einzeln.
+     */
+    private function bulkInsertRows(string $table, array $rows): int
+    {
+        if (empty($rows)) {
+            return 0;
+        }
+        $conn = $this->connectionPool->getConnectionForTable($table);
+        $imported = 0;
+        foreach (array_chunk($rows, 100) as $chunk) {
+            $columns = array_keys($chunk[0]);
+            $values = array_map(
+                static fn(array $row): array => array_map(static fn(string $col) => $row[$col] ?? null, $columns),
+                $chunk
+            );
+            $imported += $conn->bulkInsert($table, $values, $columns);
+        }
+        return $imported;
     }
 
     /**
@@ -326,19 +329,22 @@ class TableRegistryService
         $matchField = $config['match_field'] ?? 'uid_foreign';
         $tnField = $config['match_tablenames_field'] ?? 'tablenames';
         $conn = $this->connectionPool->getConnectionForTable($table);
-        $imported = 0;
         $pathCache = [];
+        $rows = [];
 
         foreach ($records as $rec) {
             $relTable = $rec[$tnField] ?? '';
             $oldForeign = (int)($rec[$matchField] ?? 0);
-            if (!isset($uidMap[$relTable][$oldForeign])) continue;
+            if (!isset($uidMap[$relTable][$oldForeign])) {
+                continue;
+            }
             $newForeign = (int)$uidMap[$relTable][$oldForeign];
 
             $path = $rec['_category_path'] ?? '';
-            if (empty($path)) continue;
+            if (empty($path)) {
+                continue;
+            }
 
-            // Pfad-Cache
             if (!isset($pathCache[$path])) {
                 $pathCache[$path] = $this->resolveCategoryByPath($path);
             }
@@ -349,18 +355,22 @@ class TableRegistryService
             }
 
             $del = [$matchField => $newForeign, $tnField => $relTable, 'uid_local' => $newCategoryUid];
-            if (!empty($rec['fieldname'])) $del['fieldname'] = $rec['fieldname'];
+            if (!empty($rec['fieldname'])) {
+                $del['fieldname'] = $rec['fieldname'];
+            }
             $conn->delete($table, $del);
 
             $ins = $rec;
             $ins[$matchField] = $newForeign;
             $ins['uid_local'] = $newCategoryUid;
             unset($ins['_category_path']);
-            $conn->insert($table, $ins);
-            $imported++;
+            $rows[] = $ins;
         }
 
-        if ($imported > 0) $this->logger->info("MM-Import (Pfad): $table", ['imported' => $imported]);
+        $imported = $this->bulkInsertRows($table, $rows);
+        if ($imported > 0) {
+            $this->logger->info("MM-Import (Pfad): $table", ['imported' => $imported]);
+        }
     }
 
     private function rollbackMmTable(string $table, array $config, array $uidMap): int
@@ -372,7 +382,9 @@ class TableRegistryService
 
         foreach ($matchTables as $mt) {
             $uids = array_values($uidMap[$mt] ?? []);
-            if (empty($uids)) continue;
+            if (empty($uids)) {
+                continue;
+            }
             foreach (array_chunk($uids, 1000) as $chunk) {
                 $qb = $this->connectionPool->getQueryBuilderForTable($table);
                 $qb->getRestrictions()->removeAll();
@@ -406,12 +418,16 @@ class TableRegistryService
 
     private function importRecordTable(string $table, array $config, array $records, array &$uidMap): void
     {
-        if (empty($records)) return;
+        if (empty($records)) {
+            return;
+        }
         $pidField = $config['pid_field'] ?? 'pid';
         $uidRemap = $config['uid_remap'] ?? false;
         $rewriteLinks = $config['rewrite_links'] ?? [];
 
-        if (!isset($uidMap[$table])) $uidMap[$table] = [];
+        if (!isset($uidMap[$table])) {
+            $uidMap[$table] = [];
+        }
 
         $dh = GeneralUtility::makeInstance(DataHandler::class);
         $datamap = [];
@@ -423,7 +439,9 @@ class TableRegistryService
 
             $data = [];
             foreach ($rec as $f => $v) {
-                if (!in_array($f, $this->excludedFields, true)) $data[$f] = $v;
+                if (!in_array($f, SystemFields::EXCLUDED, true)) {
+                    $data[$f] = $v;
+                }
             }
             $data[$pidField] = $newPid;
             $data['pid'] = $newPid;
@@ -437,27 +455,29 @@ class TableRegistryService
             $datamap[$table]['NEW_REG_' . $table . '_' . $oldUid] = $data;
         }
 
-        if (!empty($datamap)) {
-            $dh->start($datamap, []);
-            $dh->process_datamap();
-            if ($uidRemap) {
-                $prefix = 'NEW_REG_' . $table . '_';
-                foreach ($dh->substNEWwithIDs as $ph => $newUid) {
-                    if (str_starts_with($ph, $prefix)) {
-                        $uidMap[$table][(int)str_replace($prefix, '', $ph)] = (int)$newUid;
-                    }
+        $dh->start($datamap, []);
+        $dh->process_datamap();
+        if ($uidRemap) {
+            $prefix = 'NEW_REG_' . $table . '_';
+            foreach ($dh->substNEWwithIDs as $ph => $newUid) {
+                if (str_starts_with($ph, $prefix)) {
+                    $uidMap[$table][(int)str_replace($prefix, '', $ph)] = (int)$newUid;
                 }
             }
-            $this->logger->info("Record-Import: $table", ['count' => count($records)]);
         }
+        $this->logger->info("Record-Import: $table", ['count' => count($records)]);
     }
 
     private function rollbackRecordTable(string $table, array $config, array $uidMap): int
     {
         $uids = array_values($uidMap[$table] ?? []);
-        if (empty($uids)) return 0;
+        if (empty($uids)) {
+            return 0;
+        }
         $cmd = [];
-        foreach ($uids as $uid) $cmd[$table][(int)$uid]['delete'] = 1;
+        foreach ($uids as $uid) {
+            $cmd[$table][(int)$uid]['delete'] = 1;
+        }
         $dh = GeneralUtility::makeInstance(DataHandler::class);
         $dh->start([], $cmd);
         $dh->process_cmdmap();
@@ -466,9 +486,6 @@ class TableRegistryService
 
     protected function rewritePageLinks(string $text, array $uidMap): string
     {
-        return preg_replace_callback('/t3:\/\/page\?uid=(\d+)/', function ($m) use ($uidMap) {
-            $old = (int)$m[1];
-            return isset($uidMap['pages'][$old]) ? 't3://page?uid=' . $uidMap['pages'][$old] : $m[0];
-        }, $text);
+        return PageLinkRewriter::rewrite($text, $uidMap['pages'] ?? []);
     }
 }

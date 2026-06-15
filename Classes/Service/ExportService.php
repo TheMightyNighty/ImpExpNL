@@ -1,30 +1,39 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Service;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
+use Robbi\RobbiCopy\Domain\PageLinkRewriter;
 use Robbi\RobbiCopy\Event\ModifyExportDataEvent;
-use TYPO3\CMS\Core\Configuration\Loader\YamlFileLoader;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
+use TYPO3\CMS\Core\DataHandling\TableColumnType;
 use TYPO3\CMS\Core\Information\Typo3Version;
+use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 use TYPO3\CMS\Core\Site\SiteFinder;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class ExportService
 {
-    private ?array $yamlConfigCache = null;
+    /**
+     * Marketing-/Release-Version der Extension. Bei jedem Release anpassen.
+     * (Die maschinell relevante Format-Version steht in IntegrityService::FORMAT_VERSION.)
+     */
+    public const VERSION = '5.0.0';
 
     public function __construct(
         private readonly ConnectionPool $connectionPool,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly BootstrapService $bootstrapService,
         private readonly TableRegistryService $tableRegistry,
-        private readonly YamlFileLoader $yamlFileLoader,
+        private readonly ConfigurationService $configurationService,
         private readonly SiteFinder $siteFinder,
+        private readonly IntegrityService $integrityService,
+        private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -54,13 +63,14 @@ class ExportService
         $finalData = $this->collectAndDispatch($startPid, $options);
 
         $jsonContent = json_encode($finalData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        file_put_contents($filePath, $jsonContent);
+        if (file_put_contents($filePath, $jsonContent) === false) {
+            throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
+        }
 
         $baseDir = dirname($filePath);
         $this->writeAssetsList($finalData, $baseDir);
         $this->writeBrokenLinksReport($finalData, $baseDir);
 
-        // Optional: CSV-Format zusätzlich
         if (!empty($options['csv'])) {
             $this->writeCsvExport($finalData, $baseDir);
         }
@@ -96,14 +106,12 @@ class ExportService
 
         $data = ['pages' => [], 'tt_content' => [], 'sys_file_reference' => [], 'irre_relations' => []];
 
-        // Selektiver Export: Einzelseiten oder Baumexport
         if (!empty($explicitPages)) {
             $pageUids = $this->collectExplicitPages($explicitPages, $data['pages'], $includeHidden);
         } else {
             $pageUids = $this->collectPageTree($startPid, $data['pages'], $includeHidden, $depth, 0);
         }
 
-        // Exclude-Filter
         if (!empty($excludePages)) {
             $pageUids = array_diff($pageUids, $excludePages);
             $data['pages'] = array_filter($data['pages'], fn($p) => !in_array((int)$p['uid'], $excludePages, true));
@@ -115,7 +123,9 @@ class ExportService
             return $data;
         }
 
-        if ($onProgress) $onProgress('Seiten gesammelt', count($pageUids), 0);
+        if ($onProgress) {
+            $onProgress('Seiten gesammelt', count($pageUids), 0);
+        }
 
         // Inhalte laden
         foreach (array_chunk($pageUids, 1000) as $chunk) {
@@ -124,12 +134,10 @@ class ExportService
 
             $where = [$qb->expr()->in('pid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY))];
 
-            // Zeitfilter
             if ($sinceTimestamp > 0) {
                 $where[] = $qb->expr()->gte('tstamp', $qb->createNamedParameter($sinceTimestamp, Connection::PARAM_INT));
             }
 
-            // CType-Filter
             if (!empty($contentTypes)) {
                 $where[] = $qb->expr()->in('CType', $qb->createNamedParameter($contentTypes, Connection::PARAM_STR_ARRAY));
             }
@@ -142,26 +150,24 @@ class ExportService
             $data['tt_content'] = array_merge($data['tt_content'], $contents);
         }
 
-        if ($onProgress) $onProgress('Inhalte geladen', count($data['tt_content']), 0);
+        if ($onProgress) {
+            $onProgress('Inhalte geladen', count($data['tt_content']), 0);
+        }
 
-        // Multi-Site: Site-Konfiguration mit exportieren
         $data['_site_config'] = $this->exportSiteConfig($pageUids);
-
-        // IRRE
         $data['irre_relations'] = $this->exportInlineRelations($data['tt_content']);
 
-        // FAL
-        $config = $this->getYamlConfig();
-        if (!empty($config['export']['include']['file_references'])) {
+        if ($this->configurationService->isFileReferencesEnabled('export')) {
             $data['sys_file_reference'] = $this->exportFileReferences($pageUids, $data['tt_content']);
         }
 
-        // Table-Registry
         $contentUids = array_column($data['tt_content'], 'uid');
         $registryData = $this->tableRegistry->exportRegisteredTables($pageUids, $contentUids);
         $data = array_merge($data, $registryData);
 
-        if ($onProgress) $onProgress('Registry + FAL exportiert', 0, 0);
+        if ($onProgress) {
+            $onProgress('Registry + FAL exportiert', 0, 0);
+        }
 
         $this->checkDependencies($pageUids);
         return $data;
@@ -188,59 +194,92 @@ class ExportService
                 }
             }
 
-            // Übersetzungen dazu
             $qb2 = $this->connectionPool->getQueryBuilderForTable('pages');
             $this->applyRestrictions($qb2, $includeHidden);
             $translations = $qb2->select('*')->from('pages')
                 ->where($qb2->expr()->in('l10n_parent', $qb2->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
                 ->executeQuery()->fetchAllAssociative();
-            foreach ($translations as $t) $pagesData[] = $t;
-        }
-        return $collectedUids;
-    }
-
-    protected function collectPageTree(int $pid, array &$pagesData, bool $includeHidden, int $maxDepth, int $currentDepth): array
-    {
-        $collectedUids = [];
-        $qb = $this->connectionPool->getQueryBuilderForTable('pages');
-        $this->applyRestrictions($qb, $includeHidden);
-
-        $pages = $qb->select('*')->from('pages')
-            ->where($qb->expr()->or(
-                $qb->expr()->eq('uid', $qb->createNamedParameter($pid, Connection::PARAM_INT)),
-                $qb->expr()->eq('l10n_parent', $qb->createNamedParameter($pid, Connection::PARAM_INT))
-            ))
-            ->orderBy('sorting', 'ASC')
-            ->executeQuery()->fetchAllAssociative();
-
-        foreach ($pages as $page) {
-            $pagesData[] = $page;
-            if ((int)$page['sys_language_uid'] === 0) {
-                $collectedUids[] = (int)$page['uid'];
-                if ($maxDepth > 0 && $currentDepth >= $maxDepth) continue;
-
-                $qbC = $this->connectionPool->getQueryBuilderForTable('pages');
-                $this->applyRestrictions($qbC, $includeHidden);
-                $children = $qbC->select('uid')->from('pages')
-                    ->where($qbC->expr()->eq('pid', $qbC->createNamedParameter($page['uid'], Connection::PARAM_INT)))
-                    ->orderBy('sorting', 'ASC')
-                    ->executeQuery()->fetchAllAssociative();
-
-                foreach ($children as $child) {
-                    $childUids = $this->collectPageTree((int)$child['uid'], $pagesData, $includeHidden, $maxDepth, $currentDepth + 1);
-                    $collectedUids = array_merge($collectedUids, $childUids);
-                }
+            foreach ($translations as $t) {
+                $pagesData[] = $t;
             }
         }
         return $collectedUids;
     }
 
     /**
-     * Multi-Site: Site-Identifier und Basis-URL der exportierten Seiten speichern.
+     * Sammelt den Seitenbaum ebenen-weise ein.
+     *
+     * Statt einer Query pro Seite (N+1) wird pro Baumebene genau eine Query für
+     * die Seiten (+ deren Übersetzungen) und eine für die Kind-UIDs abgesetzt.
+     * Eltern erscheinen stets vor ihren Kindern (Breitensuche), was für die
+     * pid-/l10n_parent-Auflösung beim Import erforderlich ist.
+     */
+    protected function collectPageTree(int $pid, array &$pagesData, bool $includeHidden, int $maxDepth, int $currentDepth): array
+    {
+        $collectedUids = [];
+        $currentLevel = [$pid];
+        $depth = $currentDepth;
+
+        while (!empty($currentLevel)) {
+            $levelDefaultUids = [];
+            foreach (array_chunk($currentLevel, 1000) as $chunk) {
+                $qb = $this->connectionPool->getQueryBuilderForTable('pages');
+                $this->applyRestrictions($qb, $includeHidden);
+                $rows = $qb->select('*')->from('pages')
+                    ->where($qb->expr()->or(
+                        $qb->expr()->in('uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)),
+                        $qb->expr()->in('l10n_parent', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY))
+                    ))
+                    ->orderBy('sorting', 'ASC')
+                    ->executeQuery()->fetchAllAssociative();
+
+                foreach ($rows as $row) {
+                    $pagesData[] = $row;
+                    if ((int)$row['sys_language_uid'] === 0 && in_array((int)$row['uid'], $currentLevel, true)) {
+                        $collectedUids[] = (int)$row['uid'];
+                        $levelDefaultUids[] = (int)$row['uid'];
+                    }
+                }
+            }
+
+            if (($maxDepth > 0 && $depth >= $maxDepth) || empty($levelDefaultUids)) {
+                break;
+            }
+
+            $nextLevel = [];
+            foreach (array_chunk($levelDefaultUids, 1000) as $chunk) {
+                $qbC = $this->connectionPool->getQueryBuilderForTable('pages');
+                $this->applyRestrictions($qbC, $includeHidden);
+                $children = $qbC->select('uid')->from('pages')
+                    ->where(
+                        $qbC->expr()->in('pid', $qbC->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)),
+                        $qbC->expr()->eq('sys_language_uid', $qbC->createNamedParameter(0, Connection::PARAM_INT))
+                    )
+                    ->orderBy('sorting', 'ASC')
+                    ->executeQuery()->fetchAllAssociative();
+                foreach ($children as $child) {
+                    $nextLevel[] = (int)$child['uid'];
+                }
+            }
+
+            $currentLevel = $nextLevel;
+            $depth++;
+        }
+
+        return $collectedUids;
+    }
+
+    /**
+     * Sammelt Identifier, Basis-URL und Sprachen der beteiligten Sites.
+     *
+     * Sobald so viele unterschiedliche Sites gefunden wurden, wie überhaupt
+     * konfiguriert sind, wird die Schleife abgebrochen – im häufigen Fall einer
+     * einzigen Site genügt damit ein getSiteByPageId()-Aufruf statt einem je Seite.
      */
     private function exportSiteConfig(array $pageUids): array
     {
         try {
+            $totalSites = count($this->siteFinder->getAllSites());
             $sites = [];
             foreach ($pageUids as $uid) {
                 try {
@@ -260,11 +299,15 @@ class ExportService
                         ];
                     }
                 } catch (\Exception $e) {
-                    // Seite gehört zu keiner Site → OK
+                    // Seite gehört zu keiner Site.
+                }
+                if ($totalSites > 0 && count($sites) >= $totalSites) {
+                    break;
                 }
             }
             return array_values($sites);
         } catch (\Exception $e) {
+            $this->logger->warning('Site-Konfiguration konnte nicht exportiert werden: ' . $e->getMessage());
             return [];
         }
     }
@@ -284,15 +327,26 @@ class ExportService
 
     private function exportInlineRelations(array $contentRecords): array
     {
-        if (empty($contentRecords)) return [];
+        if (empty($contentRecords)) {
+            return [];
+        }
         $relations = [];
         $contentUids = array_column($contentRecords, 'uid');
-        $tca = $GLOBALS['TCA']['tt_content']['columns'] ?? [];
 
-        foreach ($tca as $fieldName => $fieldConfig) {
-            $config = $fieldConfig['config'] ?? [];
-            if (($config['type'] ?? '') !== 'inline' || empty($config['foreign_table'])) continue;
+        if (!$this->tcaSchemaFactory->has('tt_content')) {
+            return [];
+        }
 
+        foreach ($this->tcaSchemaFactory->get('tt_content')->getFields() as $field) {
+            if (!$field->isType(TableColumnType::INLINE)) {
+                continue;
+            }
+            $config = $field->getConfiguration();
+            if (empty($config['foreign_table'])) {
+                continue;
+            }
+
+            $fieldName = $field->getName();
             $foreignTable = $config['foreign_table'];
             $foreignField = $config['foreign_field'] ?? 'parentid';
 
@@ -309,7 +363,7 @@ class ExportService
                         $relations[] = ['table' => $foreignTable, 'foreign_field' => $foreignField, 'parent_field' => $fieldName, 'record' => $child];
                     }
                 } catch (\Exception $e) {
-                    // Tabelle nicht verfügbar
+                    $this->logger->debug("IRRE-Tabelle '$foreignTable' nicht verfügbar: " . $e->getMessage());
                 }
             }
         }
@@ -318,12 +372,11 @@ class ExportService
 
     protected function buildExportMeta(int $startPid, array $data, array $options): array
     {
-        $pJson = json_encode($data['pages'] ?? []);
-        $cJson = json_encode($data['tt_content'] ?? []);
         $typo3Version = class_exists(Typo3Version::class) ? GeneralUtility::makeInstance(Typo3Version::class)->getVersion() : 'unknown';
 
         return [
-            'export_version' => '4.14.0',
+            'export_version' => self::VERSION,
+            'export_format' => IntegrityService::FORMAT_VERSION,
             'export_date' => date('c'),
             'typo3_version' => $typo3Version,
             'php_version' => PHP_VERSION,
@@ -342,7 +395,8 @@ class ExportService
                 'sys_file_reference' => count($data['sys_file_reference'] ?? []),
                 'irre_relations' => count($data['irre_relations'] ?? []),
             ],
-            'checksum' => hash('sha256', $pJson . $cJson),
+            // Prüfsumme/Signatur über den gesamten Datenblock (alle Tabellen, ohne _meta)
+            'checksum' => $this->integrityService->sign($data),
         ];
     }
 
@@ -353,35 +407,57 @@ class ExportService
     {
         foreach (['pages', 'tt_content'] as $table) {
             $records = $data[$table] ?? [];
-            if (empty($records)) continue;
+            if (empty($records)) {
+                continue;
+            }
 
             $file = $baseDir . '/robbicopy_' . $table . '.csv';
             $fp = fopen($file, 'w');
-            fputcsv($fp, array_keys($records[0]));
+            fputcsv($fp, array_map([$this, 'sanitizeCsvValue'], array_keys($records[0])));
             foreach ($records as $row) {
-                fputcsv($fp, array_map(fn($v) => is_string($v) ? mb_substr($v, 0, 500) : $v, $row));
+                fputcsv($fp, array_map(fn($v) => $this->sanitizeCsvValue(is_string($v) ? mb_substr($v, 0, 500) : $v), $row));
             }
             fclose($fp);
         }
         $this->logger->info('CSV-Export geschrieben', ['dir' => $baseDir]);
     }
 
+    /**
+     * Schutz vor CSV-Formula-Injection: Werte, die mit einem Formel-Trigger
+     * beginnen (= + - @ TAB CR), werden mit einem führenden Apostroph entschärft,
+     * sodass Tabellenkalkulationen sie nicht als Formel ausführen.
+     */
+    private function sanitizeCsvValue(mixed $value): mixed
+    {
+        if (!is_string($value) || $value === '') {
+            return $value;
+        }
+        if (in_array($value[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $value;
+        }
+        return $value;
+    }
+
     protected function parseSince(?string $since): int
     {
-        if (empty($since)) return 0;
-        if (is_numeric($since)) return (int)$since;
+        if (empty($since)) {
+            return 0;
+        }
+        if (is_numeric($since)) {
+            return (int)$since;
+        }
         $ts = strtotime($since);
         return $ts !== false ? $ts : 0;
     }
-
-    // --- FAL, Assets, BrokenLinks, Dependencies, YAML (kompakt) ---
 
     protected function exportFileReferences(array $pageUids, array $contentRecords): array
     {
         $refs = [];
         $cUids = array_column($contentRecords, 'uid');
         foreach (['pages' => $pageUids, 'tt_content' => $cUids] as $t => $uids) {
-            if (empty($uids)) continue;
+            if (empty($uids)) {
+                continue;
+            }
             foreach (array_chunk($uids, 1000) as $chunk) {
                 $qb = $this->connectionPool->getQueryBuilderForTable('sys_file_reference');
                 $r = $qb->select('r.*', 'f.identifier', 'f.storage')
@@ -399,7 +475,9 @@ class ExportService
     {
         $ids = array_unique(array_filter(array_map(fn($r) => ltrim($r['identifier'] ?? '', '/'), $data['sys_file_reference'] ?? [])));
         sort($ids);
-        file_put_contents($dir . '/robbicopy_assets.txt', implode("\n", $ids) . "\n");
+        if (file_put_contents($dir . '/robbicopy_assets.txt', implode("\n", $ids) . "\n") === false) {
+            $this->logger->warning('Asset-Liste konnte nicht geschrieben werden: ' . $dir . '/robbicopy_assets.txt');
+        }
     }
 
     private function writeBrokenLinksReport(array $data, string $dir): void
@@ -408,10 +486,13 @@ class ExportService
         $broken = [];
         foreach ($data['tt_content'] ?? [] as $c) {
             foreach (['bodytext', 'header_link', 'pi_flexform'] as $f) {
-                if (empty($c[$f]) || !is_string($c[$f])) continue;
-                preg_match_all('/t3:\/\/page\?uid=(\d+)/', $c[$f], $m);
-                foreach ($m[1] ?? [] as $uid) {
-                    if (!in_array((int)$uid, $exp, true)) $broken[] = "tt_content uid={$c['uid']}: t3://page?uid=$uid";
+                if (empty($c[$f]) || !is_string($c[$f])) {
+                    continue;
+                }
+                foreach (PageLinkRewriter::extractPageUids($c[$f]) as $uid) {
+                    if (!in_array($uid, $exp, true)) {
+                        $broken[] = "tt_content uid={$c['uid']}: t3://page?uid=$uid";
+                    }
                 }
             }
         }
@@ -424,15 +505,8 @@ class ExportService
         $c = $qb->count('uid')->from('sys_file_reference')
             ->where($qb->expr()->in('pid', $qb->createNamedParameter($pageUids, Connection::PARAM_INT_ARRAY)))
             ->executeQuery()->fetchOne();
-        if ($c > 0) $this->logger->warning('FAL-Dependency: ' . $c . ' Referenzen');
-    }
-
-    private function getYamlConfig(): array
-    {
-        if ($this->yamlConfigCache !== null) return $this->yamlConfigCache;
-        try {
-            $this->yamlConfigCache = $this->yamlFileLoader->load('EXT:robbi_copy/robbi_copy.yaml');
-        } catch (\Exception $e) { $this->yamlConfigCache = []; }
-        return $this->yamlConfigCache;
+        if ($c > 0) {
+            $this->logger->warning('FAL-Dependency: ' . $c . ' Referenzen');
+        }
     }
 }

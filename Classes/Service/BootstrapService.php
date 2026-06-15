@@ -1,8 +1,10 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Service;
 
+use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
 use TYPO3\CMS\Core\Core\Bootstrap;
 use TYPO3\CMS\Core\Http\ApplicationType;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -10,40 +12,30 @@ use TYPO3\CMS\Core\Http\ServerRequest;
 class BootstrapService
 {
     /**
-     * Initialisiert den Backend-Kontext für CLI-Commands.
-     * In Testumgebungen mit vorhandenem BE_USER wird nur der Workspace gesetzt.
-     *
-     * v14: Bootstrap::initializeBackendAuthentication() erzeugt automatisch
-     * einen _cli_ User. Manuelles Anlegen nur als Fallback für v12/v13.
+     * Stellt den Backend-Kontext für CLI-Commands über den nativen TYPO3
+     * CLI-Backend-User (_cli_) her. Ein bereits vorhandener BE_USER
+     * (Functional-Tests, Backend-Modul) wird respektiert.
      */
     public function initializeBackendContext(int $workspaceId = 0): void
     {
-        // Bereits authentifiziert (Functional-Tests, Backend-Modul)?
-        if (isset($GLOBALS['BE_USER']) && is_object($GLOBALS['BE_USER'])) {
+        if (($GLOBALS['BE_USER'] ?? null) instanceof BackendUserAuthentication) {
             $this->setWorkspace($workspaceId);
             return;
         }
 
-        // CLI-Kontext: Backend initialisieren
-        try {
-            Bootstrap::initializeBackendAuthentication();
-        } catch (\Throwable $e) {
-            // In Test-Umgebungen kann dies fehlschlagen — ignorieren
-        }
-
+        // Backend-Request-Kontext ist Voraussetzung für die BE-Authentifizierung.
         if (!isset($GLOBALS['TYPO3_REQUEST'])) {
-            $request = new ServerRequest('http://localhost', 'GET');
-            if (class_exists(ApplicationType::class)) {
-                $request = $request->withAttribute('applicationType', ApplicationType::BACKEND);
-            }
-            $GLOBALS['TYPO3_REQUEST'] = $request;
+            $GLOBALS['TYPO3_REQUEST'] = (new ServerRequest('http://localhost', 'GET'))
+                ->withAttribute('applicationType', ApplicationType::BACKEND);
         }
 
-        // Fallback für v12/v13: Wenn Bootstrap keinen BE_USER erzeugt hat
-        if (!isset($GLOBALS['BE_USER']) || !is_object($GLOBALS['BE_USER'])) {
-            $GLOBALS['BE_USER'] = new \TYPO3\CMS\Core\Authentication\BackendUserAuthentication();
-            $GLOBALS['BE_USER']->user['admin'] = 1;
-            $GLOBALS['BE_USER']->user['uid'] = 1;
+        // Nativer CLI-Backend-User (_cli_) des TYPO3-Cores.
+        Bootstrap::initializeBackendAuthentication();
+
+        if (!(($GLOBALS['BE_USER'] ?? null) instanceof BackendUserAuthentication)) {
+            throw new \RuntimeException(
+                'Backend-Authentifizierung fehlgeschlagen: Es konnte kein CLI-Backend-User (_cli_) initialisiert werden.'
+            );
         }
 
         $this->setWorkspace($workspaceId);
@@ -51,12 +43,8 @@ class BootstrapService
 
     private function setWorkspace(int $workspaceId): void
     {
-        if (isset($GLOBALS['BE_USER']) && is_object($GLOBALS['BE_USER'])) {
-            if (method_exists($GLOBALS['BE_USER'], 'setWorkspace')) {
-                $GLOBALS['BE_USER']->setWorkspace($workspaceId);
-            } else {
-                $GLOBALS['BE_USER']->workspace = $workspaceId;
-            }
+        if (($GLOBALS['BE_USER'] ?? null) instanceof BackendUserAuthentication) {
+            $GLOBALS['BE_USER']->setWorkspace($workspaceId);
         }
     }
 }

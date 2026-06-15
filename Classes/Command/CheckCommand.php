@@ -1,17 +1,17 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Command;
 
+use Robbi\RobbiCopy\Service\ConfigurationService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use TYPO3\CMS\Core\Configuration\Loader\YamlFileLoader;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\ConnectionPool;
-use TYPO3\CMS\Core\Package\PackageManager;
 
 #[AsCommand(
     name: 'robbicopy:check',
@@ -21,8 +21,7 @@ class CheckCommand extends Command
 {
     public function __construct(
         private readonly ConnectionPool $connectionPool,
-        private readonly YamlFileLoader $yamlFileLoader,
-        private readonly PackageManager $packageManager
+        private readonly ConfigurationService $configurationService
     ) {
         parent::__construct();
     }
@@ -35,28 +34,29 @@ class CheckCommand extends Command
         $errors = 0;
         $warnings = 0;
 
-        // 1. Datenbankschema: tx_robbicopy_import_log
         $io->section('Datenbank');
         try {
             $connection = $this->connectionPool->getConnectionForTable('tx_robbicopy_import_log');
             $schemaManager = $connection->createSchemaManager();
 
-            if ($schemaManager->tableExists('tx_robbicopy_import_log')) {
-                $io->text('[OK] Tabelle tx_robbicopy_import_log vorhanden.');
-            } else {
-                $io->error('Tabelle tx_robbicopy_import_log fehlt. vendor/bin/typo3 database:updateschema ausführen.');
-                $errors++;
+            foreach (['tx_robbicopy_import_log', 'tx_robbicopy_lock'] as $requiredTable) {
+                if ($schemaManager->tableExists($requiredTable)) {
+                    $io->text("[OK] Tabelle $requiredTable vorhanden.");
+                } else {
+                    $io->error("Tabelle $requiredTable fehlt. vendor/bin/typo3 database:updateschema ausführen.");
+                    $errors++;
+                }
             }
         } catch (\Exception $e) {
             $io->error('Datenbankprüfung fehlgeschlagen: ' . $e->getMessage());
             $errors++;
         }
 
-        // 2. TCA-Felder: tx_robbicopy_remote_uid in pages und tt_content
         foreach (['pages', 'tt_content'] as $table) {
             try {
                 $schemaManager = $this->connectionPool->getConnectionForTable($table)->createSchemaManager();
-                $columns = $schemaManager->listTableColumns($table);
+                // DBAL 4 (TYPO3 v13): listTableColumns() entfernt → introspectTable() verwenden.
+                $columns = $schemaManager->introspectTable($table)->getColumns();
                 $columnNames = array_map(fn($c) => $c->getName(), $columns);
 
                 if (in_array('tx_robbicopy_remote_uid', $columnNames, true)) {
@@ -71,7 +71,6 @@ class CheckCommand extends Command
             }
         }
 
-        // 3. Verzeichnisrechte
         $io->section('Dateisystem');
         $varPath = Environment::getVarPath();
 
@@ -101,10 +100,9 @@ class CheckCommand extends Command
             $io->text('[--] Profil-Verzeichnis nicht vorhanden (optional): ' . $profileDir);
         }
 
-        // 4. YAML-Konfiguration
         $io->section('Konfiguration');
         try {
-            $config = $this->yamlFileLoader->load('EXT:robbi_copy/robbi_copy.yaml');
+            $config = $this->configurationService->getConfig();
 
             if (!empty($config)) {
                 $io->text('[OK] robbi_copy.yaml geladen.');
@@ -113,8 +111,8 @@ class CheckCommand extends Command
                 $warnings++;
             }
 
-            // Table-Registry prüfen
-            $tables = $config['robbicopy']['tables'] ?? [];
+            // Table-Registry prüfen (inkl. Extension-Beiträge)
+            $tables = $this->configurationService->getRegisteredTables();
             if (!empty($tables)) {
                 $io->text('[OK] Table-Registry: ' . count($tables) . ' Tabellen registriert.');
                 foreach ($tables as $tableName => $tableConfig) {
@@ -135,22 +133,14 @@ class CheckCommand extends Command
             $errors++;
         }
 
-        // 5. Extensions mit eigener RobbiCopy.yaml
         $io->section('Extension-Scan');
-        try {
-            $extConfigs = 0;
-            foreach ($this->packageManager->getActivePackages() as $package) {
-                $configFile = $package->getPackagePath() . 'Configuration/RobbiCopy.yaml';
-                if (file_exists($configFile)) {
-                    $io->text('[OK] ' . $package->getPackageKey() . ' liefert Configuration/RobbiCopy.yaml');
-                    $extConfigs++;
-                }
+        $extConfigs = $this->configurationService->getExtensionConfigFiles();
+        if (!empty($extConfigs)) {
+            foreach ($extConfigs as $packageKey => $file) {
+                $io->text('[OK] ' . $packageKey . ' liefert Configuration/RobbiCopy.yaml');
             }
-            if ($extConfigs === 0) {
-                $io->text('[--] Keine Extensions mit eigener RobbiCopy.yaml gefunden (optional).');
-            }
-        } catch (\Exception $e) {
-            $io->text('[--] Extension-Scan nicht möglich: ' . $e->getMessage());
+        } else {
+            $io->text('[--] Keine Extensions mit eigener RobbiCopy.yaml gefunden (optional).');
         }
 
         // Zusammenfassung

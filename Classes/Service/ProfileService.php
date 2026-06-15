@@ -1,9 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Service;
 
 use Psr\Log\LoggerInterface;
+use Robbi\RobbiCopy\Domain\ConflictStrategy;
 use TYPO3\CMS\Core\Core\Environment;
 
 /**
@@ -31,7 +33,7 @@ class ProfileService
      */
     public function loadProfile(string $name): array
     {
-        // OWASP A01: Path Traversal verhindern
+        // Nur einfache Dateinamen zulassen (Path-Traversal-Schutz).
         if ($name !== basename($name) || str_contains($name, '..') || $name === '') {
             throw new \InvalidArgumentException(
                 "Ungültiger Profilname: '$name'. Nur einfache Dateinamen ohne Pfadanteile erlaubt."
@@ -41,17 +43,18 @@ class ProfileService
         $dir = Environment::getVarPath() . '/robbicopy_profiles';
         $file = $dir . '/' . $name . '.yaml';
 
-        // Zusätzlicher realpath-Check nach Auflösung
-        if (file_exists($file) && !str_starts_with(realpath($file), realpath($dir))) {
+        // Zusätzlicher realpath-Check nach Auflösung (robust gegen nicht existierendes Verzeichnis)
+        $realDir = realpath($dir);
+        if (file_exists($file) && ($realDir === false || !str_starts_with((string)realpath($file), $realDir))) {
             throw new \InvalidArgumentException(
-                "Ungültiger Profilpfad: Auflösung führt außerhalb des Profilverzeichnisses."
+                'Ungültiger Profilpfad: Auflösung führt außerhalb des Profilverzeichnisses.'
             );
         }
 
         if (!file_exists($file)) {
             throw new \RuntimeException(
                 "Profil '$name' nicht gefunden. Erwartet: $file\n"
-                . "Verfügbare Profile: " . implode(', ', $this->listProfiles())
+                . 'Verfügbare Profile: ' . implode(', ', $this->listProfiles())
             );
         }
 
@@ -76,18 +79,19 @@ class ProfileService
         if ($profile['target_pid'] <= 0) {
             throw new \RuntimeException("Profil '$name': 'target_pid' muss > 0 sein.");
         }
+        // Konflikt-Strategie früh validieren, mit Profil-Kontext in der Fehlermeldung.
+        try {
+            ConflictStrategy::fromInput($profile['conflict']);
+        } catch (\InvalidArgumentException $e) {
+            throw new \RuntimeException("Profil '$name': " . $e->getMessage());
+        }
 
         $this->logger->info('Profil geladen', ['name' => $name, 'config' => $profile]);
         return $profile;
     }
 
     /**
-     * Listet alle verfügbaren Profilnamen.
-     */
-    /**
-     * Gibt die Namen aller verfügbaren Profile zurück.
-     *
-     * @return string[]
+     * @return string[] Namen aller verfügbaren Profile.
      */
     public function listProfiles(): array
     {
