@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 /**
@@ -6,7 +7,6 @@ declare(strict_types=1);
  * Lädt den Composer-Autoloader, damit die Klassen gefunden werden.
  * Für Functional-Tests wird das TYPO3 Testing Framework seinen eigenen Bootstrap nutzen.
  */
-
 $autoloadPaths = [
     // Im TYPO3-Projekt (packages/robbi_copy/)
     __DIR__ . '/../../../../vendor/autoload.php',

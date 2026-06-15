@@ -1,11 +1,12 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Tests\Unit\Service;
 
-use PHPUnit\Framework\TestCase;
-use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Unit-Tests für ExportService-Logik.
@@ -163,8 +164,12 @@ class ExportServiceTest extends TestCase
 
     private function callParseSince(?string $since): int
     {
-        if (empty($since)) return 0;
-        if (is_numeric($since)) return (int)$since;
+        if (empty($since)) {
+            return 0;
+        }
+        if (is_numeric($since)) {
+            return (int)$since;
+        }
         $ts = strtotime($since);
         return $ts !== false ? $ts : 0;
     }

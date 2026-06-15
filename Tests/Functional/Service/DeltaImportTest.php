@@ -1,14 +1,15 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Tests\Functional\Service;
 
+use PHPUnit\Framework\Attributes\Test;
 use Robbi\RobbiCopy\Service\ExportService;
 use Robbi\RobbiCopy\Service\ImportService;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
-use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Functional-Test: Delta-Import, Duplikaterkennung, Konflikte.
@@ -54,8 +55,11 @@ class DeltaImportTest extends FunctionalTestCase
         $pageCountAfterDelta = $this->countRecords('pages', ['deleted' => 0]);
 
         // Bei Delta dürfen KEINE neuen Seiten angelegt werden (alles identisch)
-        self::assertEquals($pageCountAfterFirst, $pageCountAfterDelta,
-            'Delta-Import hat neue Records angelegt obwohl alles identisch ist');
+        self::assertEquals(
+            $pageCountAfterFirst,
+            $pageCountAfterDelta,
+            'Delta-Import hat neue Records angelegt obwohl alles identisch ist'
+        );
     }
 
     #[Test]
@@ -81,7 +85,8 @@ class DeltaImportTest extends FunctionalTestCase
             }
         }
         // Checksum neu berechnen
-        $data['_meta']['checksum'] = hash('sha256',
+        $data['_meta']['checksum'] = hash(
+            'sha256',
             json_encode($data['pages']) . json_encode($data['tt_content'] ?? [])
         );
         file_put_contents($tempFile, json_encode($data, JSON_PRETTY_PRINT));
@@ -139,8 +144,11 @@ class DeltaImportTest extends FunctionalTestCase
             ->where($qb->expr()->eq('tx_robbicopy_remote_uid', 2))
             ->executeQuery()->fetchAssociative();
 
-        self::assertEquals('LOKAL GEÄNDERT', $row['title'],
-            'conflict=skip sollte die lokale Änderung erhalten');
+        self::assertEquals(
+            'LOKAL GEÄNDERT',
+            $row['title'],
+            'conflict=skip sollte die lokale Änderung erhalten'
+        );
     }
 
     #[Test]
@@ -161,8 +169,11 @@ class DeltaImportTest extends FunctionalTestCase
 
         $pageCountAfter = $this->countRecords('pages');
 
-        self::assertEquals($pageCountBefore, $pageCountAfter,
-            'Dry-Run hat Daten in die Datenbank geschrieben!');
+        self::assertEquals(
+            $pageCountBefore,
+            $pageCountAfter,
+            'Dry-Run hat Daten in die Datenbank geschrieben!'
+        );
     }
 
     // =========================================================================

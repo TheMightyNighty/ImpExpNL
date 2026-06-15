@@ -1,15 +1,16 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Tests\Functional\Service;
 
+use PHPUnit\Framework\Attributes\Test;
 use Robbi\RobbiCopy\Service\ExportService;
 use Robbi\RobbiCopy\Service\ImportService;
-use TYPO3\CMS\Core\Utility\GeneralUtility;
-use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Connection;
+use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
-use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Functional-Test: Vollständiger Export → Import → Verifikation.
@@ -59,7 +60,7 @@ class ExportImportTest extends FunctionalTestCase
         // Metadaten prüfen
         self::assertArrayHasKey('_meta', $data);
         self::assertArrayHasKey('checksum', $data['_meta']);
-        self::assertEquals('4.14.0', $data['_meta']['export_version']);
+        self::assertEquals(\Robbi\RobbiCopy\Service\ExportService::VERSION, $data['_meta']['export_version']);
 
         // Alle nicht-versteckten Seiten müssen drin sein (uid 1-4, nicht uid 5 hidden)
         $exportedUids = array_column($data['pages'], 'uid');
@@ -160,11 +161,17 @@ class ExportImportTest extends FunctionalTestCase
 
         self::assertNotFalse($row, 'Importierter Content "Willkommen" nicht gefunden');
         // Der Link darf NICHT mehr auf uid=3 zeigen (das war die Quell-UID)
-        self::assertStringNotContainsString('t3://page?uid=3', $row['bodytext'],
-            'Link wurde nicht umgeschrieben — zeigt noch auf alte UID');
+        self::assertStringNotContainsString(
+            't3://page?uid=3',
+            $row['bodytext'],
+            'Link wurde nicht umgeschrieben — zeigt noch auf alte UID'
+        );
         // Er muss auf t3://page?uid=<neue UID> zeigen
-        self::assertMatchesRegularExpression('/t3:\/\/page\?uid=\d+/', $row['bodytext'],
-            'Umgeschriebener Link hat falsches Format');
+        self::assertMatchesRegularExpression(
+            '/t3:\/\/page\?uid=\d+/',
+            $row['bodytext'],
+            'Umgeschriebener Link hat falsches Format'
+        );
     }
 
     #[Test]

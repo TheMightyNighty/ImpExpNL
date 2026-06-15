@@ -1,10 +1,11 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Tests\Unit\Service;
 
-use PHPUnit\Framework\TestCase;
 use PHPUnit\Framework\Attributes\Test;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Unit-Tests für TableRegistryService-Logik.

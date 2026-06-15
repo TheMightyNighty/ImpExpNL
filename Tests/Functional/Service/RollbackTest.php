@@ -1,15 +1,16 @@
 <?php
+
 declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Tests\Functional\Service;
 
+use PHPUnit\Framework\Attributes\Test;
 use Robbi\RobbiCopy\Service\ExportService;
 use Robbi\RobbiCopy\Service\ImportService;
 use Robbi\RobbiCopy\Service\RollbackService;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
-use PHPUnit\Framework\Attributes\Test;
 
 /**
  * Functional-Test: Rollback löscht alle importierten Daten sauber.
@@ -58,8 +59,11 @@ class RollbackTest extends FunctionalTestCase
 
         // Nach Rollback: Gleiche Anzahl wie vorher (oder weniger wegen soft-delete)
         $pageCountAfterRollback = $this->countRecords('pages', ['deleted' => 0]);
-        self::assertLessThanOrEqual($pageCountBefore, $pageCountAfterRollback,
-            'Rollback hat nicht alle importierten Seiten entfernt');
+        self::assertLessThanOrEqual(
+            $pageCountBefore,
+            $pageCountAfterRollback,
+            'Rollback hat nicht alle importierten Seiten entfernt'
+        );
     }
 
     #[Test]
