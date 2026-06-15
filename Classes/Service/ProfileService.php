@@ -29,7 +29,7 @@ class ProfileService
     /**
      * Lädt ein Profil aus var/robbicopy_profiles/<name>.yaml
      *
-     * @return array{source_file: string, target_pid: int, workspace: int, delta: bool, conflict: string, depth: int}
+     * @return array{source_file: string, target_pid: int, workspace: int, delta: bool, conflict: string}
      */
     public function loadProfile(string $name): array
     {
@@ -70,7 +70,6 @@ class ProfileService
             'workspace' => (int)($content['workspace'] ?? 0),
             'delta' => (bool)($content['delta'] ?? false),
             'conflict' => $content['conflict'] ?? 'overwrite',
-            'depth' => (int)($content['depth'] ?? 0),
         ];
 
         if (empty($profile['source_file'])) {
