@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Robbi\RobbiCopy\Command;
 
+use Robbi\RobbiCopy\Service\ImportLockService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -20,7 +21,8 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
 class StatusCommand extends Command
 {
     public function __construct(
-        private readonly ConnectionPool $connectionPool
+        private readonly ConnectionPool $connectionPool,
+        private readonly ImportLockService $importLock
     ) {
         parent::__construct();
     }
@@ -56,18 +58,17 @@ class StatusCommand extends Command
 
     private function gatherStatus(): array
     {
-        $lockFile = Environment::getVarPath() . '/robbicopy_import.lock';
-        $lock = ['active' => false, 'running' => false, 'pid' => null, 'started' => null];
-        if (file_exists($lockFile)) {
-            $lockData = json_decode((string)file_get_contents($lockFile), true);
-            if (!empty($lockData['pid'])) {
-                $lock = [
-                    'active' => true,
-                    'running' => function_exists('posix_kill') && posix_kill((int)$lockData['pid'], 0),
-                    'pid' => (int)$lockData['pid'],
-                    'started' => $lockData['started'] ?? null,
-                ];
-            }
+        $activeLock = $this->importLock->getActiveLock();
+        $lock = ['active' => false, 'stale' => false, 'pid' => null, 'host' => null, 'started' => null, 'ageSeconds' => null];
+        if ($activeLock !== null) {
+            $lock = [
+                'active' => true,
+                'stale' => $activeLock['stale'],
+                'pid' => $activeLock['info']['pid'] ?? null,
+                'host' => $activeLock['info']['host'] ?? null,
+                'started' => $activeLock['info']['started'] ?? null,
+                'ageSeconds' => $activeLock['age'],
+            ];
         }
 
         $qb = $this->connectionPool->getQueryBuilderForTable('tx_robbicopy_import_log');
@@ -109,10 +110,15 @@ class StatusCommand extends Command
         $io->title('Robbi Copy: Status');
 
         $lock = $status['lock'];
-        if ($lock['active'] && $lock['running']) {
-            $io->warning(sprintf('Ein Import läuft gerade (PID %d, gestartet %s)', $lock['pid'], $lock['started'] ?? '?'));
+        if ($lock['active'] && $lock['stale']) {
+            $io->warning(sprintf(
+                'Veralteter Import-Lock (Host %s, PID %s, Alter %ds). Mit robbicopy:unlock lösen.',
+                $lock['host'] ?? '?',
+                $lock['pid'] ?? '?',
+                (int)$lock['ageSeconds']
+            ));
         } elseif ($lock['active']) {
-            $io->note('Lock-Datei vorhanden, aber Prozess ist beendet. Lock kann entfernt werden.');
+            $io->note(sprintf('Import-Lock aktiv (Host %s, PID %s, gestartet %s).', $lock['host'] ?? '?', $lock['pid'] ?? '?', $lock['started'] ?? '?'));
         } else {
             $io->text('Kein aktiver Import-Lock.');
         }

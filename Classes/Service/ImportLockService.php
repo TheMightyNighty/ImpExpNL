@@ -127,6 +127,44 @@ class ImportLockService
     }
 
     /**
+     * Liefert den aktiven DB-Lock oder null. Für Status/Diagnose.
+     *
+     * @return array{info: array<string, mixed>, created: int, age: int, stale: bool}|null
+     */
+    public function getActiveLock(): ?array
+    {
+        $qb = $this->connectionPool->getQueryBuilderForTable(self::TABLE);
+        $row = $qb->select('info', 'created')->from(self::TABLE)
+            ->where($qb->expr()->eq('lock_id', $qb->createNamedParameter(self::LOCK_ID)))
+            ->executeQuery()->fetchAssociative();
+
+        if ($row === false) {
+            return null;
+        }
+
+        $created = (int)$row['created'];
+        $info = json_decode((string)$row['info'], true);
+        return [
+            'info' => is_array($info) ? $info : [],
+            'created' => $created,
+            'age' => time() - $created,
+            'stale' => (time() - $created) > $this->configurationService->getLockStaleSeconds(),
+        ];
+    }
+
+    /**
+     * Löst den DB-Lock manuell (Ops-Eingriff bei hängendem Lock).
+     *
+     * @return bool true, wenn ein Lock vorhanden war
+     */
+    public function forceReleaseDbLock(): bool
+    {
+        $existed = $this->getActiveLock() !== null;
+        $this->releaseDbLock();
+        return $existed;
+    }
+
+    /**
      * Gibt den DB-Lock auch bei einem fatalen Fehler / Skriptende frei,
      * sofern er nicht zuvor regulär freigegeben wurde.
      */
