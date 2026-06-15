@@ -308,7 +308,7 @@ class ImportService
         $fileReferences = $manifest->getFileReferences();
         if (!empty($config['import']['include']['file_references']) && !empty($fileReferences)) {
             $dh = GeneralUtility::makeInstance(DataHandler::class);
-            $this->falResolverService->importReferences($fileReferences, $uidArray, $dh, ['storageId' => $this->configurationService->getFalStorageId(), 'upsert' => $deltaMode]);
+            $this->dataHandlerErrors += $this->falResolverService->importReferences($fileReferences, $uidArray, $dh, ['storageId' => $this->configurationService->getFalStorageId(), 'upsert' => $deltaMode]);
         }
 
         if (!empty($manifest->getIrreRelations())) {
@@ -316,7 +316,7 @@ class ImportService
         }
 
         $rawData = $manifest->toArray();
-        $this->tableRegistry->importRegisteredTables($rawData, $uidArray);
+        $this->dataHandlerErrors += $this->tableRegistry->importRegisteredTables($rawData, $uidArray);
         $this->linkRewriterService->rewriteLinks($uidArray, $workspaceId);
 
         $this->uidMap = UidMap::fromArray($uidArray);
@@ -365,6 +365,21 @@ class ImportService
     private function hasMappedRecords(): bool
     {
         return !$this->createdMap->isEmpty();
+    }
+
+    /**
+     * Protokolliert die Fehler eines DataHandler-Laufs und zählt sie zur
+     * Gesamtfehlerzahl des Imports.
+     */
+    private function recordDataHandlerErrors(DataHandler $dataHandler, string $context): void
+    {
+        if (empty($dataHandler->errorLog)) {
+            return;
+        }
+        $this->dataHandlerErrors += count($dataHandler->errorLog);
+        foreach ($dataHandler->errorLog as $error) {
+            $this->logger->error("DataHandler ($context): $error");
+        }
     }
 
     /**
@@ -448,12 +463,7 @@ class ImportService
             $dataHandler->start([$table => $batch], []);
             $dataHandler->process_datamap();
 
-            if (!empty($dataHandler->errorLog)) {
-                $this->dataHandlerErrors += count($dataHandler->errorLog);
-                foreach ($dataHandler->errorLog as $error) {
-                    $this->logger->error("DataHandler ($table): $error");
-                }
-            }
+            $this->recordDataHandlerErrors($dataHandler, $table);
 
             $prefix = $table === 'pages' ? self::NEW_PAGE_PREFIX : self::NEW_CONTENT_PREFIX;
             foreach ($dataHandler->substNEWwithIDs as $placeholder => $newUid) {
@@ -521,6 +531,7 @@ class ImportService
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $dh->start($datamap, []);
             $dh->process_datamap();
+            $this->recordDataHandlerErrors($dh, 'slug');
             $this->logger->info('Slugs angepasst', ['count' => count($datamap['pages'])]);
         }
     }
@@ -746,6 +757,7 @@ class ImportService
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $dh->start($datamap, []);
             $dh->process_datamap();
+            $this->recordDataHandlerErrors($dh, 'irre');
         }
     }
 

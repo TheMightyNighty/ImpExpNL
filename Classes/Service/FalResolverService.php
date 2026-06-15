@@ -21,8 +21,10 @@ class FalResolverService
 
     /**
      * Importiert FAL-Referenzen und löst Dateien über den Dateipfad auf.
+     *
+     * @return int Anzahl der DataHandler-Fehler
      */
-    public function importReferences(array $exportedReferences, array &$uidMap, DataHandler $dataHandler, array $options): void
+    public function importReferences(array $exportedReferences, array &$uidMap, DataHandler $dataHandler, array $options): int
     {
         $dataMap = ['sys_file_reference' => []];
         $cmdMap = ['sys_file_reference' => []];
@@ -94,15 +96,32 @@ class FalResolverService
             ];
         }
 
+        $errors = 0;
+
         if (!empty($cmdMap['sys_file_reference'])) {
             $dataHandler->start([], $cmdMap);
             $dataHandler->process_cmdmap();
+            $errors += $this->logErrors($dataHandler);
         }
 
         if (!empty($dataMap['sys_file_reference'])) {
             $dataHandler->start($dataMap, []);
             $dataHandler->process_datamap();
+            $errors += $this->logErrors($dataHandler);
         }
+
+        return $errors;
+    }
+
+    private function logErrors(DataHandler $dataHandler): int
+    {
+        if (empty($dataHandler->errorLog)) {
+            return 0;
+        }
+        foreach ($dataHandler->errorLog as $error) {
+            $this->logger->error('DataHandler (sys_file_reference): ' . $error);
+        }
+        return count($dataHandler->errorLog);
     }
 
     private function deleteExistingReferences(int $foreignUid, string $tableName, array &$cmdMap): void

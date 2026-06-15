@@ -89,15 +89,17 @@ class TableRegistryService
 
     /**
      * Importiert Daten aller registrierten Tabellen mit UID-Remapping.
+     *
+     * @return int Anzahl der DataHandler-Fehler
      */
-    public function importRegisteredTables(array $exportedData, array &$uidMap): void
+    public function importRegisteredTables(array $exportedData, array &$uidMap): int
     {
+        $errors = 0;
         foreach ($this->getRegisteredTables() as $table => $config) {
             $type = $config['type'] ?? 'record';
 
             try {
                 if ($type === 'mm') {
-                    // Pfad-basiertes Matching?
                     $dataKey = (!empty($config['category_match']) && $config['category_match'] === 'path')
                         ? $table . '_with_paths'
                         : $table;
@@ -115,12 +117,13 @@ class TableRegistryService
                     if (empty($exportedData[$table])) {
                         continue;
                     }
-                    $this->importRecordTable($table, $config, $exportedData[$table], $uidMap);
+                    $errors += $this->importRecordTable($table, $config, $exportedData[$table], $uidMap);
                 }
             } catch (\Exception $e) {
                 $this->logger->warning("Registry-Import fehlgeschlagen: $table", ['error' => $e->getMessage()]);
             }
         }
+        return $errors;
     }
 
     // =========================================================================
@@ -416,10 +419,10 @@ class TableRegistryService
         return $records;
     }
 
-    private function importRecordTable(string $table, array $config, array $records, array &$uidMap): void
+    private function importRecordTable(string $table, array $config, array $records, array &$uidMap): int
     {
         if (empty($records)) {
-            return;
+            return 0;
         }
         $pidField = $config['pid_field'] ?? 'pid';
         $uidRemap = $config['uid_remap'] ?? false;
@@ -457,6 +460,15 @@ class TableRegistryService
 
         $dh->start($datamap, []);
         $dh->process_datamap();
+
+        $errors = 0;
+        if (!empty($dh->errorLog)) {
+            $errors = count($dh->errorLog);
+            foreach ($dh->errorLog as $error) {
+                $this->logger->error("DataHandler ($table): $error");
+            }
+        }
+
         if ($uidRemap) {
             $prefix = 'NEW_REG_' . $table . '_';
             foreach ($dh->substNEWwithIDs as $ph => $newUid) {
@@ -466,6 +478,7 @@ class TableRegistryService
             }
         }
         $this->logger->info("Record-Import: $table", ['count' => count($records)]);
+        return $errors;
     }
 
     private function rollbackRecordTable(string $table, array $config, array $uidMap): int
