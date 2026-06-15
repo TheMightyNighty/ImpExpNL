@@ -41,6 +41,23 @@ Dedizierte, gehärtete Version für **TYPO3 v13.4 LTS** (Doctrine DBAL 4).
 - Maschinenlesbare Ausgabe (`--json`) für `import` und `status`.
 
 ### Tooling / Tests
-- CI (GitHub Actions): Lint, CGL (php-cs-fixer/TYPO3 CGL), PHPStan, Unit- und
-  Functional-Tests (PHP 8.2/8.3, Functional via SQLite).
+- CI (GitHub Actions): Lint, CGL (php-cs-fixer/TYPO3 CGL), PHPStan (Level 6), Unit-
+  und Functional-Tests (PHP 8.2/8.3, Functional via SQLite).
 - Erweiterte Unit-Testabdeckung über die öffentliche API der neuen Komponenten.
+
+### Weitere Verbesserungen
+- **Delta-Rollback korrigiert**: `undo` löscht nur tatsächlich angelegte Records,
+  nie vorbestehende, nur gematchte Records.
+- **Abbruch-Schutz**: Ein abgebrochener Import wird standardmäßig automatisch
+  zurückgerollt (`import.auto_rollback_on_failure`).
+- **Slug-Eindeutigkeit** auf dem Zielsystem (keine Kollisionen beim Einspielen in
+  bestehende Bäume).
+- **FAL-Storage** pro Referenz bzw. konfigurierbar (`import.fal.storage_id`),
+  Multi-Storage-fähig.
+- Konfigurierbar: `import.batch_size`, `import.lock_stale_seconds`.
+- **JSONL-Format** (`export --jsonl`, Import erkennt `.jsonl`): zeilenweises,
+  speicherschonendes Format für große Bäume; Default-JSON bleibt kompatibel.
+- `robbicopy:list` mit `--json`; Registry-Konfiguration wird von `robbicopy:check`
+  validiert.
+- Zusätzliche Functional-Tests: Delta-Undo, Registry/Kategorie-Pfad, conflict=ask,
+  JSONL-Round-Trip.

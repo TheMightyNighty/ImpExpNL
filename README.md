@@ -103,6 +103,7 @@ ddev exec vendor/bin/typo3 robbicopy:export <Start-PID> <Zielpfad> [Optionen]
 | `--since=2026-01-01` | Zeitbasierter Filter. Es werden nur Records exportiert, deren `tstamp` nach dem angegebenen Datum liegt. Damit wird die Datenmenge bei Delta-Transfers erheblich reduziert. |
 | `--content-types=text,textmedia` | Einschränkung auf bestimmte CTypes. Alle anderen Inhaltselemente werden nicht exportiert. |
 | `--csv` | Erzeugung zusätzlicher CSV-Dateien (`robbicopy_pages.csv`, `robbicopy_tt_content.csv`). Diese Dateien können in Tabellenkalkulationsprogrammen geöffnet werden, um die Exportdaten vor dem Import tabellarisch zu prüfen oder mit anderen Datenquellen abzugleichen. |
+| `--jsonl` | Speicherschonendes JSONL-Format (ein JSON-Objekt pro Zeile) für sehr große Bäume. Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. |
 
 ### Erzeugte Dateien
 
