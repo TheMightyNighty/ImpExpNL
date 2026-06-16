@@ -14,6 +14,29 @@ Die Extension adressiert den Bedarf, Inhalte kontrolliert zwischen TYPO3-Instanz
 
 ---
 
+## Abgrenzung zu EXT:impexp
+
+ImpExpNL ist als CLI-first-, automatisierungs- und cluster-taugliche Alternative zum TYPO3-Kernmodul **EXT:impexp** entworfen. Die wesentlichen Unterschiede:
+
+| Aspekt | EXT:impexp (Kern) | **ImpExpNL** |
+|---|---|---|
+| **Transferformat** | T3D (serialisiert) / XML – opak, nicht diffbar | **JSON / JSONL / CSV** – lesbar, versionierbar, diff- & pipeline-tauglich |
+| **Bedienung** | primär Backend-Modul (GUI) | **CLI-first**, headless, `--json`-Ausgabe + Exit-Codes für CI/CD & GitOps |
+| **Wiederholter Import** | erzeugt Duplikate | **Delta-/Idempotenz-Modus** – erkennt bereits importierte Records über `tx_impexpnl_remote_uid`, überspringt Identische |
+| **Konflikte** | keine Erkennung | **Konflikterkennung + Strategien** (overwrite / skip / ask) inkl. Feld-Diff |
+| **Vorab-Prüfung** | – | **Dry-Run-Differenzanalyse** vor jedem Schreibvorgang |
+| **Rückgängig machen** | kein gezieltes Undo | **Protokolliertes Rollback/Undo** jedes Imports + **automatischer Rollback bei Abbruch** (kein halber Baum) |
+| **Große Bäume** | lädt Struktur komplett in den Speicher | **Batch-/Chunk-Verarbeitung** über DataHandler (10 000 Seiten / 20 000 Inhalte getestet, ~337 MB Speicher-Peak) |
+| **Zusatztabellen** | via TCA-Flags / PHP-Code | **Deklarative YAML-Registry** – Redirects, Kategorien, News etc. ohne PHP |
+| **Dateien (FAL)** | Binärdaten in die Datei eingebettet | **FAL über Dateipfade** – schlanke Transferdatei, Assets per `rsync` |
+| **Integrität** | – | **Prüfsumme/Signatur** (optional `IMPEXPNL_SIGNING_KEY`) gegen Manipulation |
+| **Nebenläufigkeit** | – | **Cluster-weiter Import-Lock** (DB-basiert) |
+| **Sonstiges** | – | Workspace-Ziel-Import, Multi-Site-Slug-Regenerierung, PSR-14-Events, Kategorie-Pfad-Mapping |
+
+EXT:impexp kann UID-Remapping, Relationen und FAL durchaus – die Tabelle hebt die Punkte hervor, die ImpExpNL zusätzlich bzw. anders löst: Automatisierung, Idempotenz, Rollback und deklarative Erweiterbarkeit.
+
+---
+
 ## Systemvoraussetzungen
 
 - PHP 8.2 oder höher
