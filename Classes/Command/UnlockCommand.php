@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Command;
+namespace Robbi\ImpExpNL\Command;
 
-use Robbi\RobbiCopy\Service\ImportLockService;
+use Robbi\ImpExpNL\Service\ImportLockService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -13,7 +13,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
-    name: 'robbicopy:unlock',
+    name: 'impexpnl:unlock',
     description: 'Löst einen hängenden Import-Lock.'
 )]
 class UnlockCommand extends Command

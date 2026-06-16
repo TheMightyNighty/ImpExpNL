@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Command;
+namespace Robbi\ImpExpNL\Command;
 
-use Robbi\RobbiCopy\Service\ExportService;
+use Robbi\ImpExpNL\Service\ExportService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -16,7 +16,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-#[AsCommand(name: 'robbicopy:export', description: 'Exportiert einen Seitenbaum als JSON-Datei.')]
+#[AsCommand(name: 'impexpnl:export', description: 'Exportiert einen Seitenbaum als JSON-Datei.')]
 class ExportCommand extends Command
 {
     public function __construct(private readonly ExportService $exportService)
@@ -36,7 +36,8 @@ class ExportCommand extends Command
             ->addOption('since', null, InputOption::VALUE_OPTIONAL, 'Nur seit Datum geänderte Records (Y-m-d)')
             ->addOption('content-types', null, InputOption::VALUE_OPTIONAL, 'Nur bestimmte CTypes (komma-separiert)')
             ->addOption('csv', null, InputOption::VALUE_NONE, 'Zusätzlich CSV-Dateien für Tabellenvergleich erzeugen')
-            ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)');
+            ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -44,6 +45,7 @@ class ExportCommand extends Command
         $io = new SymfonyStyle($input, $output);
         $startPid = (int)$input->getArgument('startPid');
         $outputFile = (string)$input->getArgument('outputFile');
+        $jsonOutput = (bool)$input->getOption('json');
 
         $options = [
             'depth' => (int)$input->getOption('depth'),
@@ -65,18 +67,21 @@ class ExportCommand extends Command
             $options['contentTypes'] = explode(',', $input->getOption('content-types'));
         }
 
-        $io->title('Robbi Copy: Export');
-        $io->text("Start-PID: $startPid");
+        $progressBar = null;
+        if (!$jsonOutput) {
+            $io->title('ImpExpNL: Export');
+            $io->text("Start-PID: $startPid");
 
-        $progressBar = new ProgressBar($output);
-        $progressBar->setFormat(' [%bar%] %message%');
-        $progressBar->setMessage('Starte...');
-        $progressBar->start();
+            $progressBar = new ProgressBar($output);
+            $progressBar->setFormat(' [%bar%] %message%');
+            $progressBar->setMessage('Starte...');
+            $progressBar->start();
 
-        $options['onProgress'] = function (string $msg, int $cur, int $total) use ($progressBar) {
-            $progressBar->setMessage("$msg ($cur)");
-            $progressBar->advance();
-        };
+            $options['onProgress'] = function (string $msg, int $cur, int $total) use ($progressBar) {
+                $progressBar->setMessage("$msg ($cur)");
+                $progressBar->advance();
+            };
+        }
 
         try {
             $absolutePath = GeneralUtility::getFileAbsFileName($outputFile) ?: Environment::getProjectPath() . '/' . ltrim($outputFile, '/');
@@ -89,23 +94,47 @@ class ExportCommand extends Command
             }
             $resolvedDir = realpath($dir);
             if ($resolvedDir === false || !str_starts_with($resolvedDir, $projectPath)) {
-                $io->error("Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile");
+                if ($jsonOutput) {
+                    $output->writeln((string)json_encode(['success' => false, 'error' => "Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile"], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                } else {
+                    $io->error("Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile");
+                }
                 return Command::FAILURE;
             }
 
+            $startTime = microtime(true);
             $this->exportService->runExport($startPid, $absolutePath, $options);
+            $durationMs = (int)((microtime(true) - $startTime) * 1000);
 
-            $progressBar->setMessage('Fertig!');
-            $progressBar->finish();
-            $output->writeln('');
+            if ($progressBar) {
+                $progressBar->setMessage('Fertig!');
+                $progressBar->finish();
+                $output->writeln('');
+            }
 
-            $io->success(sprintf('Export geschrieben → %s', $outputFile));
+            if ($jsonOutput) {
+                $output->writeln((string)json_encode([
+                    'success' => true,
+                    'outputFile' => $outputFile,
+                    'bytes' => is_file($absolutePath) ? (int)filesize($absolutePath) : 0,
+                    'format' => $options['jsonl'] ? 'jsonl' : 'json',
+                    'durationMs' => $durationMs,
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            } else {
+                $io->success(sprintf('Export geschrieben → %s', $outputFile));
+            }
 
             return Command::SUCCESS;
         } catch (\Exception $e) {
-            $progressBar->finish();
-            $output->writeln('');
-            $io->error($e->getMessage());
+            if ($progressBar) {
+                $progressBar->finish();
+                $output->writeln('');
+            }
+            if ($jsonOutput) {
+                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            } else {
+                $io->error($e->getMessage());
+            }
             return Command::FAILURE;
         }
     }

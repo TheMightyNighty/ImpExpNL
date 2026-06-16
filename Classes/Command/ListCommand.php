@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Command;
+namespace Robbi\ImpExpNL\Command;
 
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -13,7 +13,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 
 #[AsCommand(
-    name: 'robbicopy:list',
+    name: 'impexpnl:list',
     description: 'Zeigt die Import-Historie (rollback-fähige Imports).'
 )]
 class ListCommand extends Command
@@ -37,9 +37,9 @@ class ListCommand extends Command
         $limit = (int)$input->getOption('limit');
         $jsonOutput = (bool)$input->getOption('json');
 
-        $qb = $this->connectionPool->getQueryBuilderForTable('tx_robbicopy_import_log');
+        $qb = $this->connectionPool->getQueryBuilderForTable('tx_impexpnl_import_log');
         $rows = $qb->select('import_id', 'tstamp', 'workspace_id', 'source_file', 'delta_mode', 'uid_map')
-            ->from('tx_robbicopy_import_log')
+            ->from('tx_impexpnl_import_log')
             ->orderBy('tstamp', 'DESC')
             ->setMaxResults($limit)
             ->executeQuery()
@@ -69,7 +69,7 @@ class ListCommand extends Command
             return Command::SUCCESS;
         }
 
-        $io->title('Robbi Copy: Import-Historie');
+        $io->title('ImpExpNL: Import-Historie');
         $io->table(
             ['Import-ID', 'Datum', 'Modus', 'Workspace', 'Records', 'Datei'],
             array_map(static fn(array $i): array => [
@@ -81,7 +81,7 @@ class ListCommand extends Command
                 basename($i['sourceFile']),
             ], $imports)
         );
-        $io->text('Rollback: ddev exec vendor/bin/typo3 robbicopy:undo <Import-ID>');
+        $io->text('Rollback: ddev exec vendor/bin/typo3 impexpnl:undo <Import-ID>');
 
         return Command::SUCCESS;
     }

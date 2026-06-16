@@ -18,6 +18,6 @@
         <env name="typo3DatabasePort" value="3306" force="false"/>
         <env name="typo3DatabaseUsername" value="root" force="false"/>
         <env name="typo3DatabasePassword" value="root" force="false"/>
-        <env name="typo3DatabaseName" value="test_robbicopy" force="false"/>
+        <env name="typo3DatabaseName" value="test_impexpnl" force="false"/>
     </php>
 </phpunit>

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Configuration\Loader\YamlFileLoader;
@@ -12,12 +12,12 @@ use TYPO3\CMS\Core\Package\PackageManager;
  * Zentrale, gecachte Quelle für die Robbi-Copy-Konfiguration.
  *
  * Bündelt das früher in fünf Klassen verstreute Laden von
- * EXT:robbi_copy/robbi_copy.yaml sowie das Einsammeln der Table-Registry
- * aus allen Extensions (Configuration/RobbiCopy.yaml).
+ * EXT:imp_exp_nl/imp_exp_nl.yaml sowie das Einsammeln der Table-Registry
+ * aus allen Extensions (Configuration/ImpExpNL.yaml).
  */
 class ConfigurationService
 {
-    private const MAIN_CONFIG = 'EXT:robbi_copy/robbi_copy.yaml';
+    private const MAIN_CONFIG = 'EXT:imp_exp_nl/imp_exp_nl.yaml';
 
     private ?array $configCache = null;
     private ?array $tableCache = null;
@@ -29,7 +29,7 @@ class ConfigurationService
     ) {}
 
     /**
-     * Liefert die gemergte Hauptkonfiguration (robbi_copy.yaml).
+     * Liefert die gemergte Hauptkonfiguration (imp_exp_nl.yaml).
      */
     public function getConfig(): array
     {
@@ -39,7 +39,7 @@ class ConfigurationService
         try {
             $this->configCache = $this->yamlFileLoader->load(self::MAIN_CONFIG);
         } catch (\Exception $e) {
-            $this->logger->warning('robbi_copy.yaml konnte nicht geladen werden: ' . $e->getMessage());
+            $this->logger->warning('imp_exp_nl.yaml konnte nicht geladen werden: ' . $e->getMessage());
             $this->configCache = [];
         }
         return $this->configCache;
@@ -111,7 +111,7 @@ class ConfigurationService
 
     /**
      * Alle registrierten Tabellen-Definitionen.
-     * Merged robbi_copy.yaml und alle Extensions mit Configuration/RobbiCopy.yaml.
+     * Merged imp_exp_nl.yaml und alle Extensions mit Configuration/ImpExpNL.yaml.
      *
      * @return array<string, array> Tabelle => Konfiguration
      */
@@ -121,16 +121,16 @@ class ConfigurationService
             return $this->tableCache;
         }
 
-        $tables = $this->getConfig()['robbicopy']['tables'] ?? [];
+        $tables = $this->getConfig()['impexpnl']['tables'] ?? [];
 
         foreach ($this->getExtensionConfigFiles() as $packageKey => $file) {
             try {
                 $ext = $this->yamlFileLoader->load($file);
-                if (!empty($ext['robbicopy']['tables'])) {
-                    $tables = array_merge($tables, $ext['robbicopy']['tables']);
+                if (!empty($ext['impexpnl']['tables'])) {
+                    $tables = array_merge($tables, $ext['impexpnl']['tables']);
                 }
             } catch (\Exception $e) {
-                $this->logger->warning('RobbiCopy.yaml fehlerhaft', ['ext' => $packageKey, 'error' => $e->getMessage()]);
+                $this->logger->warning('ImpExpNL.yaml fehlerhaft', ['ext' => $packageKey, 'error' => $e->getMessage()]);
             }
         }
 
@@ -139,7 +139,7 @@ class ConfigurationService
     }
 
     /**
-     * Alle aktiven Extensions, die eine Configuration/RobbiCopy.yaml mitliefern.
+     * Alle aktiven Extensions, die eine Configuration/ImpExpNL.yaml mitliefern.
      *
      * @return array<string, string> packageKey => absoluter Dateipfad
      */
@@ -148,7 +148,7 @@ class ConfigurationService
         $files = [];
         try {
             foreach ($this->packageManager->getActivePackages() as $pkg) {
-                $file = $pkg->getPackagePath() . 'Configuration/RobbiCopy.yaml';
+                $file = $pkg->getPackagePath() . 'Configuration/ImpExpNL.yaml';
                 if (file_exists($file)) {
                     $files[$pkg->getPackageKey()] = $file;
                 }

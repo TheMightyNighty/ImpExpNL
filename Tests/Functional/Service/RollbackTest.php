@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional\Service;
+namespace Robbi\ImpExpNL\Tests\Functional\Service;
 
 use PHPUnit\Framework\Attributes\Test;
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\ImportService;
-use Robbi\RobbiCopy\Service\RollbackService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Service\RollbackService;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
@@ -18,7 +18,7 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 class RollbackTest extends FunctionalTestCase
 {
     protected array $testExtensionsToLoad = [
-        'typo3conf/ext/robbi_copy',
+        'typo3conf/ext/imp_exp_nl',
     ];
 
     protected function setUp(): void
@@ -81,7 +81,7 @@ class RollbackTest extends FunctionalTestCase
         $importService->runImport($tempFile, 0, ['workspaceId' => 0]);
 
         // Import-Log muss existieren
-        $logCount = $this->countRecords('tx_robbicopy_import_log');
+        $logCount = $this->countRecords('tx_impexpnl_import_log');
         self::assertEquals(1, $logCount, 'Import-Log-Eintrag fehlt');
 
         // Rollback
@@ -89,7 +89,7 @@ class RollbackTest extends FunctionalTestCase
         $rollbackService->runRollback();
 
         // Import-Log muss leer sein
-        $logCountAfter = $this->countRecords('tx_robbicopy_import_log');
+        $logCountAfter = $this->countRecords('tx_impexpnl_import_log');
         self::assertEquals(0, $logCountAfter, 'Import-Log-Eintrag wurde nicht entfernt');
     }
 
@@ -115,7 +115,7 @@ class RollbackTest extends FunctionalTestCase
         $importService->runImport($tempFile2, 0, ['workspaceId' => 0]);
 
         // Zwei Log-Einträge
-        $logCount = $this->countRecords('tx_robbicopy_import_log');
+        $logCount = $this->countRecords('tx_impexpnl_import_log');
         self::assertEquals(2, $logCount);
 
         // Nur den letzten rollbacken
@@ -123,7 +123,7 @@ class RollbackTest extends FunctionalTestCase
         $rollbackService->runRollback(); // Ohne ID → letzter
 
         // Noch ein Log-Eintrag übrig
-        $logCountAfter = $this->countRecords('tx_robbicopy_import_log');
+        $logCountAfter = $this->countRecords('tx_impexpnl_import_log');
         self::assertEquals(1, $logCountAfter, 'Es sollte noch genau ein Import-Log übrig sein');
     }
 

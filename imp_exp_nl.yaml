@@ -1,8 +1,8 @@
-# packages/robbi_copy/robbi_copy.yaml
+# packages/imp_exp_nl/imp_exp_nl.yaml
 #
-# Hauptkonfiguration für Robbi Copy.
+# Hauptkonfiguration für ImpExpNL.
 # Weitere Extensions können eigene Tabellen registrieren unter:
-#   Configuration/RobbiCopy.yaml (im jeweiligen Extension-Ordner)
+#   Configuration/ImpExpNL.yaml (im jeweiligen Extension-Ordner)
 
 export:
   include:
@@ -37,7 +37,7 @@ import:
 #                  rewrite_links: Felder in denen t3://page-Links umgeschrieben werden
 # ============================================================================
 
-robbicopy:
+impexpnl:
   tables:
 
     # --- Systemkategorien (MM-Tabelle mit Pfad-Matching) ---

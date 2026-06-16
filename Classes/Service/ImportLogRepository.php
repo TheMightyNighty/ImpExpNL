@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use TYPO3\CMS\Core\Database\ConnectionPool;
 
 /**
- * Persistenz des Import-Protokolls (tx_robbicopy_import_log), das die
+ * Persistenz des Import-Protokolls (tx_impexpnl_import_log), das die
  * UID-Zuordnung für den Rollback hält.
  */
 class ImportLogRepository
 {
-    private const TABLE = 'tx_robbicopy_import_log';
+    private const TABLE = 'tx_impexpnl_import_log';
 
     public function __construct(
         private readonly ConnectionPool $connectionPool

@@ -2,23 +2,29 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Command;
+namespace Robbi\ImpExpNL\Command;
 
-use Robbi\RobbiCopy\Service\ConfigurationService;
+use Robbi\ImpExpNL\Service\ConfigurationService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 
 #[AsCommand(
-    name: 'robbicopy:check',
-    description: 'Prüft ob alle Voraussetzungen für Robbi Copy erfüllt sind.'
+    name: 'impexpnl:check',
+    description: 'Prüft ob alle Voraussetzungen für ImpExpNL erfüllt sind.'
 )]
 class CheckCommand extends Command
 {
+    /** @var array<int, array{section:string, level:string, message:string}> */
+    private array $checks = [];
+    private int $errors = 0;
+    private int $warnings = 0;
+
     public function __construct(
         private readonly ConnectionPool $connectionPool,
         private readonly ConfigurationService $configurationService
@@ -26,141 +32,179 @@ class CheckCommand extends Command
         parent::__construct();
     }
 
+    protected function configure(): void
+    {
+        $this->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+    }
+
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $io = new SymfonyStyle($input, $output);
-        $io->title('Robbi Copy: Systemprüfung');
+        $this->checks = [];
+        $this->errors = 0;
+        $this->warnings = 0;
 
-        $errors = 0;
-        $warnings = 0;
+        $this->checkDatabase();
+        $this->checkFilesystem();
+        $this->checkConfiguration();
+        $this->checkExtensionScan();
 
-        $io->section('Datenbank');
+        $success = $this->errors === 0;
+
+        if ($input->getOption('json')) {
+            $output->writeln((string)json_encode([
+                'success' => $success,
+                'errors' => $this->errors,
+                'warnings' => $this->warnings,
+                'checks' => $this->checks,
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            return $success ? Command::SUCCESS : Command::FAILURE;
+        }
+
+        $this->render(new SymfonyStyle($input, $output));
+        return $success ? Command::SUCCESS : Command::FAILURE;
+    }
+
+    private function record(string $section, string $level, string $message): void
+    {
+        $this->checks[] = ['section' => $section, 'level' => $level, 'message' => $message];
+        if ($level === 'error') {
+            $this->errors++;
+        } elseif ($level === 'warning') {
+            $this->warnings++;
+        }
+    }
+
+    private function checkDatabase(): void
+    {
+        $section = 'Datenbank';
         try {
-            $connection = $this->connectionPool->getConnectionForTable('tx_robbicopy_import_log');
-            $schemaManager = $connection->createSchemaManager();
-
-            foreach (['tx_robbicopy_import_log', 'tx_robbicopy_lock'] as $requiredTable) {
+            $schemaManager = $this->connectionPool->getConnectionForTable('tx_impexpnl_import_log')->createSchemaManager();
+            foreach (['tx_impexpnl_import_log', 'tx_impexpnl_lock'] as $requiredTable) {
                 if ($schemaManager->tableExists($requiredTable)) {
-                    $io->text("[OK] Tabelle $requiredTable vorhanden.");
+                    $this->record($section, 'ok', "Tabelle $requiredTable vorhanden.");
                 } else {
-                    $io->error("Tabelle $requiredTable fehlt. vendor/bin/typo3 database:updateschema ausführen.");
-                    $errors++;
+                    $this->record($section, 'error', "Tabelle $requiredTable fehlt. vendor/bin/typo3 database:updateschema ausführen.");
                 }
             }
         } catch (\Exception $e) {
-            $io->error('Datenbankprüfung fehlgeschlagen: ' . $e->getMessage());
-            $errors++;
+            $this->record($section, 'error', 'Datenbankprüfung fehlgeschlagen: ' . $e->getMessage());
         }
 
         foreach (['pages', 'tt_content'] as $table) {
             try {
-                $schemaManager = $this->connectionPool->getConnectionForTable($table)->createSchemaManager();
-                // DBAL 4 (TYPO3 v13): listTableColumns() entfernt → introspectTable() verwenden.
-                $columns = $schemaManager->introspectTable($table)->getColumns();
-                $columnNames = array_map(fn($c) => $c->getName(), $columns);
-
-                if (in_array('tx_robbicopy_remote_uid', $columnNames, true)) {
-                    $io->text("[OK] Feld tx_robbicopy_remote_uid in $table vorhanden.");
+                $columns = $this->connectionPool->getConnectionForTable($table)->createSchemaManager()->introspectTable($table)->getColumns();
+                $columnNames = array_map(static fn($c) => $c->getName(), $columns);
+                if (in_array('tx_impexpnl_remote_uid', $columnNames, true)) {
+                    $this->record($section, 'ok', "Feld tx_impexpnl_remote_uid in $table vorhanden.");
                 } else {
-                    $io->error("Feld tx_robbicopy_remote_uid fehlt in $table. vendor/bin/typo3 database:updateschema ausführen.");
-                    $errors++;
+                    $this->record($section, 'error', "Feld tx_impexpnl_remote_uid fehlt in $table. vendor/bin/typo3 database:updateschema ausführen.");
                 }
             } catch (\Exception $e) {
-                $io->error("Prüfung von $table fehlgeschlagen: " . $e->getMessage());
-                $errors++;
+                $this->record($section, 'error', "Prüfung von $table fehlgeschlagen: " . $e->getMessage());
             }
         }
+    }
 
-        $io->section('Dateisystem');
+    private function checkFilesystem(): void
+    {
+        $section = 'Dateisystem';
         $varPath = Environment::getVarPath();
 
         if (is_writable($varPath)) {
-            $io->text('[OK] var/-Verzeichnis beschreibbar: ' . $varPath);
+            $this->record($section, 'ok', 'var/-Verzeichnis beschreibbar: ' . $varPath);
         } else {
-            $io->error('var/-Verzeichnis nicht beschreibbar: ' . $varPath);
-            $errors++;
+            $this->record($section, 'error', 'var/-Verzeichnis nicht beschreibbar: ' . $varPath);
         }
 
         $logDir = $varPath . '/log';
         if (is_dir($logDir) && is_writable($logDir)) {
-            $io->text('[OK] Log-Verzeichnis beschreibbar: ' . $logDir);
+            $this->record($section, 'ok', 'Log-Verzeichnis beschreibbar: ' . $logDir);
         } elseif (!is_dir($logDir)) {
-            $io->warning('Log-Verzeichnis existiert noch nicht (wird beim ersten Import erstellt): ' . $logDir);
-            $warnings++;
+            $this->record($section, 'warning', 'Log-Verzeichnis existiert noch nicht (wird beim ersten Import erstellt): ' . $logDir);
         } else {
-            $io->error('Log-Verzeichnis nicht beschreibbar: ' . $logDir);
-            $errors++;
+            $this->record($section, 'error', 'Log-Verzeichnis nicht beschreibbar: ' . $logDir);
         }
 
-        $profileDir = $varPath . '/robbicopy_profiles';
+        $profileDir = $varPath . '/impexpnl_profiles';
         if (is_dir($profileDir)) {
             $profiles = glob($profileDir . '/*.yaml');
-            $io->text('[OK] Profil-Verzeichnis vorhanden: ' . count($profiles ?: []) . ' Profile gefunden.');
+            $this->record($section, 'ok', 'Profil-Verzeichnis vorhanden: ' . count($profiles ?: []) . ' Profile gefunden.');
         } else {
-            $io->text('[--] Profil-Verzeichnis nicht vorhanden (optional): ' . $profileDir);
+            $this->record($section, 'info', 'Profil-Verzeichnis nicht vorhanden (optional): ' . $profileDir);
         }
+    }
 
-        $io->section('Konfiguration');
+    private function checkConfiguration(): void
+    {
+        $section = 'Konfiguration';
         try {
             $config = $this->configurationService->getConfig();
-
             if (!empty($config)) {
-                $io->text('[OK] robbi_copy.yaml geladen.');
+                $this->record($section, 'ok', 'imp_exp_nl.yaml geladen.');
             } else {
-                $io->warning('robbi_copy.yaml ist leer.');
-                $warnings++;
+                $this->record($section, 'warning', 'imp_exp_nl.yaml ist leer.');
             }
 
-            // Table-Registry prüfen (inkl. Extension-Beiträge)
             $tables = $this->configurationService->getRegisteredTables();
             if (!empty($tables)) {
-                $io->text('[OK] Table-Registry: ' . count($tables) . ' Tabellen registriert.');
+                $this->record($section, 'ok', 'Table-Registry: ' . count($tables) . ' Tabellen registriert.');
                 foreach ($tables as $tableName => $tableConfig) {
-                    $type = $tableConfig['type'] ?? 'record';
-                    $io->text("     $tableName (type: $type)");
                     foreach ($this->validateTableConfig((string)$tableName, $tableConfig) as $problem) {
-                        $io->error($problem);
-                        $errors++;
+                        $this->record($section, 'error', $problem);
                     }
                 }
             } else {
-                $io->text('[--] Keine Tabellen in der Registry (optional).');
+                $this->record($section, 'info', 'Keine Tabellen in der Registry (optional).');
             }
 
-            // Link-Rewrite-Felder prüfen
             $linkFields = $config['import']['link_rewrite']['fields'] ?? [];
             if (!empty($linkFields)) {
-                $io->text('[OK] Link-Rewriting aktiv für: ' . implode(', ', $linkFields));
+                $this->record($section, 'ok', 'Link-Rewriting aktiv für: ' . implode(', ', $linkFields));
             }
         } catch (\Exception $e) {
-            $io->error('YAML-Konfiguration fehlerhaft: ' . $e->getMessage());
-            $errors++;
+            $this->record($section, 'error', 'YAML-Konfiguration fehlerhaft: ' . $e->getMessage());
         }
+    }
 
-        $io->section('Extension-Scan');
+    private function checkExtensionScan(): void
+    {
+        $section = 'Extension-Scan';
         $extConfigs = $this->configurationService->getExtensionConfigFiles();
         if (!empty($extConfigs)) {
             foreach ($extConfigs as $packageKey => $file) {
-                $io->text('[OK] ' . $packageKey . ' liefert Configuration/RobbiCopy.yaml');
+                $this->record($section, 'ok', $packageKey . ' liefert Configuration/ImpExpNL.yaml');
             }
         } else {
-            $io->text('[--] Keine Extensions mit eigener RobbiCopy.yaml gefunden (optional).');
+            $this->record($section, 'info', 'Keine Extensions mit eigener ImpExpNL.yaml gefunden (optional).');
+        }
+    }
+
+    private function render(SymfonyStyle $io): void
+    {
+        $io->title('ImpExpNL: Systemprüfung');
+
+        $currentSection = null;
+        foreach ($this->checks as $check) {
+            if ($check['section'] !== $currentSection) {
+                $currentSection = $check['section'];
+                $io->section($currentSection);
+            }
+            match ($check['level']) {
+                'error' => $io->error($check['message']),
+                'warning' => $io->warning($check['message']),
+                'info' => $io->text('[--] ' . $check['message']),
+                default => $io->text('[OK] ' . $check['message']),
+            };
         }
 
-        // Zusammenfassung
         $io->section('Ergebnis');
-        if ($errors === 0 && $warnings === 0) {
-            $io->success('Alle Prüfungen bestanden. Robbi Copy ist einsatzbereit.');
-            return Command::SUCCESS;
+        if ($this->errors === 0 && $this->warnings === 0) {
+            $io->success('Alle Prüfungen bestanden. ImpExpNL ist einsatzbereit.');
+        } elseif ($this->errors === 0) {
+            $io->warning("$this->warnings Hinweise, keine Fehler. ImpExpNL ist funktionsfähig.");
+        } else {
+            $io->error("$this->errors Fehler, $this->warnings Hinweise. Die Fehler müssen vor dem Einsatz behoben werden.");
         }
-
-        if ($errors === 0) {
-            $io->warning("$warnings Hinweise, keine Fehler. Robbi Copy ist funktionsfähig.");
-            return Command::SUCCESS;
-        }
-
-        $io->error("$errors Fehler, $warnings Hinweise. Die Fehler müssen vor dem Einsatz behoben werden.");
-        return Command::FAILURE;
     }
 
     /**

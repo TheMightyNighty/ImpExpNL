@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Unit\Service;
+namespace Robbi\ImpExpNL\Tests\Unit\Service;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
-use Robbi\RobbiCopy\Service\ConflictResolver;
+use Robbi\ImpExpNL\Service\ConflictResolver;
 
 class ConflictResolverTest extends TestCase
 {
@@ -49,8 +49,8 @@ class ConflictResolverTest extends TestCase
     #[Test]
     public function sortingAndRemoteUidAreIgnored(): void
     {
-        $import = ['title' => 'Kontakt', 'sorting' => 256, 'tx_robbicopy_remote_uid' => 123];
-        $existing = ['title' => 'Kontakt', 'sorting' => 512, 'tx_robbicopy_remote_uid' => 456];
+        $import = ['title' => 'Kontakt', 'sorting' => 256, 'tx_impexpnl_remote_uid' => 123];
+        $existing = ['title' => 'Kontakt', 'sorting' => 512, 'tx_impexpnl_remote_uid' => 456];
 
         self::assertTrue($this->subject->isRecordIdentical($import, $existing));
     }

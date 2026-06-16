@@ -11,7 +11,7 @@ declare(strict_types=1);
  *   php Build/generate-testdata.php --pages=20000 --content-per-page=5 --format=jsonl --out=var/big.jsonl
  *
  * Anschließend auf einer Dev-Instanz importieren:
- *   vendor/bin/typo3 robbicopy:import var/big.json <ziel-pid>
+ *   vendor/bin/typo3 impexpnl:import var/big.json <ziel-pid>
  */
 
 $autoload = null;
@@ -35,8 +35,8 @@ $format = (string)($options['format'] ?? 'json');
 $jsonl = $format === 'jsonl';
 $out = (string)($options['out'] ?? ('testdata.' . ($jsonl ? 'jsonl' : 'json')));
 
-$data = \Robbi\RobbiCopy\Tests\Functional\TestDataGenerator::build($pages, $contentPerPage, $branching);
-\Robbi\RobbiCopy\Tests\Functional\TestDataGenerator::writeFile($data, $out, $jsonl);
+$data = \Robbi\ImpExpNL\Tests\Functional\TestDataGenerator::build($pages, $contentPerPage, $branching);
+\Robbi\ImpExpNL\Tests\Functional\TestDataGenerator::writeFile($data, $out, $jsonl);
 
 printf(
     "Erzeugt: %d Seiten, %d Inhalte → %s (%s, %s)\n",

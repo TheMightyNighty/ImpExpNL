@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Unit\Service;
+namespace Robbi\ImpExpNL\Tests\Unit\Service;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Robbi\RobbiCopy\Service\IntegrityService;
+use Robbi\ImpExpNL\Service\IntegrityService;
 
 /**
  * Unit-Tests für den Integritäts-/Manipulationsschutz.
@@ -19,8 +19,8 @@ class IntegrityServiceTest extends TestCase
     {
         parent::setUp();
         // Sicherstellen, dass kein Signing-Key aus der Umgebung übernommen wird.
-        putenv('ROBBICOPY_SIGNING_KEY');
-        unset($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['robbi_copy']['signingKey']);
+        putenv('IMPEXPNL_SIGNING_KEY');
+        unset($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey']);
         $this->subject = new IntegrityService();
     }
 
@@ -80,7 +80,7 @@ class IntegrityServiceTest extends TestCase
     #[Test]
     public function hmacIsUsedWhenSigningKeyIsConfigured(): void
     {
-        putenv('ROBBICOPY_SIGNING_KEY=geheim');
+        putenv('IMPEXPNL_SIGNING_KEY=geheim');
         $subject = new IntegrityService();
         $data = $this->sampleData();
 
@@ -89,7 +89,7 @@ class IntegrityServiceTest extends TestCase
         self::assertTrue($subject->verify($data, $checksum));
 
         // Ohne Schlüssel kann eine HMAC-Signatur nicht verifiziert werden.
-        putenv('ROBBICOPY_SIGNING_KEY');
+        putenv('IMPEXPNL_SIGNING_KEY');
         self::assertFalse((new IntegrityService())->verify($data, $checksum));
     }
 

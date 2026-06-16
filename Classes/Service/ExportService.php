@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use Robbi\RobbiCopy\Event\ModifyExportDataEvent;
+use Robbi\ImpExpNL\Event\ModifyExportDataEvent;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;

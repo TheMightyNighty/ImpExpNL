@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
-use Robbi\RobbiCopy\Domain\ConflictStrategy;
-use Robbi\RobbiCopy\Domain\ExportManifest;
-use Robbi\RobbiCopy\Domain\SystemFields;
-use Robbi\RobbiCopy\Domain\UidMap;
-use Robbi\RobbiCopy\Event\ModifyImportDataEvent;
+use Robbi\ImpExpNL\Domain\ConflictStrategy;
+use Robbi\ImpExpNL\Domain\ExportManifest;
+use Robbi\ImpExpNL\Domain\SystemFields;
+use Robbi\ImpExpNL\Domain\UidMap;
+use Robbi\ImpExpNL\Event\ModifyImportDataEvent;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -169,7 +169,7 @@ class ImportService
         foreach ($pages as $page) {
             $oldUid = (int)$page['uid'];
             $recordData = $this->buildRecordData($page, 'pages');
-            $recordData['tx_robbicopy_remote_uid'] = $oldUid;
+            $recordData['tx_impexpnl_remote_uid'] = $oldUid;
 
             if ($deltaMode && isset($existingPageMap[$oldUid])) {
                 $existingUid = (int)$existingPageMap[$oldUid]['uid'];
@@ -227,7 +227,7 @@ class ImportService
             }
 
             $recordData = $this->buildRecordData($content, 'tt_content');
-            $recordData['tx_robbicopy_remote_uid'] = $oldContentUid;
+            $recordData['tx_impexpnl_remote_uid'] = $oldContentUid;
 
             if ($deltaMode && isset($existingContentMap[$oldContentUid])) {
                 $existingUid = (int)$existingContentMap[$oldContentUid]['uid'];
@@ -406,7 +406,7 @@ class ImportService
                 ]);
                 return;
             } catch (\Throwable $rollbackError) {
-                $this->logger->critical('Import abgebrochen UND automatischer Rollback fehlgeschlagen – manueller Eingriff nötig (robbicopy:undo ' . $timestamp . ').', [
+                $this->logger->critical('Import abgebrochen UND automatischer Rollback fehlgeschlagen – manueller Eingriff nötig (impexpnl:undo ' . $timestamp . ').', [
                     'importId' => $timestamp,
                     'error' => $e->getMessage(),
                     'rollbackError' => $rollbackError->getMessage(),
@@ -415,7 +415,7 @@ class ImportService
             }
         }
 
-        $this->logger->error('Import abgebrochen – Notfall-Protokoll geschrieben (Rollback via robbicopy:undo ' . $timestamp . ' möglich).', [
+        $this->logger->error('Import abgebrochen – Notfall-Protokoll geschrieben (Rollback via impexpnl:undo ' . $timestamp . ' möglich).', [
             'importId' => $timestamp,
             'error' => $e->getMessage(),
         ]);
@@ -455,9 +455,26 @@ class ImportService
         $batches = array_chunk($datamap, $this->batchSize, true);
         $batchCount = count($batches);
         $batchIndex = 0;
+        $prefix = $table === 'pages' ? self::NEW_PAGE_PREFIX : self::NEW_CONTENT_PREFIX;
 
         foreach ($batches as $batch) {
             $this->importLock->refresh();
+
+            // Eltern-UIDs aus früheren Batches auflösen: ein neuer DataHandler kennt
+            // nur die Platzhalter des aktuellen Batches. Seiten-interne NEW_PAGE_-Pids
+            // bleiben als String, damit der DataHandler sie batchintern auflöst.
+            if ($table === 'pages') {
+                foreach ($batch as &$record) {
+                    if (isset($record['pid']) && is_string($record['pid']) && str_starts_with($record['pid'], self::NEW_PAGE_PREFIX)) {
+                        $oldPageUid = (int)str_replace(self::NEW_PAGE_PREFIX, '', $record['pid']);
+                        $resolvedUid = $this->uidMap->get('pages', $oldPageUid);
+                        if ($resolvedUid !== null) {
+                            $record['pid'] = $resolvedUid;
+                        }
+                    }
+                }
+                unset($record);
+            }
 
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             $dataHandler->start([$table => $batch], []);
@@ -465,7 +482,6 @@ class ImportService
 
             $this->recordDataHandlerErrors($dataHandler, $table);
 
-            $prefix = $table === 'pages' ? self::NEW_PAGE_PREFIX : self::NEW_CONTENT_PREFIX;
             foreach ($dataHandler->substNEWwithIDs as $placeholder => $newUid) {
                 if (str_starts_with($placeholder, $prefix)) {
                     $oldUid = (int)str_replace($prefix, '', $placeholder);
@@ -597,7 +613,7 @@ class ImportService
         if ($checksum !== null && !$this->integrityService->verify($manifest->toArray(), $checksum)) {
             throw new \RuntimeException(
                 'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '
-                . 'konfigurierten Schlüssel (ROBBICOPY_SIGNING_KEY) nicht verifiziert werden.'
+                . 'konfigurierten Schlüssel (IMPEXPNL_SIGNING_KEY) nicht verifiziert werden.'
             );
         }
         return $manifest;
@@ -662,10 +678,10 @@ class ImportService
         foreach (array_chunk($uids, 1000) as $chunk) {
             $qb = $this->connectionPool->getQueryBuilderForTable($table);
             $rows = $qb->select('*')->from($table)
-                ->where($qb->expr()->in('tx_robbicopy_remote_uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
+                ->where($qb->expr()->in('tx_impexpnl_remote_uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
                 ->executeQuery()->fetchAllAssociative();
             foreach ($rows as $r) {
-                $map[(int)$r['tx_robbicopy_remote_uid']] = $r;
+                $map[(int)$r['tx_impexpnl_remote_uid']] = $r;
             }
         }
         return $map;
@@ -841,9 +857,9 @@ class ImportService
             }
         }
         $lines[] = '';
-        $lines[] = "Undo: vendor/bin/typo3 robbicopy:undo $id";
+        $lines[] = "Undo: vendor/bin/typo3 impexpnl:undo $id";
         $lines[] = str_repeat('=', 72);
         $lines[] = '';
-        file_put_contents($logDir . '/robbicopy_transactions.log', implode("\n", $lines), FILE_APPEND | LOCK_EX);
+        file_put_contents($logDir . '/impexpnl_transactions.log', implode("\n", $lines), FILE_APPEND | LOCK_EX);
     }
 }

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
-use Robbi\RobbiCopy\Domain\SystemFields;
+use Robbi\ImpExpNL\Domain\SystemFields;
 
 /**
  * Vergleich von Import- und Zielrecords: Gleichheit, Konflikt-Erkennung und
@@ -23,7 +23,7 @@ class ConflictResolver
     public function __construct(
         private readonly LoggerInterface $logger
     ) {
-        $this->ignoredFields = array_merge(SystemFields::EXCLUDED, ['tx_robbicopy_remote_uid', 'sorting']);
+        $this->ignoredFields = array_merge(SystemFields::EXCLUDED, ['tx_impexpnl_remote_uid', 'sorting']);
     }
 
     public function isRecordIdentical(array $import, array $existing): bool

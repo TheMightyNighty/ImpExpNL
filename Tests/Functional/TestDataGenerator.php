@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional;
+namespace Robbi\ImpExpNL\Tests\Functional;
 
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\IntegrityService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\IntegrityService;
 
 /**
  * Erzeugt synthetische Export-Daten für Entwicklungs-/Last-Tests, ohne dass

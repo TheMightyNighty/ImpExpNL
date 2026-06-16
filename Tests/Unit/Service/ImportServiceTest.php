@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Unit\Service;
+namespace Robbi\ImpExpNL\Tests\Unit\Service;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
@@ -70,12 +70,12 @@ class ImportServiceTest extends TestCase
 
     private function callBuildRecordData(array $source): array
     {
-        $reflection = new \ReflectionClass(\Robbi\RobbiCopy\Service\ImportService::class);
+        $reflection = new \ReflectionClass(\Robbi\ImpExpNL\Service\ImportService::class);
         $instance = $reflection->newInstanceWithoutConstructor();
 
         $excludedProp = $reflection->getProperty('excludedFields');
         $excludedProp->setAccessible(true);
-        $excludedProp->setValue($instance, \Robbi\RobbiCopy\Domain\SystemFields::EXCLUDED);
+        $excludedProp->setValue($instance, \Robbi\ImpExpNL\Domain\SystemFields::EXCLUDED);
 
         $method = $reflection->getMethod('buildRecordData');
         $method->setAccessible(true);

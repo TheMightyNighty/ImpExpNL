@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 /**
  * Integritäts- und (optional) Manipulationsschutz für Export-Dateien.
@@ -19,8 +19,8 @@ namespace Robbi\RobbiCopy\Service;
  *     kann die Signatur nicht neu erzeugt werden.
  *
  * Schlüssel-Quellen (in dieser Reihenfolge):
- *   $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['robbi_copy']['signingKey']
- *   Umgebungsvariable ROBBICOPY_SIGNING_KEY
+ *   $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey']
+ *   Umgebungsvariable IMPEXPNL_SIGNING_KEY
  */
 class IntegrityService
 {
@@ -122,9 +122,9 @@ class IntegrityService
 
     private function getSigningKey(): ?string
     {
-        $key = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['robbi_copy']['signingKey'] ?? null;
+        $key = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] ?? null;
         if (!is_string($key) || trim($key) === '') {
-            $env = getenv('ROBBICOPY_SIGNING_KEY');
+            $env = getenv('IMPEXPNL_SIGNING_KEY');
             $key = is_string($env) ? $env : '';
         }
         $key = trim((string)$key);

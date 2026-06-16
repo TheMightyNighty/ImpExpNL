@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional\Service;
+namespace Robbi\ImpExpNL\Tests\Functional\Service;
 
 use PHPUnit\Framework\Attributes\Test;
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\ImportService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\ImportService;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -28,10 +28,10 @@ class ExportImportTest extends FunctionalTestCase
 {
     /**
      * Extensions die für den Test geladen werden müssen.
-     * Hier nur robbi_copy — für GSB-Tests würde man gsb_core ergänzen.
+     * Hier nur imp_exp_nl — für GSB-Tests würde man gsb_core ergänzen.
      */
     protected array $testExtensionsToLoad = [
-        'typo3conf/ext/robbi_copy',
+        'typo3conf/ext/imp_exp_nl',
     ];
 
     protected function setUp(): void
@@ -60,7 +60,7 @@ class ExportImportTest extends FunctionalTestCase
         // Metadaten prüfen
         self::assertArrayHasKey('_meta', $data);
         self::assertArrayHasKey('checksum', $data['_meta']);
-        self::assertEquals(\Robbi\RobbiCopy\Service\ExportService::VERSION, $data['_meta']['export_version']);
+        self::assertEquals(\Robbi\ImpExpNL\Service\ExportService::VERSION, $data['_meta']['export_version']);
 
         // Alle nicht-versteckten Seiten müssen drin sein (uid 1-4, nicht uid 5 hidden)
         $exportedUids = array_column($data['pages'], 'uid');
@@ -122,10 +122,10 @@ class ExportImportTest extends FunctionalTestCase
         $importService = $this->get(ImportService::class);
         $importService->runImport($tempFile, 0, ['workspaceId' => 0]);
 
-        // Prüfen: Neue Seiten müssen existieren mit tx_robbicopy_remote_uid
+        // Prüfen: Neue Seiten müssen existieren mit tx_impexpnl_remote_uid
         $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('pages');
-        $result = $connection->select(['uid', 'title', 'tx_robbicopy_remote_uid'], 'pages', [
-            'tx_robbicopy_remote_uid' => 2, // "Über uns" hatte remote_uid=2
+        $result = $connection->select(['uid', 'title', 'tx_impexpnl_remote_uid'], 'pages', [
+            'tx_impexpnl_remote_uid' => 2, // "Über uns" hatte remote_uid=2
         ]);
         $row = $result->fetchAssociative();
 

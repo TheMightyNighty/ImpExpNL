@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Core\Environment;
@@ -202,7 +202,7 @@ class RollbackService
         ];
 
         file_put_contents(
-            $logDir . '/robbicopy_transactions.log',
+            $logDir . '/impexpnl_transactions.log',
             implode("\n", $lines),
             FILE_APPEND | LOCK_EX
         );

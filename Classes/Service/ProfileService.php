@@ -2,18 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
-use Robbi\RobbiCopy\Domain\ConflictStrategy;
+use Robbi\ImpExpNL\Domain\ConflictStrategy;
 use TYPO3\CMS\Core\Core\Environment;
 
 /**
  * Import-Profile: Wiederverwendbare Konfigurationen für häufige Import-Szenarien.
  *
- * Profile werden als YAML-Dateien unter var/robbicopy_profiles/ gespeichert:
+ * Profile werden als YAML-Dateien unter var/impexpnl_profiles/ gespeichert:
  *
- *   # var/robbicopy_profiles/dev_to_live.yaml
+ *   # var/impexpnl_profiles/dev_to_live.yaml
  *   source_file: /var/www/html/var/export_dev.json
  *   target_pid: 456
  *   workspace: 1
@@ -27,7 +27,7 @@ class ProfileService
     ) {}
 
     /**
-     * Lädt ein Profil aus var/robbicopy_profiles/<name>.yaml
+     * Lädt ein Profil aus var/impexpnl_profiles/<name>.yaml
      *
      * @return array{source_file: string, target_pid: int, workspace: int, delta: bool, conflict: string}
      */
@@ -40,7 +40,7 @@ class ProfileService
             );
         }
 
-        $dir = Environment::getVarPath() . '/robbicopy_profiles';
+        $dir = Environment::getVarPath() . '/impexpnl_profiles';
         $file = $dir . '/' . $name . '.yaml';
 
         // Zusätzlicher realpath-Check nach Auflösung (robust gegen nicht existierendes Verzeichnis)
@@ -94,7 +94,7 @@ class ProfileService
      */
     public function listProfiles(): array
     {
-        $dir = Environment::getVarPath() . '/robbicopy_profiles';
+        $dir = Environment::getVarPath() . '/impexpnl_profiles';
         if (!is_dir($dir)) {
             return [];
         }

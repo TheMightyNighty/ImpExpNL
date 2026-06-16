@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Domain;
+namespace Robbi\ImpExpNL\Domain;
 
 /**
  * Zuordnung von Quell-UIDs zu Ziel-UIDs je Tabelle.

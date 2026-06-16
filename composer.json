@@ -1,8 +1,8 @@
 {
-    "name": "robbi/robbi-copy",
+    "name": "robbi/imp-exp-nl",
     "type": "typo3-cms-extension",
     "description": "Enterprise CLI Exporter für TYPO3 v13 & GSB 11",
-    "version": "5.0.0",
+    "version": "1.0.0",
     "license": "GPL-2.0-or-later",
     "authors": [
         {
@@ -25,12 +25,12 @@
     },
     "autoload": {
         "psr-4": {
-            "Robbi\\RobbiCopy\\": "Classes/"
+            "Robbi\\ImpExpNL\\": "Classes/"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Robbi\\RobbiCopy\\Tests\\": "Tests/"
+            "Robbi\\ImpExpNL\\Tests\\": "Tests/"
         }
     },
     "config": {
@@ -55,7 +55,7 @@
     },
     "extra": {
         "typo3/cms": {
-            "extension-key": "robbi_copy",
+            "extension-key": "imp_exp_nl",
             "Package": {
                 "providesPackages": {}
             }

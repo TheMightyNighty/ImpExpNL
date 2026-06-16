@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional\Service;
+namespace Robbi\ImpExpNL\Tests\Functional\Service;
 
 use PHPUnit\Framework\Attributes\Test;
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\ImportService;
-use Robbi\RobbiCopy\Service\RollbackService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Service\RollbackService;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
@@ -19,7 +19,7 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 class DeltaRollbackTest extends FunctionalTestCase
 {
     protected array $testExtensionsToLoad = [
-        'typo3conf/ext/robbi_copy',
+        'typo3conf/ext/imp_exp_nl',
     ];
 
     protected function setUp(): void
@@ -64,7 +64,7 @@ class DeltaRollbackTest extends FunctionalTestCase
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
         $qb->getRestrictions()->removeAll();
         return (int)$qb->count('uid')->from($table)
-            ->where($qb->expr()->gt('tx_robbicopy_remote_uid', $qb->createNamedParameter(0)))
+            ->where($qb->expr()->gt('tx_impexpnl_remote_uid', $qb->createNamedParameter(0)))
             ->executeQuery()->fetchOne();
     }
 }

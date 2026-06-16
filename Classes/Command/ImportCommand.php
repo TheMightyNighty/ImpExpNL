@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Command;
+namespace Robbi\ImpExpNL\Command;
 
-use Robbi\RobbiCopy\Domain\ConflictStrategy;
-use Robbi\RobbiCopy\Service\ImportService;
-use Robbi\RobbiCopy\Service\ProfileService;
+use Robbi\ImpExpNL\Domain\ConflictStrategy;
+use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Service\ProfileService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\ProgressBar;
@@ -16,7 +16,7 @@ use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 
-#[AsCommand(name: 'robbicopy:import', description: 'Importiert Seiten und Inhalte aus einer JSON-Datei.')]
+#[AsCommand(name: 'impexpnl:import', description: 'Importiert Seiten und Inhalte aus einer JSON-Datei.')]
 class ImportCommand extends Command
 {
     public function __construct(
@@ -36,7 +36,7 @@ class ImportCommand extends Command
             ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Konflikt-Strategie: overwrite, skip, ask', 'overwrite')
             ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'Feld-Diff bei Änderungen anzeigen')
             ->addOption('target-workspace', 'w', InputOption::VALUE_OPTIONAL, 'Ziel-Workspace (0=Live)', 0)
-            ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Import-Profil laden (aus var/robbicopy_profiles/)')
+            ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Import-Profil laden (aus var/impexpnl_profiles/)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
@@ -93,7 +93,7 @@ class ImportCommand extends Command
 
         $progressBar = null;
         if (!$jsonOutput) {
-            $io->title('Robbi Copy: Import');
+            $io->title('ImpExpNL: Import');
             $io->text("Datei: $file | Ziel-PID: $targetPid");
             if ($options['dryRun']) {
                 $io->note('Dry-Run.');
@@ -118,7 +118,9 @@ class ImportCommand extends Command
         }
 
         try {
+            $startTime = microtime(true);
             $result = $this->importService->runImport($file, $targetPid, $options);
+            $result['durationMs'] = (int)((microtime(true) - $startTime) * 1000);
             if ($progressBar) {
                 $progressBar->setMessage('Fertig!');
                 $progressBar->finish();

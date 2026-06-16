@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
-use Robbi\RobbiCopy\Domain\PageLinkRewriter;
+use Robbi\ImpExpNL\Domain\PageLinkRewriter;
 
 /**
  * Schreibt die Export-Ergebnisse in die Zieldateien: Hauptdatei (JSON oder
@@ -79,8 +79,8 @@ class ExportWriter
     {
         $ids = array_unique(array_filter(array_map(fn($r) => ltrim($r['identifier'] ?? '', '/'), $data['sys_file_reference'] ?? [])));
         sort($ids);
-        if (file_put_contents($dir . '/robbicopy_assets.txt', implode("\n", $ids) . "\n") === false) {
-            $this->logger->warning('Asset-Liste konnte nicht geschrieben werden: ' . $dir . '/robbicopy_assets.txt');
+        if (file_put_contents($dir . '/impexpnl_assets.txt', implode("\n", $ids) . "\n") === false) {
+            $this->logger->warning('Asset-Liste konnte nicht geschrieben werden: ' . $dir . '/impexpnl_assets.txt');
         }
     }
 
@@ -103,7 +103,7 @@ class ExportWriter
                 }
             }
         }
-        file_put_contents($dir . '/robbicopy_broken_links.txt', !empty($broken) ? implode("\n", array_unique($broken)) . "\n" : "Keine gebrochenen Links.\n");
+        file_put_contents($dir . '/impexpnl_broken_links.txt', !empty($broken) ? implode("\n", array_unique($broken)) . "\n" : "Keine gebrochenen Links.\n");
     }
 
     /**
@@ -119,7 +119,7 @@ class ExportWriter
                 continue;
             }
 
-            $fp = fopen($baseDir . '/robbicopy_' . $table . '.csv', 'w');
+            $fp = fopen($baseDir . '/impexpnl_' . $table . '.csv', 'w');
             if ($fp === false) {
                 continue;
             }

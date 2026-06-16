@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Command;
+namespace Robbi\ImpExpNL\Command;
 
-use Robbi\RobbiCopy\Service\ImportLockService;
+use Robbi\ImpExpNL\Service\ImportLockService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -15,7 +15,7 @@ use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 
 #[AsCommand(
-    name: 'robbicopy:status',
+    name: 'impexpnl:status',
     description: 'Zeigt den aktuellen Status: Offene Imports, Lock, letzte Aktivität.'
 )]
 class StatusCommand extends Command
@@ -71,14 +71,14 @@ class StatusCommand extends Command
             ];
         }
 
-        $qb = $this->connectionPool->getQueryBuilderForTable('tx_robbicopy_import_log');
-        $count = (int)$qb->count('uid')->from('tx_robbicopy_import_log')->executeQuery()->fetchOne();
+        $qb = $this->connectionPool->getQueryBuilderForTable('tx_impexpnl_import_log');
+        $count = (int)$qb->count('uid')->from('tx_impexpnl_import_log')->executeQuery()->fetchOne();
 
         $last = null;
         if ($count > 0) {
-            $qb2 = $this->connectionPool->getQueryBuilderForTable('tx_robbicopy_import_log');
+            $qb2 = $this->connectionPool->getQueryBuilderForTable('tx_impexpnl_import_log');
             $row = $qb2->select('import_id', 'tstamp', 'workspace_id', 'source_file', 'delta_mode')
-                ->from('tx_robbicopy_import_log')
+                ->from('tx_impexpnl_import_log')
                 ->orderBy('tstamp', 'DESC')
                 ->setMaxResults(1)
                 ->executeQuery()
@@ -95,7 +95,7 @@ class StatusCommand extends Command
             }
         }
 
-        $logFile = Environment::getVarPath() . '/log/robbicopy_transactions.log';
+        $logFile = Environment::getVarPath() . '/log/impexpnl_transactions.log';
 
         return [
             'lock' => $lock,
@@ -107,12 +107,12 @@ class StatusCommand extends Command
 
     private function render(SymfonyStyle $io, array $status): void
     {
-        $io->title('Robbi Copy: Status');
+        $io->title('ImpExpNL: Status');
 
         $lock = $status['lock'];
         if ($lock['active'] && $lock['stale']) {
             $io->warning(sprintf(
-                'Veralteter Import-Lock (Host %s, PID %s, Alter %ds). Mit robbicopy:unlock lösen.',
+                'Veralteter Import-Lock (Host %s, PID %s, Alter %ds). Mit impexpnl:unlock lösen.',
                 $lock['host'] ?? '?',
                 $lock['pid'] ?? '?',
                 (int)$lock['ageSeconds']

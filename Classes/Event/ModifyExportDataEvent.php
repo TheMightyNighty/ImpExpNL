@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Event;
+namespace Robbi\ImpExpNL\Event;
 
 final class ModifyExportDataEvent
 {

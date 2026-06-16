@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional\Service;
+namespace Robbi\ImpExpNL\Tests\Functional\Service;
 
 use PHPUnit\Framework\Attributes\Test;
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\ImportService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\ImportService;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -19,7 +19,7 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 class RegistryImportTest extends FunctionalTestCase
 {
     protected array $testExtensionsToLoad = [
-        'typo3conf/ext/robbi_copy',
+        'typo3conf/ext/imp_exp_nl',
     ];
 
     protected function setUp(): void
@@ -70,7 +70,7 @@ class RegistryImportTest extends FunctionalTestCase
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
         $qb->getRestrictions()->removeAll();
         $uid = $qb->select('uid')->from($table)
-            ->where($qb->expr()->eq('tx_robbicopy_remote_uid', $qb->createNamedParameter($remoteUid, Connection::PARAM_INT)))
+            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', $qb->createNamedParameter($remoteUid, Connection::PARAM_INT)))
             ->executeQuery()->fetchOne();
         return $uid !== false ? (int)$uid : null;
     }

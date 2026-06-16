@@ -1,9 +1,9 @@
-# packages/robbi_copy/Configuration/Services.yaml
+# packages/imp_exp_nl/Configuration/Services.yaml
 services:
   _defaults:
     autowire: true
     autoconfigure: true
     public: false
 
-  Robbi\RobbiCopy\:
+  Robbi\ImpExpNL\:
     resource: '../Classes/*'

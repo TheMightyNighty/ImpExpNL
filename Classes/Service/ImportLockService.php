@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Psr\Log\LoggerInterface;
@@ -18,7 +18,7 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
 class ImportLockService
 {
     private const LOCK_ID = 'import';
-    private const TABLE = 'tx_robbicopy_lock';
+    private const TABLE = 'tx_impexpnl_lock';
 
     private bool $dbLockHeld = false;
     private bool $shutdownRegistered = false;
@@ -36,7 +36,7 @@ class ImportLockService
     {
         $this->acquireDbLock();
 
-        $lockFile = Environment::getVarPath() . '/robbicopy_import.lock';
+        $lockFile = Environment::getVarPath() . '/impexpnl_import.lock';
         $dir = dirname($lockFile);
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);

@@ -2,9 +2,9 @@
 defined('TYPO3') or die();
 
 $tempColumns = [
-    'tx_robbicopy_remote_uid' => [
+    'tx_impexpnl_remote_uid' => [
         'exclude' => true,
-        'label' => 'Robbi Copy: Original UID',
+        'label' => 'ImpExpNL: Original UID',
         'config' => [
             'type' => 'number',
             'readOnly' => true,

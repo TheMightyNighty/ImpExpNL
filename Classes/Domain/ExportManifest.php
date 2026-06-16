@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Domain;
+namespace Robbi\ImpExpNL\Domain;
 
 /**
  * Typisiertes Lesemodell für eine Export-Datei.

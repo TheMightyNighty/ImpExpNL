@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Unit\Domain;
+namespace Robbi\ImpExpNL\Tests\Unit\Domain;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Robbi\RobbiCopy\Domain\UidMap;
+use Robbi\ImpExpNL\Domain\UidMap;
 
 class UidMapTest extends TestCase
 {

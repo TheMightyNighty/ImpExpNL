@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional\Service;
+namespace Robbi\ImpExpNL\Tests\Functional\Service;
 
 use PHPUnit\Framework\Attributes\Test;
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\ImportService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\ImportService;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
@@ -26,7 +26,7 @@ class WorkspaceImportTest extends FunctionalTestCase
     ];
 
     protected array $testExtensionsToLoad = [
-        'typo3conf/ext/robbi_copy',
+        'typo3conf/ext/imp_exp_nl',
     ];
 
     protected function setUp(): void

@@ -1,68 +1,20 @@
 # Changelog
 
-## 5.0.0 — TYPO3 v13
+## 1.0.0
 
-Dedizierte, gehärtete Version für **TYPO3 v13.4 LTS** (Doctrine DBAL 4).
+Erste Version als **ImpExpNL** — strukturierter Export/Import von TYPO3-Seitenbäumen
+zwischen Instanzen, ausgelegt für **TYPO3 v13.4 LTS** und den Government Site Builder 11
+(GSB 11), Doctrine DBAL 4.
 
-### Breaking Changes
-- Nur noch **TYPO3 v13.4** (`typo3/cms-core: ^13.4`); v12/v14-Constraints entfernt.
-- **Prüfsummen-Format** geändert: Die Integritäts-Prüfsumme deckt nun den gesamten
-  Datenblock ab und trägt ein Schema-Präfix (`sha256:`/`hmac-sha256:`). Alte Exporte
-  (Legacy-SHA256 nur über pages + tt_content) werden beim Import weiterhin akzeptiert.
-- Neue Datenbanktabelle `tx_robbicopy_lock` → `database:updateschema` erforderlich.
+### Features
+- Export/Import ganzer oder partieller Seitenbäume (pages, tt_content, registrierte Tabellen).
+- Delta-Modus (identische Records überspringen) inkl. Konfliktstrategien (overwrite/skip/ask).
+- UID-Remapping, Link-Rewriting (`t3://page`), FAL-Referenzen über Asset-Liste.
+- Rollback/Undo, Import-Lock (clusterfähig), Integritäts-/HMAC-Signatur.
+- JSON und JSONL (zeilenweise, speicherschonend für große Bäume).
+- CLI-first: `impexpnl:*`-Commands, pipeline-tauglich (Exit-Codes, dry-run).
 
-### Sicherheit
-- Prüfsumme über **alle** Tabellen statt nur pages/tt_content.
-- Optionaler **HMAC-Manipulationsschutz** via `ROBBICOPY_SIGNING_KEY` bzw.
-  `$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['robbi_copy']['signingKey']`.
-- Import bricht nie mit nicht-rückrollbaren Geisterdaten ab (Notfall-Protokoll).
-- Cluster-weiter DB-Lock (Heartbeat, Shutdown-Release, konfigurierbarer Timeout
-  `import.lock_stale_seconds`) zusätzlich zum Datei-Lock.
-- Import-Quelldatei auf Projektverzeichnis begrenzt; CSV-Export gegen Formula-Injection
-  entschärft; `undo` mit Vorschau, Bestätigung und Warnung bei lokal geänderten Records.
-- Bootstrap nutzt den nativen TYPO3 `_cli_`-Backend-User statt eines Admin-Fallbacks.
-
-### v13-Kompatibilität / Zukunft
-- DBAL 4: `introspectTable()` statt entferntem `listTableColumns()`.
-- **FAL-Regression behoben**: `getFileObjectFromStorageByFileId()` existiert in v13 nicht
-  mehr → Auflösung jetzt über `ResourceStorage::getFile()`.
-- TCA-Zugriff über die **TCA Schema API** (`TcaSchemaFactory`) statt `$GLOBALS['TCA']`.
-- Rector mit TYPO3-Ruleset als Dev-Werkzeug.
-
-### Performance (große Bäume)
-- Seitenbaum-Export ebenen-weise statt N+1; Slug-Regenerierung und Site-Config-Auflösung
-  ohne N+1; MM-/Registry-Import als Bulk-Insert; inkrementelle Prüfsummenberechnung.
-
-### Architektur / Wartbarkeit
-- `ImportService` entzerrt: `ImportLockService`, `ImportLogRepository`, `ConflictResolver`,
-  `ConfigurationService`.
-- Typisiertes Domänenmodell: `UidMap`, `ExportManifest`, `ConflictStrategy` (Enum),
-  `SystemFields`, `PageLinkRewriter` (zentralisiert, dedupliziert).
-- Maschinenlesbare Ausgabe (`--json`) für `import` und `status`.
-
-### Tooling / Tests
-- CI (GitHub Actions): Lint, CGL (php-cs-fixer/TYPO3 CGL), PHPStan (Level 6), Unit-
-  und Functional-Tests (PHP 8.2/8.3, Functional via SQLite).
-- Erweiterte Unit-Testabdeckung über die öffentliche API der neuen Komponenten.
-
-### Weitere Verbesserungen
-- **Delta-Rollback korrigiert**: `undo` löscht nur tatsächlich angelegte Records,
-  nie vorbestehende, nur gematchte Records.
-- **Abbruch-Schutz**: Ein abgebrochener Import wird standardmäßig automatisch
-  zurückgerollt (`import.auto_rollback_on_failure`).
-- **Slug-Eindeutigkeit** auf dem Zielsystem (keine Kollisionen beim Einspielen in
-  bestehende Bäume).
-- **FAL-Storage** pro Referenz bzw. konfigurierbar (`import.fal.storage_id`),
-  Multi-Storage-fähig.
-- Konfigurierbar: `import.batch_size`, `import.lock_stale_seconds`.
-- **JSONL-Format** (`export --jsonl`, Import erkennt `.jsonl`): zeilenweises,
-  speicherschonendes Format für große Bäume; Default-JSON bleibt kompatibel.
-- `robbicopy:list` mit `--json`; Registry-Konfiguration wird von `robbicopy:check`
-  validiert.
-- Zusätzliche Functional-Tests: Delta-Undo, Registry/Kategorie-Pfad, conflict=ask,
-  JSONL-Round-Trip, Workspace-Import.
-- `robbicopy:status` wertet den cluster-weiten DB-Lock aus (Inhaber, Alter,
-  Stale-Status); neuer Befehl `robbicopy:unlock` löst einen hängenden Lock.
-- DataHandler-Fehler werden gezählt, in Stats/`--json` ausgewiesen und führen bei
-  `robbicopy:import` zu einem Fehler-Exit-Code.
-- `ExportWriter` aus `ExportService` herausgelöst (Schreib-Formate getrennt).
+### Migration aus „robbi_copy"
+- `impexpnl:migrate-legacy-schema` übernimmt das Alt-Schema
+  (`tx_robbicopy_*` → `tx_impexpnl_*`); idempotent, `--drop-legacy` entfernt die Altbestände.
+- Voraussetzung: zuvor neues Schema anlegen (`extension:setup` / DB-Compare).

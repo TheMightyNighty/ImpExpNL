@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Tests\Functional\Service;
+namespace Robbi\ImpExpNL\Tests\Functional\Service;
 
 use PHPUnit\Framework\Attributes\Test;
-use Robbi\RobbiCopy\Service\ExportService;
-use Robbi\RobbiCopy\Service\ImportService;
+use Robbi\ImpExpNL\Service\ExportService;
+use Robbi\ImpExpNL\Service\ImportService;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
@@ -17,7 +17,7 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
 class DeltaImportTest extends FunctionalTestCase
 {
     protected array $testExtensionsToLoad = [
-        'typo3conf/ext/robbi_copy',
+        'typo3conf/ext/imp_exp_nl',
     ];
 
     protected function setUp(): void
@@ -101,7 +101,7 @@ class DeltaImportTest extends FunctionalTestCase
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
         $qb->getRestrictions()->removeAll();
         $row = $qb->select('title')->from('pages')
-            ->where($qb->expr()->eq('tx_robbicopy_remote_uid', 2))
+            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', 2))
             ->executeQuery()->fetchAssociative();
 
         self::assertNotFalse($row);
@@ -128,7 +128,7 @@ class DeltaImportTest extends FunctionalTestCase
         $connection->update('pages', [
             'title' => 'LOKAL GEÄNDERT',
             'tstamp' => time() + 3600, // In der Zukunft → neuer als Export
-        ], ['tx_robbicopy_remote_uid' => 2]);
+        ], ['tx_impexpnl_remote_uid' => 2]);
 
         // Delta-Import mit conflict=skip
         $importService->runImport($tempFile, 0, [
@@ -141,7 +141,7 @@ class DeltaImportTest extends FunctionalTestCase
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
         $qb->getRestrictions()->removeAll();
         $row = $qb->select('title')->from('pages')
-            ->where($qb->expr()->eq('tx_robbicopy_remote_uid', 2))
+            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', 2))
             ->executeQuery()->fetchAssociative();
 
         self::assertEquals(

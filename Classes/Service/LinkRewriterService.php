@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Robbi\RobbiCopy\Service;
+namespace Robbi\ImpExpNL\Service;
 
-use Robbi\RobbiCopy\Domain\PageLinkRewriter;
+use Robbi\ImpExpNL\Domain\PageLinkRewriter;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
