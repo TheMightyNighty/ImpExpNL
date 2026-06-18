@@ -841,5 +841,40 @@ imp_exp_nl/
 ├── phpunit.unit.xml
 ├── phpunit.functional.xml
 ├── imp_exp_nl.yaml
+├── LICENSE
 └── README.md
 ```
+
+## Lizenz
+
+Diese Extension steht unter der **GNU General Public License, Version 2 oder
+(nach eigener Wahl) einer späteren Version** (`GPL-2.0-or-later`). Der
+vollständige Lizenztext liegt der Quelle in der Datei [`LICENSE`](LICENSE) bei.
+
+Als TYPO3-Extension ist die GPL keine freie Wahl, sondern zwingend: Der
+TYPO3-Core steht selbst unter GPL-2.0-or-later, und eine Extension gilt als
+abgeleitetes Werk. Die Lizenz erlaubt es jedem – insbesondere einer
+übernehmenden Behörde – die Software frei zu nutzen, anzupassen, weiterzugeben
+und dauerhaft zu pflegen (im Sinne von „Public Money, Public Code").
+
+```
+Copyright (c) 2026 Robert Schleiermacher
+
+Dieses Programm ist freie Software. Sie können es unter den Bedingungen der
+GNU General Public License, Version 2 oder einer späteren Version, wie von der
+Free Software Foundation veröffentlicht, weitergeben und/oder verändern.
+
+Die Veröffentlichung dieses Programms erfolgt in der Hoffnung, dass es Ihnen
+von Nutzen sein wird, aber OHNE IRGENDEINE GARANTIE – sogar ohne die
+implizite Garantie der MARKTREIFE oder der EIGNUNG FÜR EINEN BESTIMMTEN ZWECK.
+Details finden Sie in der GNU General Public License.
+```
+
+### Übergabe / Weiterpflege
+
+Die GPL-2.0-or-later regelt die Nutzungs- und Bearbeitungsrechte vollständig;
+für die Weiterpflege durch eine Behörde ist **keine gesonderte
+Rechteübertragung erforderlich**. Soll die Urheberschaft im Code dauerhaft auf
+eine andere Stelle umgestellt werden, genügt es, den Copyright-Vermerk in den
+Datei-Headern (`Classes/**/*.php`) sowie in diesem Abschnitt anzupassen – die
+Lizenz selbst (`LICENSE`) bleibt dabei unverändert.

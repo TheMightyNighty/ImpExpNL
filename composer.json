@@ -6,7 +6,8 @@
     "license": "GPL-2.0-or-later",
     "authors": [
         {
-            "name": "ITZBund",
+            "name": "Robert Schleiermacher",
+            "email": "robert.schleiermacher@gmail.com",
             "role": "Entwicklung"
         }
     ],
