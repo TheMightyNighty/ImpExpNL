@@ -1,6 +1,6 @@
-# ImpExpNL v1.0.1 (TYPO3 v13)
+# ImpExpNL v2.0.0 (TYPO3 v14)
 
-ImpExpNL ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist gezielt für **TYPO3 v13.4 LTS** und den Government Site Builder 11 (GSB 11) entwickelt (Doctrine DBAL 4).
+ImpExpNL ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist für **TYPO3 v14 LTS** entwickelt (Doctrine DBAL 4). Für **TYPO3 v13.4 LTS** (und GSB 11) siehe den Branch `13.x` / die `1.x`-Releases.
 
 Beim Export wird ein vollständiger Seitenbaum einschließlich aller Inhaltselemente, FAL-Referenzen, Systemkategorien, Redirects, Container-Layouts und IRRE-Relationen als JSON-Datei gespeichert. Beim Import werden alle internen Verknüpfungen (UIDs, Seiten-Links, Sprach-Overlays, Container-Hierarchien, Kategorie-Zuordnungen) automatisch auf die Zielstruktur umgeschrieben.
 
@@ -40,7 +40,7 @@ EXT:impexp kann UID-Remapping, Relationen und FAL durchaus – die Tabelle hebt 
 ## Systemvoraussetzungen
 
 - PHP 8.2 oder höher
-- TYPO3 13.4 LTS
+- TYPO3 14 LTS
 - Composer-basierte TYPO3-Installation
 
 ---
@@ -640,7 +640,7 @@ Die Testdatenbank wird pro Testlauf automatisch erstellt und nach Abschluss gel�
 
 ### Voraussetzungen
 
-Das `typo3/testing-framework` (`^8.0` für TYPO3 v13) ist bereits als `require-dev` in der `composer.json` eingetragen und wird durch `composer install` mitinstalliert. Bei Bedarf manuell:
+Das `typo3/testing-framework` (`^9.3` für TYPO3 v14) ist bereits als `require-dev` in der `composer.json` eingetragen und wird durch `composer install` mitinstalliert. Bei Bedarf manuell:
 
 ```bash
 ddev composer require --dev typo3/testing-framework:^8.0

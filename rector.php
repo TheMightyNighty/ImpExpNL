@@ -19,6 +19,6 @@ return RectorConfig::configure()
     ->withPhpSets(php82: true)
     ->withSets([
         LevelSetList::UP_TO_PHP_82,
-        Typo3LevelSetList::UP_TO_TYPO3_13,
+        Typo3LevelSetList::UP_TO_TYPO3_14,
     ])
     ->withImportNames(importShortClasses: false);
