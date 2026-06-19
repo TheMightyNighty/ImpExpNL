@@ -396,6 +396,31 @@ class ImportService
     }
 
     /**
+     * Führt eine DataHandler-Schreiboperation in einer DB-Transaktion aus.
+     *
+     * Bündelt die zahlreichen Einzel-INSERTs eines Laufs (Record sowie sys_log
+     * und sys_history) zu einem Commit – deutlich schneller beim Massenimport,
+     * ohne Logging oder $dataHandler->errorLog anzutasten. Bei einem Abbruch
+     * mitten im Lauf wird der Teilstand sauber zurückgerollt; der bestehende
+     * Undo/Rollback bleibt für bereits committete Läufe gültig.
+     *
+     * Greift voll, solange die beteiligten Tabellen auf einer DB-Connection
+     * liegen (TYPO3-Standard).
+     */
+    private function processInTransaction(string $table, callable $process): void
+    {
+        $connection = $this->connectionPool->getConnectionForTable($table);
+        $connection->beginTransaction();
+        try {
+            $process();
+            $connection->commit();
+        } catch (\Throwable $e) {
+            $connection->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
      * Behandelt einen abgebrochenen Import: schreibt ein Protokoll der bereits
      * angelegten Records und rollt diese – sofern aktiviert (Standard) – sofort
      * automatisch zurück, sodass kein halber Baum zurückbleibt.
@@ -491,7 +516,7 @@ class ImportService
 
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             $dataHandler->start([$table => $batch], []);
-            $dataHandler->process_datamap();
+            $this->processInTransaction($table, $dataHandler->process_datamap(...));
 
             $this->recordDataHandlerErrors($dataHandler, $table);
 
@@ -559,7 +584,7 @@ class ImportService
         if (!empty($datamap)) {
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $dh->start($datamap, []);
-            $dh->process_datamap();
+            $this->processInTransaction('pages', $dh->process_datamap(...));
             $this->recordDataHandlerErrors($dh, 'slug');
             $this->logger->info('Slugs angepasst', ['count' => count($datamap['pages'])]);
         }
@@ -785,7 +810,7 @@ class ImportService
         if (!empty($datamap)) {
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $dh->start($datamap, []);
-            $dh->process_datamap();
+            $this->processInTransaction($table, $dh->process_datamap(...));
             $this->recordDataHandlerErrors($dh, 'irre');
         }
     }
