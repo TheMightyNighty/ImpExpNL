@@ -22,12 +22,12 @@ use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
 use TYPO3\CMS\Core\Resource\File;
-use TYPO3\CMS\Core\Resource\ResourceFactory;
+use TYPO3\CMS\Core\Resource\StorageRepository;
 
 class FalResolverService
 {
     public function __construct(
-        private readonly ResourceFactory $resourceFactory,
+        private readonly StorageRepository $storageRepository,
         private readonly ConnectionPool $connectionPool,
         private readonly LoggerInterface $logger
     ) {}
@@ -73,7 +73,7 @@ class FalResolverService
 
             $liveSysFileUid = null;
             try {
-                $storage = $this->resourceFactory->getStorageObject($storageId);
+                $storage = $this->storageRepository->getStorageObject($storageId);
                 if ($storage->hasFile($identifier)) {
                     $fileObject = $storage->getFile($identifier);
                     if ($fileObject instanceof File) {
