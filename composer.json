@@ -2,7 +2,6 @@
     "name": "robbi/imp-exp-nl",
     "type": "typo3-cms-extension",
     "description": "Enterprise CLI Exporter für TYPO3 v14",
-    "version": "2.0.0",
     "license": "GPL-2.0-or-later",
     "authors": [
         {

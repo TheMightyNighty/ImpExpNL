@@ -13,6 +13,7 @@
     </testsuites>
 
     <php>
+        <ini name="memory_limit" value="512M"/>
         <env name="typo3DatabaseDriver" value="mysqli" force="false"/>
         <env name="typo3DatabaseHost" value="db" force="false"/>
         <env name="typo3DatabasePort" value="3306" force="false"/>
