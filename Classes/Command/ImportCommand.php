@@ -28,6 +28,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 #[AsCommand(name: 'impexpnl:import', description: 'Importiert Seiten und Inhalte aus einer JSON-Datei.')]
 class ImportCommand extends Command
@@ -85,6 +86,11 @@ class ImportCommand extends Command
                 'conflict' => $input->getOption('conflict'),
             ];
         }
+
+        // Pfad symmetrisch zum Export auflösen: relative Pfade gehen über
+        // getFileAbsFileName (= relativ zum Public-Verzeichnis, wie beim Export),
+        // absolute Pfade außerhalb bleiben unverändert nutzbar.
+        $file = GeneralUtility::getFileAbsFileName((string)$file) ?: (string)$file;
 
         $options['dryRun'] = (bool)$input->getOption('dry-run');
         // Feld-Diff über die eingebaute Symfony-Verbosity (-v) statt eigener Option
