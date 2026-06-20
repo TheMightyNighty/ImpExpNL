@@ -102,6 +102,16 @@ class ConfigurationService
     }
 
     /**
+     * Stabiler Bezeichner des Quellsystems. Wird beim Export ins Manifest
+     * geschrieben und beim Import zur Mapping-Auflösung genutzt. Mehrere
+     * Quellsysteme bleiben dadurch unterscheidbar. Leer = Einzel-Quelle.
+     */
+    public function getSourceId(): string
+    {
+        return (string)($this->getConfig()['source_id'] ?? '');
+    }
+
+    /**
      * Soll ein abgebrochener Import automatisch zurückgerollt werden?
      * (Standard: ja – es bleibt kein halber Baum zurück.)
      */

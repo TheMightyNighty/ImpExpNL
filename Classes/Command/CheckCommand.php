@@ -92,7 +92,7 @@ class CheckCommand extends Command
         $section = 'Datenbank';
         try {
             $schemaManager = $this->connectionPool->getConnectionForTable('tx_impexpnl_import_log')->createSchemaManager();
-            foreach (['tx_impexpnl_import_log', 'tx_impexpnl_lock'] as $requiredTable) {
+            foreach (['tx_impexpnl_import_log', 'tx_impexpnl_lock', 'tx_impexpnl_uid_map'] as $requiredTable) {
                 if ($schemaManager->tableExists($requiredTable)) {
                     $this->record($section, 'ok', "Tabelle $requiredTable vorhanden.");
                 } else {
@@ -101,20 +101,6 @@ class CheckCommand extends Command
             }
         } catch (\Exception $e) {
             $this->record($section, 'error', 'Datenbankprüfung fehlgeschlagen: ' . $e->getMessage());
-        }
-
-        foreach (['pages', 'tt_content'] as $table) {
-            try {
-                $columns = $this->connectionPool->getConnectionForTable($table)->createSchemaManager()->introspectTable($table)->getColumns();
-                $columnNames = array_map(static fn($c) => $c->getName(), $columns);
-                if (in_array('tx_impexpnl_remote_uid', $columnNames, true)) {
-                    $this->record($section, 'ok', "Feld tx_impexpnl_remote_uid in $table vorhanden.");
-                } else {
-                    $this->record($section, 'error', "Feld tx_impexpnl_remote_uid fehlt in $table. vendor/bin/typo3 database:updateschema ausführen.");
-                }
-            } catch (\Exception $e) {
-                $this->record($section, 'error', "Prüfung von $table fehlgeschlagen: " . $e->getMessage());
-            }
         }
     }
 

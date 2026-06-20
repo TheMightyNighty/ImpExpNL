@@ -4,6 +4,13 @@
 # Weitere Extensions können eigene Tabellen registrieren unter:
 #   Configuration/ImpExpNL.yaml (im jeweiligen Extension-Ordner)
 
+# Stabiler Bezeichner des Quellsystems. Wird beim Export ins Manifest (_meta)
+# geschrieben und beim Import zur Auflösung des Herkunfts-Mappings
+# (tx_impexpnl_uid_map) genutzt. Leer = Einzelquelle. Nur setzen, wenn aus
+# mehreren Quellsystemen in dieselbe Instanz importiert wird – dann je Quelle
+# einen eindeutigen Wert vergeben (z.B. "redaktion-a").
+source_id: ''
+
 export:
   include:
     file_references: true     # FAL-Referenzen mit Datei-Identifier exportieren

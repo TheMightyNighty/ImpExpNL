@@ -7,6 +7,7 @@ namespace Robbi\ImpExpNL\Tests\Functional\Service;
 use PHPUnit\Framework\Attributes\Test;
 use Robbi\ImpExpNL\Service\ExportService;
 use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Tests\Functional\UidMapTestTrait;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
@@ -26,6 +27,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 class ExportImportTest extends FunctionalTestCase
 {
+    use UidMapTestTrait;
+
     /**
      * Extensions die für den Test geladen werden müssen.
      * Hier nur imp_exp_nl — für GSB-Tests würde man gsb_core ergänzen.
@@ -122,16 +125,15 @@ class ExportImportTest extends FunctionalTestCase
         $importService = $this->get(ImportService::class);
         $importService->runImport($tempFile, 0, ['workspaceId' => 0]);
 
-        // Prüfen: Neue Seiten müssen existieren mit tx_impexpnl_remote_uid
-        $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('pages');
-        $result = $connection->select(['uid', 'title', 'tx_impexpnl_remote_uid'], 'pages', [
-            'tx_impexpnl_remote_uid' => 2, // "Über uns" hatte remote_uid=2
-        ]);
-        $row = $result->fetchAssociative();
+        // Prüfen: Neue Seite muss über das Herkunfts-Mapping auffindbar sein.
+        $newUid = $this->resolveTargetUid('pages', 2); // "Über uns" hatte source-uid=2
+        self::assertNotNull($newUid, 'Mapping für importierte Seite "Über uns" nicht gefunden');
+        self::assertNotSame(2, $newUid, 'Importierte Seite muss eine neue UID haben');
 
+        $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('pages');
+        $row = $connection->select(['uid', 'title'], 'pages', ['uid' => $newUid])->fetchAssociative();
         self::assertNotFalse($row, 'Importierte Seite "Über uns" nicht gefunden');
         self::assertEquals('Über uns', $row['title']);
-        self::assertNotEquals(2, $row['uid'], 'Importierte Seite muss eine neue UID haben');
     }
 
     #[Test]

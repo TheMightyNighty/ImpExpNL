@@ -1,9 +1,22 @@
-CREATE TABLE pages (
-    tx_impexpnl_remote_uid int DEFAULT 0 NOT NULL
-);
+#
+# Herkunfts-Mapping (Quell-Record -> Ziel-Record) für idempotente (Delta-)Importe.
+# Ersetzt die früheren tx_impexpnl_remote_uid-Spalten auf pages/tt_content:
+# hält Core-Tabellen sauber, funktioniert einheitlich für ALLE Tabellen und
+# unterscheidet Quellsysteme über source_id (Multi-Source-fähig).
+#
+CREATE TABLE tx_impexpnl_uid_map (
+    uid int NOT NULL auto_increment,
+    source_id varchar(255) DEFAULT '' NOT NULL,
+    table_name varchar(255) DEFAULT '' NOT NULL,
+    source_uid int DEFAULT 0 NOT NULL,
+    target_uid int DEFAULT 0 NOT NULL,
+    import_id varchar(30) DEFAULT '' NOT NULL,
+    crdate int DEFAULT 0 NOT NULL,
 
-CREATE TABLE tt_content (
-    tx_impexpnl_remote_uid int DEFAULT 0 NOT NULL
+    PRIMARY KEY (uid),
+    UNIQUE KEY source_lookup (source_id, table_name, source_uid),
+    KEY target_lookup (table_name, target_uid),
+    KEY import_id (import_id)
 );
 
 #

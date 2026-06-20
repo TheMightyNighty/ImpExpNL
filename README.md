@@ -22,7 +22,7 @@ ImpExpNL ist als CLI-first-, automatisierungs- und cluster-taugliche Alternative
 |---|---|---|
 | **Transferformat** | T3D (serialisiert) / XML – opak, nicht diffbar | **JSON / JSONL / CSV** – lesbar, versionierbar, diff- & pipeline-tauglich |
 | **Bedienung** | primär Backend-Modul (GUI) | **CLI-first**, headless, `--json`-Ausgabe + Exit-Codes für CI/CD & GitOps |
-| **Wiederholter Import** | erzeugt Duplikate | **Delta-/Idempotenz-Modus** – erkennt bereits importierte Records über `tx_impexpnl_remote_uid`, überspringt Identische |
+| **Wiederholter Import** | erzeugt Duplikate | **Delta-/Idempotenz-Modus** – erkennt bereits importierte Records über das Herkunfts-Mapping (`tx_impexpnl_uid_map`), überspringt Identische |
 | **Konflikte** | keine Erkennung | **Konflikterkennung + Strategien** (overwrite / skip / ask) inkl. Feld-Diff |
 | **Vorab-Prüfung** | – | **Dry-Run-Differenzanalyse** vor jedem Schreibvorgang |
 | **Rückgängig machen** | kein gezieltes Undo | **Protokolliertes Rollback/Undo** jedes Imports + **automatischer Rollback bei Abbruch** (kein halber Baum) |
@@ -58,7 +58,7 @@ ddev exec vendor/bin/typo3 database:updateschema
 ddev exec vendor/bin/typo3 cache:flush
 ```
 
-Durch `database:updateschema` werden die Tabellen `tx_impexpnl_import_log` und `tx_impexpnl_lock` sowie das Feld `tx_impexpnl_remote_uid` in den Tabellen `pages` und `tt_content` angelegt. Das Feld dient der Erkennung bereits importierter Records bei wiederholten Imports. Die Tabelle `tx_impexpnl_lock` realisiert den cluster-weiten Import-Lock.
+Durch `database:updateschema` werden die Tabellen `tx_impexpnl_import_log`, `tx_impexpnl_lock` und `tx_impexpnl_uid_map` angelegt. `tx_impexpnl_uid_map` hält das Herkunfts-Mapping (Quell-Record → Ziel-Record) zur Erkennung bereits importierter Records bei wiederholten Imports – Core-Tabellen (`pages`/`tt_content`) bleiben dabei unangetastet. Die Tabelle `tx_impexpnl_lock` realisiert den cluster-weiten Import-Lock. (Hinweis: Frühere Versionen nutzten ein Feld `tx_impexpnl_remote_uid` auf `pages`/`tt_content`; `impexpnl:migrate-legacy-schema` überführt es in die neue Tabelle.)
 
 Die Installation wird geprüft mit:
 
@@ -514,7 +514,7 @@ ddev exec vendor/bin/typo3 impexpnl:check
 
 Geprüft werden:
 
-- **Datenbankschema:** Existenz der Tabelle `tx_impexpnl_import_log` und des Feldes `tx_impexpnl_remote_uid` in `pages` und `tt_content`.
+- **Datenbankschema:** Existenz der Tabellen `tx_impexpnl_import_log`, `tx_impexpnl_lock` und `tx_impexpnl_uid_map`.
 - **Dateisystem:** Schreibrechte auf `var/` und `var/log/`. Existenz des Profil-Verzeichnisses `var/impexpnl_profiles/`.
 - **YAML-Konfiguration:** Syntaxprüfung der `imp_exp_nl.yaml`. Auflistung der registrierten Tabellen und Link-Rewrite-Felder.
 - **Extension-Scan:** Erkennung aller geladenen Extensions, die eine eigene `Configuration/ImpExpNL.yaml` bereitstellen.
@@ -576,8 +576,9 @@ Für Dashboards relevante Metriken: `stats.{new,updated,skipped,errors}` und `du
 
 - **Delta-Modus** (`--delta`): identische Records werden übersprungen — wiederholte Läufe desselben
   Pakets sind ein No-Op (sichere Retries).
-- **Stabiles UID-Mapping** über `tx_impexpnl_remote_uid`: ein Quell-Record landet bei jedem Lauf
-  auf demselben Ziel-Record.
+- **Stabiles UID-Mapping** über die Tabelle `tx_impexpnl_uid_map` (Quellsystem + Quell-UID → Ziel-UID):
+  ein Quell-Record landet bei jedem Lauf auf demselben Ziel-Record; mehrere Quellsysteme bleiben
+  über `source_id` unterscheidbar.
 - **Deterministischer Export** mit Integritäts-Prüfsumme (`sha256:`/`hmac-sha256:`) — das Paket ist
   versionier- und review-bar (Content-as-Code im Git).
 

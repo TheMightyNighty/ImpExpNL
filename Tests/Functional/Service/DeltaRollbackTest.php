@@ -61,10 +61,9 @@ class DeltaRollbackTest extends FunctionalTestCase
 
     private function countImported(string $table): int
     {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-        $qb->getRestrictions()->removeAll();
-        return (int)$qb->count('uid')->from($table)
-            ->where($qb->expr()->gt('tx_impexpnl_remote_uid', $qb->createNamedParameter(0)))
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        return (int)$qb->count('uid')->from('tx_impexpnl_uid_map')
+            ->where($qb->expr()->eq('table_name', $qb->createNamedParameter($table)))
             ->executeQuery()->fetchOne();
     }
 }

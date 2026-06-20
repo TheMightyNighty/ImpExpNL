@@ -77,6 +77,7 @@ class ImportService
         private readonly ConflictResolver $conflictResolver,
         private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly RollbackService $rollbackService,
+        private readonly UidMapRepository $uidMapRepository,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -146,6 +147,7 @@ class ImportService
         }
 
         $this->importLogRepository->save($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->rollbackMap);
+        $this->uidMapRepository->persist($manifest->getSourceId(), $timestamp, $this->rollbackMap);
         $this->writeTransactionLog($timestamp, $workspaceId, $jsonPath, $stats, $deltaMode);
 
         $this->logger->info('Import abgeschlossen', array_merge($stats, ['importId' => $timestamp]));
@@ -170,9 +172,10 @@ class ImportService
 
         $pages = $manifest->getPages();
         $ttContent = $manifest->getTtContent();
+        $sourceId = $manifest->getSourceId();
 
-        $existingPageMap = $this->findExistingRecordsByRemoteUid('pages', $pages);
-        $existingContentMap = $this->findExistingRecordsByRemoteUid('tt_content', $ttContent);
+        $existingPageMap = $this->findExistingRecordsByMapping($sourceId, 'pages', $pages);
+        $existingContentMap = $this->findExistingRecordsByMapping($sourceId, 'tt_content', $ttContent);
 
         $exportedPageUids = array_column($pages, 'uid');
         $exportedContentUids = array_column($ttContent, 'uid');
@@ -182,7 +185,6 @@ class ImportService
         foreach ($pages as $page) {
             $oldUid = (int)$page['uid'];
             $recordData = $this->buildRecordData($page, 'pages');
-            $recordData['tx_impexpnl_remote_uid'] = $oldUid;
 
             if ($deltaMode && isset($existingPageMap[$oldUid])) {
                 $existingUid = (int)$existingPageMap[$oldUid]['uid'];
@@ -240,7 +242,6 @@ class ImportService
             }
 
             $recordData = $this->buildRecordData($content, 'tt_content');
-            $recordData['tx_impexpnl_remote_uid'] = $oldContentUid;
 
             if ($deltaMode && isset($existingContentMap[$oldContentUid])) {
                 $existingUid = (int)$existingContentMap[$oldContentUid]['uid'];
@@ -706,20 +707,42 @@ class ImportService
         return $data;
     }
 
-    private function findExistingRecordsByRemoteUid(string $table, array $records): array
+    /**
+     * Findet bereits importierte Ziel-Records anhand des Herkunfts-Mappings.
+     * Liefert source_uid => Ziel-Record-Zeile (für die Delta-/Konfliktprüfung).
+     *
+     * @param array<int, array<string, mixed>> $records
+     * @return array<int, array<string, mixed>>
+     */
+    private function findExistingRecordsByMapping(string $sourceId, string $table, array $records): array
     {
-        $uids = array_column($records, 'uid');
-        if (empty($uids)) {
+        $sourceUids = array_column($records, 'uid');
+        if (empty($sourceUids)) {
             return [];
         }
-        $map = [];
-        foreach (array_chunk($uids, 1000) as $chunk) {
+
+        $mapping = $this->uidMapRepository->findTargets($sourceId, $table, array_map('intval', $sourceUids));
+        if (empty($mapping)) {
+            return [];
+        }
+
+        // Ziel-Records laden (nur existierende; gelöschte fallen via Restriction
+        // raus und werden dadurch als neu behandelt).
+        $rowsByTarget = [];
+        foreach (array_chunk(array_values($mapping), 1000) as $chunk) {
             $qb = $this->connectionPool->getQueryBuilderForTable($table);
             $rows = $qb->select('*')->from($table)
-                ->where($qb->expr()->in('tx_impexpnl_remote_uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
+                ->where($qb->expr()->in('uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
                 ->executeQuery()->fetchAllAssociative();
             foreach ($rows as $r) {
-                $map[(int)$r['tx_impexpnl_remote_uid']] = $r;
+                $rowsByTarget[(int)$r['uid']] = $r;
+            }
+        }
+
+        $map = [];
+        foreach ($mapping as $sourceUid => $targetUid) {
+            if (isset($rowsByTarget[$targetUid])) {
+                $map[(int)$sourceUid] = $rowsByTarget[$targetUid];
             }
         }
         return $map;
@@ -827,8 +850,9 @@ class ImportService
         $this->logger->info('=== DIFFERENZ-ANALYSE ===');
         $pages = $manifest->getPages();
         $ttContent = $manifest->getTtContent();
+        $sourceId = $manifest->getSourceId();
 
-        $eP = $this->findExistingRecordsByRemoteUid('pages', $pages);
+        $eP = $this->findExistingRecordsByMapping($sourceId, 'pages', $pages);
         $nP = $uP = $iP = 0;
         foreach ($pages as $p) {
             $id = (int)$p['uid'];
@@ -847,7 +871,7 @@ class ImportService
             }
         }
 
-        $eC = $this->findExistingRecordsByRemoteUid('tt_content', $ttContent);
+        $eC = $this->findExistingRecordsByMapping($sourceId, 'tt_content', $ttContent);
         $nC = $uC = $iC = 0;
         foreach ($ttContent as $c) {
             $id = (int)$c['uid'];

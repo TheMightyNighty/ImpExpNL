@@ -94,10 +94,12 @@ class ConflictAskTest extends FunctionalTestCase
 
     private function importedUid(int $remoteUid): int
     {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
-        $qb->getRestrictions()->removeAll();
-        return (int)$qb->select('uid')->from('tt_content')
-            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', $qb->createNamedParameter($remoteUid, Connection::PARAM_INT)))
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        return (int)$qb->select('target_uid')->from('tx_impexpnl_uid_map')
+            ->where(
+                $qb->expr()->eq('table_name', $qb->createNamedParameter('tt_content')),
+                $qb->expr()->eq('source_uid', $qb->createNamedParameter($remoteUid, Connection::PARAM_INT))
+            )
             ->executeQuery()->fetchOne();
     }
 

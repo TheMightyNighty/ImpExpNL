@@ -380,6 +380,7 @@ class ExportService
             'export_version' => self::VERSION,
             'export_format' => IntegrityService::FORMAT_VERSION,
             'export_date' => date('c'),
+            'source_id' => $this->configurationService->getSourceId(),
             'typo3_version' => $typo3Version,
             'php_version' => PHP_VERSION,
             'source_pid' => $startPid,

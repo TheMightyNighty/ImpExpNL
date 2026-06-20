@@ -7,6 +7,7 @@ namespace Robbi\ImpExpNL\Tests\Functional\Service;
 use PHPUnit\Framework\Attributes\Test;
 use Robbi\ImpExpNL\Service\ExportService;
 use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Tests\Functional\UidMapTestTrait;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
@@ -16,6 +17,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 class DeltaImportTest extends FunctionalTestCase
 {
+    use UidMapTestTrait;
+
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
@@ -98,10 +101,12 @@ class DeltaImportTest extends FunctionalTestCase
         ]);
 
         // Prüfe: Der importierte Record muss den neuen Titel haben
+        $targetUid = $this->resolveTargetUid('pages', 2);
+        self::assertNotNull($targetUid, 'Mapping für Quell-Seite 2 nicht gefunden');
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
         $qb->getRestrictions()->removeAll();
         $row = $qb->select('title')->from('pages')
-            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', 2))
+            ->where($qb->expr()->eq('uid', $qb->createNamedParameter($targetUid, \TYPO3\CMS\Core\Database\Connection::PARAM_INT)))
             ->executeQuery()->fetchAssociative();
 
         self::assertNotFalse($row);
@@ -124,11 +129,13 @@ class DeltaImportTest extends FunctionalTestCase
         $importService->runImport($tempFile, 0, ['workspaceId' => 0]);
 
         // Lokal den Titel ändern + tstamp erhöhen (simuliert lokale Bearbeitung)
+        $localUid = $this->resolveTargetUid('pages', 2);
+        self::assertNotNull($localUid, 'Mapping für Quell-Seite 2 nicht gefunden');
         $connection = GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('pages');
         $connection->update('pages', [
             'title' => 'LOKAL GEÄNDERT',
             'tstamp' => time() + 3600, // In der Zukunft → neuer als Export
-        ], ['tx_impexpnl_remote_uid' => 2]);
+        ], ['uid' => $localUid]);
 
         // Delta-Import mit conflict=skip
         $importService->runImport($tempFile, 0, [
@@ -141,7 +148,7 @@ class DeltaImportTest extends FunctionalTestCase
         $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
         $qb->getRestrictions()->removeAll();
         $row = $qb->select('title')->from('pages')
-            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', 2))
+            ->where($qb->expr()->eq('uid', $qb->createNamedParameter($localUid, \TYPO3\CMS\Core\Database\Connection::PARAM_INT)))
             ->executeQuery()->fetchAssociative();
 
         self::assertEquals(

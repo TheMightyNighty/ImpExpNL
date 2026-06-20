@@ -20,6 +20,7 @@ namespace Robbi\ImpExpNL\Tests\Functional\Service;
 use PHPUnit\Framework\Attributes\Test;
 use Robbi\ImpExpNL\Service\ExportService;
 use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Tests\Functional\UidMapTestTrait;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -38,6 +39,8 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 class FalReferenceImportTest extends FunctionalTestCase
 {
+    use UidMapTestTrait;
+
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
@@ -98,14 +101,9 @@ class FalReferenceImportTest extends FunctionalTestCase
         file_put_contents($importFile, $json);
         $this->get(ImportService::class)->runImport($importFile, 0, ['workspaceId' => 0]);
 
-        // Neu importierten Content ("Willkommen", remote_uid=10) finden.
-        $contentQb = $this->get(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
-        $newContentUid = (int)$contentQb->select('uid')->from('tt_content')
-            ->where(
-                $contentQb->expr()->eq('tx_impexpnl_remote_uid', $contentQb->createNamedParameter(10, Connection::PARAM_INT))
-            )
-            ->executeQuery()->fetchOne();
-        self::assertGreaterThan(0, $newContentUid, 'Importierter Content nicht gefunden');
+        // Neu importierten Content ("Willkommen", source-uid=10) über das Mapping finden.
+        $newContentUid = $this->resolveTargetUid('tt_content', 10);
+        self::assertNotNull($newContentUid, 'Mapping für importierten Content nicht gefunden');
         self::assertNotSame(10, $newContentUid, 'Importierter Content muss eine neue UID haben');
 
         // Es muss eine FAL-Referenz auf den neuen Content geben, die auf eine

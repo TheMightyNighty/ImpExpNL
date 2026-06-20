@@ -60,6 +60,9 @@ class ImportLogRepository
         $qb = $this->connectionPool->getQueryBuilderForTable(self::TABLE);
         $row = $qb->select('*')->from(self::TABLE)
             ->orderBy('tstamp', 'DESC')
+            // Eindeutiger Tie-Break bei Importen in derselben Sekunde:
+            // der zuletzt eingefügte (höchste uid) ist der jüngste.
+            ->addOrderBy('uid', 'DESC')
             ->setMaxResults(1)
             ->executeQuery()->fetchAssociative();
         return $row ?: null;

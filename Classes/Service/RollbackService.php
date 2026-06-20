@@ -31,6 +31,7 @@ class RollbackService
         private readonly ConnectionPool $connectionPool,
         private readonly TableRegistryService $tableRegistry,
         private readonly ImportLogRepository $importLogRepository,
+        private readonly UidMapRepository $uidMapRepository,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -182,6 +183,7 @@ class RollbackService
             $dataHandler->process_cmdmap();
         }
 
+        $this->uidMapRepository->deleteByImportId($importId);
         $this->importLogRepository->delete($importId);
         $this->writeRollbackLog($importId, $stats);
 

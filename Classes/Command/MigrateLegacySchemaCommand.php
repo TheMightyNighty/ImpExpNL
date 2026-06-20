@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Command;
 
+use Robbi\ImpExpNL\Service\UidMapRepository;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,28 +27,30 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 
 /**
- * Migriert das Alt-Schema der Vorgänger-Extension "robbi_copy" auf die
- * ImpExpNL-Namen:
- *   - Spalte  tx_robbicopy_remote_uid → tx_impexpnl_remote_uid  (pages, tt_content)
+ * Migriert Alt-Schemata auf das aktuelle ImpExpNL-Schema:
+ *   - Herkunfts-Spalten tx_impexpnl_remote_uid bzw. tx_robbicopy_remote_uid auf
+ *     pages/tt_content → Tabelle tx_impexpnl_uid_map (source_id='' = Einzelquelle)
  *   - Tabelle tx_robbicopy_import_log → tx_impexpnl_import_log
  *   - Tabelle tx_robbicopy_lock       (verworfen – Locks sind flüchtig)
  *
  * Voraussetzung: Das neue Schema (tx_impexpnl_*) wurde bereits angelegt
  * (z. B. `typo3 extension:setup` bzw. DB-Compare). Der Befehl ist idempotent
- * und kann in einer Pipeline gefahrlos mehrfach laufen.
+ * und kann in einer Pipeline gefahrlos mehrfach laufen. --drop-legacy entfernt
+ * die alten remote_uid-Spalten/-Tabellen nach der Übernahme.
  */
 #[AsCommand(
     name: 'impexpnl:migrate-legacy-schema',
-    description: 'Übernimmt Daten aus dem alten robbi_copy-Schema (tx_robbicopy_*) in das ImpExpNL-Schema.'
+    description: 'Übernimmt Daten aus älteren Schemata (remote_uid-Spalten, robbi_copy) in das ImpExpNL-Schema.'
 )]
 class MigrateLegacySchemaCommand extends Command
 {
     private const COLUMN_TABLES = ['pages', 'tt_content'];
-    private const LEGACY_COLUMN = 'tx_robbicopy_remote_uid';
-    private const NEW_COLUMN = 'tx_impexpnl_remote_uid';
+    /** Mögliche Herkunfts-Spalten, in Prüf-Reihenfolge. */
+    private const REMOTE_UID_COLUMNS = ['tx_impexpnl_remote_uid', 'tx_robbicopy_remote_uid'];
 
     public function __construct(
-        private readonly ConnectionPool $connectionPool
+        private readonly ConnectionPool $connectionPool,
+        private readonly UidMapRepository $uidMapRepository
     ) {
         parent::__construct();
     }
@@ -63,38 +66,44 @@ class MigrateLegacySchemaCommand extends Command
         $dropLegacy = (bool)$input->getOption('drop-legacy');
         $didSomething = false;
 
-        // 1) Spalten: remote_uid je Tabelle übernehmen.
+        // 1) Herkunfts-Spalten → tx_impexpnl_uid_map überführen.
         foreach (self::COLUMN_TABLES as $table) {
             $connection = $this->connectionPool->getConnectionForTable($table);
             $columns = $this->columnNames($table);
-            if (!isset($columns[self::LEGACY_COLUMN])) {
-                continue;
+            $sourceColumn = null;
+            foreach (self::REMOTE_UID_COLUMNS as $candidate) {
+                if (isset($columns[$candidate])) {
+                    $sourceColumn = $candidate;
+                    break;
+                }
             }
-            if (!isset($columns[self::NEW_COLUMN])) {
-                $io->warning(sprintf('%s: neue Spalte %s fehlt – bitte zuerst das Schema aktualisieren (extension:setup).', $table, self::NEW_COLUMN));
+            if ($sourceColumn === null) {
                 continue;
             }
 
-            $affected = $connection->executeStatement(
-                sprintf(
-                    'UPDATE %s SET %s = %s WHERE %s = 0 AND %s <> 0',
-                    $connection->quoteIdentifier($table),
-                    $connection->quoteIdentifier(self::NEW_COLUMN),
-                    $connection->quoteIdentifier(self::LEGACY_COLUMN),
-                    $connection->quoteIdentifier(self::NEW_COLUMN),
-                    $connection->quoteIdentifier(self::LEGACY_COLUMN)
-                )
-            );
-            $io->text(sprintf('%s: %d Zeilen von %s übernommen.', $table, $affected, self::LEGACY_COLUMN));
+            $qb = $connection->createQueryBuilder();
+            $rows = $qb->select('uid', $sourceColumn)->from($table)
+                ->where($qb->expr()->neq($sourceColumn, $qb->createNamedParameter(0, \TYPO3\CMS\Core\Database\Connection::PARAM_INT)))
+                ->executeQuery()->fetchAllAssociative();
+
+            $mapping = [];
+            foreach ($rows as $row) {
+                $mapping[(int)$row[$sourceColumn]] = (int)$row['uid'];
+            }
+            if ($mapping !== []) {
+                // Einzelquelle (source_id=''); idempotent dank delete-then-insert.
+                $this->uidMapRepository->persist('', 'legacy-migration', [$table => $mapping]);
+            }
+            $io->text(sprintf('%s: %d Herkunfts-Zuordnungen aus %s in tx_impexpnl_uid_map übernommen.', $table, count($mapping), $sourceColumn));
             $didSomething = true;
 
             if ($dropLegacy) {
                 $connection->executeStatement(sprintf(
                     'ALTER TABLE %s DROP COLUMN %s',
                     $connection->quoteIdentifier($table),
-                    $connection->quoteIdentifier(self::LEGACY_COLUMN)
+                    $connection->quoteIdentifier($sourceColumn)
                 ));
-                $io->text(sprintf('%s: alte Spalte %s entfernt.', $table, self::LEGACY_COLUMN));
+                $io->text(sprintf('%s: alte Spalte %s entfernt.', $table, $sourceColumn));
             }
         }
 

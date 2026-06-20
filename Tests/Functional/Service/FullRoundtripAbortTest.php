@@ -134,19 +134,20 @@ class FullRoundtripAbortTest extends FunctionalTestCase
 
     private function findImportedRootUid(): int
     {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
-        $qb->getRestrictions()->removeAll();
-        return (int)$qb->select('uid')->from('pages')
-            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', $qb->createNamedParameter(1)))
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        return (int)$qb->select('target_uid')->from('tx_impexpnl_uid_map')
+            ->where(
+                $qb->expr()->eq('table_name', $qb->createNamedParameter('pages')),
+                $qb->expr()->eq('source_uid', $qb->createNamedParameter(1))
+            )
             ->executeQuery()->fetchOne();
     }
 
     private function countImported(string $table): int
     {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-        $qb->getRestrictions()->removeAll();
-        return (int)$qb->count('uid')->from($table)
-            ->where($qb->expr()->gt('tx_impexpnl_remote_uid', $qb->createNamedParameter(0)))
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        return (int)$qb->count('uid')->from('tx_impexpnl_uid_map')
+            ->where($qb->expr()->eq('table_name', $qb->createNamedParameter($table)))
             ->executeQuery()->fetchOne();
     }
 

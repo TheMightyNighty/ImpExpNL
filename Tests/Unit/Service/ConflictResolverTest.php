@@ -47,10 +47,10 @@ class ConflictResolverTest extends TestCase
     }
 
     #[Test]
-    public function sortingAndRemoteUidAreIgnored(): void
+    public function sortingIsIgnored(): void
     {
-        $import = ['title' => 'Kontakt', 'sorting' => 256, 'tx_impexpnl_remote_uid' => 123];
-        $existing = ['title' => 'Kontakt', 'sorting' => 512, 'tx_impexpnl_remote_uid' => 456];
+        $import = ['title' => 'Kontakt', 'sorting' => 256];
+        $existing = ['title' => 'Kontakt', 'sorting' => 512];
 
         self::assertTrue($this->subject->isRecordIdentical($import, $existing));
     }

@@ -87,6 +87,15 @@ final class ExportManifest
         return $this->data['_meta'] ?? [];
     }
 
+    /**
+     * Stabiler Bezeichner des Quellsystems (für die Mapping-Auflösung beim
+     * idempotenten Import). Leer, wenn der Export keine Quelle deklariert.
+     */
+    public function getSourceId(): string
+    {
+        return (string)($this->data['_meta']['source_id'] ?? '');
+    }
+
     public function getChecksum(): ?string
     {
         $checksum = $this->data['_meta']['checksum'] ?? null;

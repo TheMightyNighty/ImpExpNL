@@ -45,10 +45,9 @@ class LargeTreeImportTest extends FunctionalTestCase
         $this->get(ImportService::class)->runImport($file, 0, ['workspaceId' => 0]);
         $durationMs = (int)((microtime(true) - $start) * 1000);
 
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
-        $qb->getRestrictions()->removeAll();
-        $importedPages = (int)$qb->count('uid')->from('pages')
-            ->where($qb->expr()->gt('tx_impexpnl_remote_uid', $qb->createNamedParameter(0)))
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        $importedPages = (int)$qb->count('uid')->from('tx_impexpnl_uid_map')
+            ->where($qb->expr()->eq('table_name', $qb->createNamedParameter('pages')))
             ->executeQuery()->fetchOne();
 
         self::assertSame($pages, $importedPages, 'Es wurden nicht alle Seiten importiert');

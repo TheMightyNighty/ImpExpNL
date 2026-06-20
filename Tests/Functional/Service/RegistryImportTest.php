@@ -67,10 +67,12 @@ class RegistryImportTest extends FunctionalTestCase
 
     private function importedUid(string $table, int $remoteUid): ?int
     {
-        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable($table);
-        $qb->getRestrictions()->removeAll();
-        $uid = $qb->select('uid')->from($table)
-            ->where($qb->expr()->eq('tx_impexpnl_remote_uid', $qb->createNamedParameter($remoteUid, Connection::PARAM_INT)))
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        $uid = $qb->select('target_uid')->from('tx_impexpnl_uid_map')
+            ->where(
+                $qb->expr()->eq('table_name', $qb->createNamedParameter($table)),
+                $qb->expr()->eq('source_uid', $qb->createNamedParameter($remoteUid, Connection::PARAM_INT))
+            )
             ->executeQuery()->fetchOne();
         return $uid !== false ? (int)$uid : null;
     }

@@ -11,6 +11,19 @@ Kompatibilität mit **TYPO3 v14 LTS**. Die v13.4-Linie wird im Branch `13.x` (Re
 - `rector.php`: TYPO3-Set auf `UP_TO_TYPO3_14`.
 - CI-Matrix um PHP 8.4 erweitert; `memory_limit=512M` für Functional-Tests.
 
+### Architektur
+- Herkunfts-Mapping aus den Core-Tabellen herausgelöst: Die Spalten
+  `tx_impexpnl_remote_uid` auf `pages`/`tt_content` entfallen zugunsten der
+  Tabelle `tx_impexpnl_uid_map` (Quellsystem + Quell-UID → Ziel-UID). Vorteile:
+  Core-Tabellen bleiben sauber, das Mapping gilt einheitlich für alle Tabellen,
+  Quellsysteme sind über `source_id` unterscheidbar (Multi-Source), und ein
+  DataHandler-Copy dupliziert keine Herkunft mehr. `impexpnl:migrate-legacy-schema`
+  überführt bestehende `remote_uid`-Spalten in die neue Tabelle (`--drop-legacy`
+  entfernt die Alt-Spalten). Neue Konfiguration `source_id` (Default: leer).
+- `findLatest()` der Import-Logs ist jetzt eindeutig sortiert (Tie-Break über
+  `uid`), sodass bei zwei Importen in derselben Sekunde verlässlich der jüngste
+  zurückgerollt wird.
+
 ### Behoben / v14-API
 - `FalResolverService`: `StorageRepository::getStorageObject()` statt der in v14 entfernten `ResourceFactory::getStorageObject()`.
 

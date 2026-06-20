@@ -36,7 +36,7 @@ class ConflictResolver
     public function __construct(
         private readonly LoggerInterface $logger
     ) {
-        $this->ignoredFields = array_merge(SystemFields::EXCLUDED, ['tx_impexpnl_remote_uid', 'sorting']);
+        $this->ignoredFields = array_merge(SystemFields::EXCLUDED, ['sorting']);
     }
 
     public function isRecordIdentical(array $import, array $existing): bool
