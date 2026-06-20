@@ -47,6 +47,30 @@ EXT:impexp kann UID-Remapping, Relationen und FAL durchaus – die Tabelle hebt 
 
 ---
 
+## Versionen & Kompatibilität
+
+ImpExpNL wird in zwei parallelen Linien gepflegt. Beim Composer-Install wird über die
+Versions-Constraints **automatisch** die passende Linie gewählt — manuelles Pinnen ist
+in der Regel nicht nötig.
+
+| Extension | TYPO3 | PHP | Branch | Pflege |
+|-----------|-------|-----|--------|--------|
+| **2.x**   | v14 LTS    | 8.2 – 8.4 | [`main`](https://github.com/TheMightyNighty/ImpExpNL/tree/main) | aktiv (Features + Fixes) |
+| **1.x**   | v13.4 LTS (+ GSB 11) | 8.2 – 8.3 | [`13.x`](https://github.com/TheMightyNighty/ImpExpNL/tree/13.x) | Wartung (Fixes) |
+
+- **`main`** ist die aktuelle v14-Entwicklungslinie (Releases `2.x`).
+- **`13.x`** pflegt die v13.4-Linie weiter (Releases `1.x`) — z. B. für GSB 11.
+- Fixes werden im ältesten betroffenen Branch entwickelt und nach `main` vorgemerged.
+
+Beispiel für gezieltes Pinnen (nur falls nötig):
+
+```bash
+composer require robbi/imp-exp-nl:"^2.0"   # TYPO3 v14
+composer require robbi/imp-exp-nl:"^1.0"   # TYPO3 v13.4
+```
+
+---
+
 ## Installation
 
 Die Extension wird in das Package-Verzeichnis des TYPO3-Projekts kopiert. Anschließend werden Autoloading, Datenbankschema und Cache aktualisiert.
