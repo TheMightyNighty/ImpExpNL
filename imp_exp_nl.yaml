@@ -1,6 +1,8 @@
+# yaml-language-server: $schema=./Configuration/Schema/ImpExpNL.schema.json
 # packages/imp_exp_nl/imp_exp_nl.yaml
 #
 # Hauptkonfiguration für ImpExpNL.
+# (Die obige Modeline aktiviert Autocomplete/Validierung in IDEs mit YAML-Language-Server.)
 # Weitere Extensions können eigene Tabellen registrieren unter:
 #   Configuration/ImpExpNL.yaml (im jeweiligen Extension-Ordner)
 

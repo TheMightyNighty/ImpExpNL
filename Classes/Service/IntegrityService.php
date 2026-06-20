@@ -133,6 +133,14 @@ class IntegrityService
         ksort($array);
     }
 
+    /**
+     * Ist ein Signing-Key konfiguriert (HMAC-Signaturschutz aktiv)?
+     */
+    public function hasSigningKey(): bool
+    {
+        return $this->getSigningKey() !== null;
+    }
+
     private function getSigningKey(): ?string
     {
         $key = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] ?? null;

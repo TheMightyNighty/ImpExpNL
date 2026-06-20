@@ -18,6 +18,10 @@ declare(strict_types=1);
 namespace Robbi\ImpExpNL\Command;
 
 use Robbi\ImpExpNL\Service\ConfigurationService;
+use Robbi\ImpExpNL\Service\ConfigValidationService;
+use Robbi\ImpExpNL\Service\ImportLockService;
+use Robbi\ImpExpNL\Service\IntegrityService;
+use Robbi\ImpExpNL\Service\ProfileService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -26,6 +30,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\ConnectionPool;
+use TYPO3\CMS\Core\Resource\StorageRepository;
 
 #[AsCommand(
     name: 'impexpnl:check',
@@ -40,7 +45,12 @@ class CheckCommand extends Command
 
     public function __construct(
         private readonly ConnectionPool $connectionPool,
-        private readonly ConfigurationService $configurationService
+        private readonly ConfigurationService $configurationService,
+        private readonly ConfigValidationService $configValidationService,
+        private readonly ImportLockService $importLock,
+        private readonly IntegrityService $integrityService,
+        private readonly StorageRepository $storageRepository,
+        private readonly ProfileService $profileService
     ) {
         parent::__construct();
     }
@@ -60,6 +70,9 @@ class CheckCommand extends Command
         $this->checkFilesystem();
         $this->checkConfiguration();
         $this->checkExtensionScan();
+        $this->checkRegistry();
+        $this->checkRuntime();
+        $this->checkProfiles();
 
         $success = $this->errors === 0;
 
@@ -175,6 +188,111 @@ class CheckCommand extends Command
             }
         } else {
             $this->record($section, 'info', 'Keine Extensions mit eigener ImpExpNL.yaml gefunden (optional).');
+        }
+    }
+
+    /**
+     * Preflight-Gate: validiert die gemergte Registry gegen das echte DB-/TCA-Schema
+     * (Tabellen/Felder existieren, MM-/record-Vorgaben, uid_remap) – inkl. Herkunft.
+     */
+    private function checkRegistry(): void
+    {
+        $section = 'Registry-Validierung';
+        try {
+            $issues = $this->configValidationService->validate(
+                $this->configurationService->getRegisteredTables(),
+                $this->configurationService->getLinkRewriteFields(),
+                'tt_content',
+                $this->configurationService->getTableSources()
+            );
+            if ($issues === []) {
+                $this->record($section, 'ok', 'Alle registrierten Tabellen und Felder existieren im Schema.');
+                return;
+            }
+            foreach ($issues as $issue) {
+                $this->record($section, $issue['level'], $issue['message']);
+            }
+        } catch (\Throwable $e) {
+            $this->record($section, 'error', 'Registry-Validierung fehlgeschlagen: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Laufzeit-Preflight: FAL-Default-Storage, Import-Lock und Signatur-Modus.
+     */
+    private function checkRuntime(): void
+    {
+        $section = 'Laufzeit';
+
+        $storageId = $this->configurationService->getFalStorageId();
+        try {
+            $storage = $this->storageRepository->findByUid($storageId);
+            if ($storage === null) {
+                $this->record($section, 'error', "FAL-Default-Storage (uid $storageId) nicht gefunden.");
+            } elseif (!$storage->isOnline()) {
+                $this->record($section, 'warning', "FAL-Default-Storage (uid $storageId) ist offline.");
+            } else {
+                $this->record($section, 'ok', "FAL-Default-Storage (uid $storageId) verfügbar.");
+            }
+        } catch (\Throwable $e) {
+            $this->record($section, 'error', "FAL-Default-Storage (uid $storageId) nicht prüfbar: " . $e->getMessage());
+        }
+
+        try {
+            if ($this->importLock->getActiveLock() === null) {
+                $this->record($section, 'ok', 'Kein aktiver Import-Lock.');
+            } else {
+                $this->record($section, 'warning', 'Aktiver Import-Lock vorhanden – ein Import läuft oder wurde nicht sauber beendet (siehe impexpnl:status / impexpnl:unlock).');
+            }
+        } catch (\Throwable $e) {
+            $this->record($section, 'warning', 'Lock-Status nicht ermittelbar: ' . $e->getMessage());
+        }
+
+        if ($this->integrityService->hasSigningKey()) {
+            $this->record($section, 'ok', 'Signing-Key konfiguriert – HMAC-Signaturschutz aktiv.');
+        } else {
+            $this->record($section, 'info', 'Kein Signing-Key – Integrität nur per Prüfsumme (ohne Signatur).');
+        }
+    }
+
+    /**
+     * Preflight für hinterlegte Import-Profile: parsen/validieren und – falls ein
+     * Profil einen Ziel-Workspace setzt – dessen Existenz prüfen.
+     */
+    private function checkProfiles(): void
+    {
+        $section = 'Profile';
+        $names = $this->profileService->listProfiles();
+        if ($names === []) {
+            $this->record($section, 'info', 'Keine Import-Profile vorhanden (optional).');
+            return;
+        }
+
+        foreach ($names as $name) {
+            try {
+                $profile = $this->profileService->loadProfile($name);
+                $this->record($section, 'ok', "Profil '$name' ist gültig.");
+                $workspace = $profile['workspace'];
+                if ($workspace > 0 && !$this->workspaceExists($workspace)) {
+                    $this->record($section, 'error', "Profil '$name': Ziel-Workspace $workspace existiert nicht.");
+                }
+            } catch (\Throwable $e) {
+                $this->record($section, 'error', "Profil '$name' ungültig: " . $e->getMessage());
+            }
+        }
+    }
+
+    private function workspaceExists(int $uid): bool
+    {
+        try {
+            $connection = $this->connectionPool->getConnectionForTable('sys_workspace');
+            // Workspaces-Extension nicht installiert -> nicht als Fehler werten.
+            if (!in_array('sys_workspace', $connection->createSchemaManager()->listTableNames(), true)) {
+                return true;
+            }
+            return (int)$connection->count('uid', 'sys_workspace', ['uid' => $uid]) > 0;
+        } catch (\Throwable) {
+            return true;
         }
     }
 

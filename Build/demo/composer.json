@@ -1,5 +1,5 @@
 {
-    "name": "robbi/imp-exp-nl-demo",
+    "name": "themightynighty/impexpnl-demo",
     "description": "DDEV-Demo-Projekt für ImpExpNL auf TYPO3 v14 (vanilla, kein GSB).",
     "license": "GPL-2.0-or-later",
     "type": "project",
@@ -13,7 +13,7 @@
         "typo3/cms-tstemplate": "^14.0",
         "typo3/cms-fluid-styled-content": "^14.0",
         "typo3/cms-rte-ckeditor": "^14.0",
-        "robbi/imp-exp-nl": "^2.0"
+        "themightynighty/impexpnl": "^2.0"
     },
     "repositories": [
         {

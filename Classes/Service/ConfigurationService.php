@@ -34,6 +34,8 @@ class ConfigurationService
 
     private ?array $configCache = null;
     private ?array $tableCache = null;
+    /** @var array<string, string>|null  Tabelle => Herkunft (Dateiname bzw. Extension-Key). */
+    private ?array $tableSourceCache = null;
 
     public function __construct(
         private readonly YamlFileLoader $yamlFileLoader,
@@ -145,12 +147,16 @@ class ConfigurationService
         }
 
         $tables = $this->getConfig()['impexpnl']['tables'] ?? [];
+        $sources = array_fill_keys(array_keys($tables), 'imp_exp_nl.yaml');
 
         foreach ($this->getExtensionConfigFiles() as $packageKey => $file) {
             try {
                 $ext = $this->yamlFileLoader->load($file);
                 if (!empty($ext['impexpnl']['tables'])) {
                     $tables = array_merge($tables, $ext['impexpnl']['tables']);
+                    foreach (array_keys($ext['impexpnl']['tables']) as $tableName) {
+                        $sources[$tableName] = 'EXT:' . $packageKey;
+                    }
                 }
             } catch (\Exception $e) {
                 $this->logger->warning('ImpExpNL.yaml fehlerhaft', ['ext' => $packageKey, 'error' => $e->getMessage()]);
@@ -158,7 +164,22 @@ class ConfigurationService
         }
 
         $this->tableCache = $tables;
+        $this->tableSourceCache = $sources;
         return $tables;
+    }
+
+    /**
+     * Herkunft jeder registrierten Tabelle (Dateiname bzw. Extension-Key) –
+     * für aussagekräftige Validierungs-Meldungen.
+     *
+     * @return array<string, string> Tabelle => Herkunft
+     */
+    public function getTableSources(): array
+    {
+        if ($this->tableSourceCache === null) {
+            $this->getRegisteredTables();
+        }
+        return $this->tableSourceCache ?? [];
     }
 
     /**

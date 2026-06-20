@@ -1,5 +1,5 @@
 {
-    "name": "robbi/imp-exp-nl",
+    "name": "themightynighty/impexpnl",
     "type": "typo3-cms-extension",
     "description": "Enterprise CLI Exporter für TYPO3 v14",
     "license": "GPL-2.0-or-later",
@@ -21,7 +21,8 @@
         "friendsofphp/php-cs-fixer": "^3.64",
         "phpstan/phpstan": "^2.0",
         "saschaegerer/phpstan-typo3": "^3.0",
-        "ssch/typo3-rector": "^3.0"
+        "ssch/typo3-rector": "^3.0",
+        "opis/json-schema": "^2.3"
     },
     "autoload": {
         "psr-4": {

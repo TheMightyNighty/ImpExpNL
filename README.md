@@ -65,8 +65,8 @@ in der Regel nicht nötig.
 Beispiel für gezieltes Pinnen (nur falls nötig):
 
 ```bash
-composer require robbi/imp-exp-nl:"^2.0"   # TYPO3 v14
-composer require robbi/imp-exp-nl:"^1.0"   # TYPO3 v13.4
+composer require themightynighty/impexpnl:"^2.0"   # TYPO3 v14
+composer require themightynighty/impexpnl:"^1.0"   # TYPO3 v13.4
 ```
 
 ---
@@ -92,7 +92,7 @@ Die Installation wird geprüft mit:
 ddev exec vendor/bin/typo3 list impexpnl
 ```
 
-Es werden sieben Befehle ausgegeben: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:unlock` und `impexpnl:check`.
+Es werden folgende Befehle ausgegeben: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock` und `impexpnl:migrate-legacy-schema`.
 
 Auf Systemen ohne DDEV wird das Präfix `ddev exec` weggelassen.
 

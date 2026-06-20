@@ -1,0 +1,112 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/TheMightyNighty/ImpExpNL/main/Configuration/Schema/ImpExpNL.schema.json",
+    "title": "ImpExpNL configuration",
+    "description": "Schema für imp_exp_nl.yaml und Configuration/ImpExpNL.yaml (Table-Registry, Export-/Import-Optionen). Für IDE-Autocomplete + Validierung.",
+    "type": "object",
+    "additionalProperties": true,
+    "properties": {
+        "source_id": {
+            "type": "string",
+            "description": "Stabiler Bezeichner des Quellsystems (Multi-Source). Leer = Einzelquelle."
+        },
+        "export": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "include": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                        "file_references": { "type": "boolean" }
+                    }
+                }
+            }
+        },
+        "import": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "include": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                        "file_references": { "type": "boolean" }
+                    }
+                },
+                "container_support": { "type": "boolean" },
+                "batch_size": { "type": "integer", "minimum": 1 },
+                "lock_stale_seconds": { "type": "integer", "minimum": 1 },
+                "auto_rollback_on_failure": { "type": "boolean" },
+                "fal": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                        "storage_id": { "type": "integer", "minimum": 0 }
+                    }
+                },
+                "link_rewrite": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                        "fields": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        }
+                    }
+                }
+            }
+        },
+        "impexpnl": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+                "tables": {
+                    "type": "object",
+                    "description": "Table-Registry: Tabellenname => Definition.",
+                    "additionalProperties": { "$ref": "#/$defs/tableDefinition" }
+                }
+            }
+        }
+    },
+    "$defs": {
+        "tableDefinition": {
+            "type": "object",
+            "additionalProperties": true,
+            "required": ["type"],
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["mm", "record"],
+                    "description": "mm = MM-Tabelle (z. B. sys_category_record_mm), record = normale Record-Tabelle."
+                },
+                "match_field": { "type": "string" },
+                "match_tablenames_field": { "type": "string" },
+                "match_tables": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "category_match": {
+                    "type": "string",
+                    "enum": ["path"]
+                },
+                "pid_field": { "type": "string" },
+                "uid_remap": { "type": "boolean" },
+                "rewrite_links": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                }
+            },
+            "allOf": [
+                {
+                    "if": { "properties": { "type": { "const": "record" } } },
+                    "then": { "required": ["pid_field"] }
+                },
+                {
+                    "if": { "properties": { "type": { "const": "mm" } } },
+                    "then": { "required": ["match_field"] }
+                }
+            ]
+        }
+    }
+}

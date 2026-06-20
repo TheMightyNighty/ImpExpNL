@@ -27,6 +27,7 @@ use Robbi\ImpExpNL\Command\MigrateLegacySchemaCommand;
 use Robbi\ImpExpNL\Command\StatusCommand;
 use Robbi\ImpExpNL\Command\UndoCommand;
 use Robbi\ImpExpNL\Command\UnlockCommand;
+use Robbi\ImpExpNL\Command\ValidateConfigCommand;
 use Robbi\ImpExpNL\Service\ExportService;
 use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
@@ -58,6 +59,7 @@ class CommandSmokeTest extends FunctionalTestCase
             'undo' => [UndoCommand::class, 'impexpnl:undo'],
             'unlock' => [UnlockCommand::class, 'impexpnl:unlock'],
             'migrate' => [MigrateLegacySchemaCommand::class, 'impexpnl:migrate-legacy-schema'],
+            'validate-config' => [ValidateConfigCommand::class, 'impexpnl:validate-config'],
         ];
     }
 
