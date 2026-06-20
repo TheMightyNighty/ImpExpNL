@@ -110,7 +110,7 @@ class RollbackService
      * Macht einen Import vollständig rückgängig.
      * Entfernt FAL-Referenzen, Registry-Daten, Inhalte und Seiten in sicherer Reihenfolge.
      */
-    public function runRollback(?string $importId = null): void
+    public function runRollback(?string $importId = null, bool $force = false): void
     {
         $this->bootstrapService->initializeBackendContext();
 
@@ -136,6 +136,21 @@ class RollbackService
             $this->logger->warning('Protokolldaten sind leer.');
             $this->importLogRepository->delete($importId);
             return;
+        }
+
+        // Sicherheitsnetz: nach dem Import lokal geänderte Ziel-Records nicht blind löschen.
+        $modified = $this->findLocallyModifiedRecords($lastImport, (int)($record['tstamp'] ?? 0));
+        if ($modified !== []) {
+            if (!$force) {
+                throw new \RuntimeException(
+                    'Rollback abgebrochen: ' . count($modified) . ' Ziel-Record(s) wurden nach dem Import lokal '
+                    . "geändert und würden gelöscht. Mit --force trotzdem ausführen.\n - " . implode("\n - ", $modified)
+                );
+            }
+            $this->logger->warning(sprintf(
+                'Rollback mit --force: %d lokal geänderte Record(s) werden trotzdem entfernt.',
+                count($modified)
+            ));
         }
 
         $stats = ['pages' => 0, 'tt_content' => 0, 'sys_file_reference' => 0, 'registry' => 0];

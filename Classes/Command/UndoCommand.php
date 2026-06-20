@@ -67,7 +67,7 @@ class UndoCommand extends Command
                     $output->writeln((string)json_encode(['success' => true, 'dryRun' => true] + $preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                     return Command::SUCCESS;
                 }
-                $this->rollbackService->runRollback($preview['importId']);
+                $this->rollbackService->runRollback($preview['importId'], $force);
                 $output->writeln((string)json_encode(['success' => true, 'dryRun' => false, 'rolledBack' => true] + $preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                 return Command::SUCCESS;
             }
@@ -99,7 +99,7 @@ class UndoCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $this->rollbackService->runRollback($preview['importId']);
+            $this->rollbackService->runRollback($preview['importId'], $force);
             $io->success('Rollback erfolgreich abgeschlossen.');
             return Command::SUCCESS;
         } catch (\Exception $e) {
