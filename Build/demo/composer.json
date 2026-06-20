@@ -13,17 +13,14 @@
         "typo3/cms-tstemplate": "^14.0",
         "typo3/cms-fluid-styled-content": "^14.0",
         "typo3/cms-rte-ckeditor": "^14.0",
-        "robbi/imp-exp-nl": "@dev"
+        "robbi/imp-exp-nl": "^2.0"
     },
     "repositories": [
         {
-            "type": "path",
-            "url": "../..",
-            "options": { "symlink": true }
+            "type": "vcs",
+            "url": "https://github.com/TheMightyNighty/ImpExpNL.git"
         }
     ],
-    "minimum-stability": "dev",
-    "prefer-stable": true,
     "config": {
         "allow-plugins": {
             "typo3/class-alias-loader": true,

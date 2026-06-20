@@ -27,6 +27,8 @@ use Robbi\ImpExpNL\Command\MigrateLegacySchemaCommand;
 use Robbi\ImpExpNL\Command\StatusCommand;
 use Robbi\ImpExpNL\Command\UndoCommand;
 use Robbi\ImpExpNL\Command\UnlockCommand;
+use Robbi\ImpExpNL\Service\ExportService;
+use Symfony\Component\Console\Application;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
 use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
@@ -71,6 +73,13 @@ class CommandSmokeTest extends FunctionalTestCase
             $command->getName(),
             sprintf('%s ist nicht über #[AsCommand] registriert', $class)
         );
+
+        // Globale Definition mergen (wie beim echten Application-Lauf): deckt
+        // Options-Kollisionen mit Symfony-Builtins auf, z.B. ein eigenes
+        // --verbose, das in Symfony 7 / TYPO3 v14 zum Fehler führt.
+        $command->setApplication(new Application());
+        $command->mergeApplicationDefinition();
+        self::assertTrue($command->getDefinition()->hasOption('verbose'));
     }
 
     #[Test]
@@ -99,5 +108,35 @@ class CommandSmokeTest extends FunctionalTestCase
         $data = json_decode((string)file_get_contents($exportFile), true);
         self::assertIsArray($data['pages'] ?? null);
         self::assertContains(1, array_column($data['pages'], 'uid'), 'Startseite fehlt im Export');
+    }
+
+    /**
+     * Führt impexpnl:import über eine echte Application aus (Dry-Run) auf Ziel-PID 0.
+     * Deckt zwei nur via CLI sichtbare Regressionen ab: die --verbose-Options-Kollision
+     * und die Behandlung der gültigen Wurzel-PID 0 (darf nicht als "fehlt" gelten).
+     */
+    #[Test]
+    public function importCommandRunsViaApplicationToRootPid(): void
+    {
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/pages.csv');
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/tt_content.csv');
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/be_users.csv');
+        $this->setUpBackendUser(1);
+
+        $importFile = $this->instancePath . '/var/cmd_import.json';
+        @mkdir(dirname($importFile), 0775, true);
+        file_put_contents($importFile, $this->get(ExportService::class)->exportTree(1));
+
+        $application = new Application();
+        $application->add($this->get(ImportCommand::class));
+        $tester = new CommandTester($application->find('impexpnl:import'));
+
+        $exitCode = $tester->execute([
+            'file' => $importFile,
+            'targetPid' => 0,
+            '--dry-run' => true,
+        ]);
+
+        self::assertSame(Command::SUCCESS, $exitCode, $tester->getDisplay());
     }
 }

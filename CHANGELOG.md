@@ -26,6 +26,8 @@ Kompatibilität mit **TYPO3 v14 LTS**. Die v13.4-Linie wird im Branch `13.x` (Re
 
 ### Behoben / v14-API
 - `FalResolverService`: `StorageRepository::getStorageObject()` statt der in v14 entfernten `ResourceFactory::getStorageObject()`.
+- `impexpnl:import`: eigene `--verbose`-Option entfernt (kollidierte in Symfony 7 / TYPO3 v14 mit dem globalen `-v`); Feld-Diff läuft nun über die eingebaute Verbosity (`-v`).
+- `impexpnl:import`: Ziel-PID `0` (Wurzel) wird nicht mehr fälschlich als „fehlt" behandelt.
 
 ### Performance
 - Massenimport: `DataHandler`-Läufe (Seiten-/Inhalts-Batches, Slug, IRRE) je in einer DB-Transaktion gebündelt — ~70 s → ~15 s pro 1000 Seiten (SQLite-Messung). Logging/Fehlererkennung unverändert.

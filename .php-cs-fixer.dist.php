@@ -18,6 +18,9 @@ $config->getFinder()
     ->in(__DIR__ . '/Classes')
     ->in(__DIR__ . '/Tests')
     ->in(__DIR__ . '/Build')
+    // Das DDEV-Demo-Projekt ist eine eigenständige Composer-Installation
+    // (generiertes public/, vendor/) und enthält keinen eigenen Quellcode.
+    ->exclude('demo')
     ->name('*.php');
 
 return $config;
