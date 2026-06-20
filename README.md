@@ -2,8 +2,6 @@
 
 ImpExpNL ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist für **TYPO3 v14 LTS** entwickelt (Doctrine DBAL 4). Für **TYPO3 v13.4 LTS** (und GSB 11) siehe den Branch `13.x` / die `1.x`-Releases.
 
-> **Hinweis:** Dieser Branch (`13.x`) pflegt die **TYPO3-v13.4-Linie** (`1.x`-Releases). Für **TYPO3 v14** siehe den Branch [`main`](https://github.com/TheMightyNighty/ImpExpNL/tree/main) bzw. die `2.x`-Releases.
-
 Beim Export wird ein vollständiger Seitenbaum einschließlich aller Inhaltselemente, FAL-Referenzen, Systemkategorien, Redirects, Container-Layouts und IRRE-Relationen als JSON-Datei gespeichert. Beim Import werden alle internen Verknüpfungen (UIDs, Seiten-Links, Sprach-Overlays, Container-Hierarchien, Kategorie-Zuordnungen) automatisch auf die Zielstruktur umgeschrieben.
 
 Zusätzliche Tabellen können rein deklarativ über YAML-Konfiguration registriert werden. PHP-Code ist dafür nicht erforderlich.
