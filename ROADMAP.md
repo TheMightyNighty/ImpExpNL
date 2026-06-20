@@ -67,4 +67,8 @@ Diese Erweiterbarkeit robust und einladend machen:
 - [ ] **Dependabot** (`composer` + `github-actions`) zur automatischen Pflege der Dev-Deps/Actions.
 - [ ] **Multi-Source-Delta für Registry-Tabellen** — Idempotenz über `tx_impexpnl_uid_map`
   auch für registrierte Tabellen nutzen (heute nur `pages`/`tt_content`).
-- [ ] **TER-Veröffentlichung** der 2.x-Linie.
+- [ ] **Streamender Import** — Datei records-weise verarbeiten (konstanter Speicher
+  unabhängig von der Dateigröße), statt JSON/JSONL vollständig in den Speicher zu
+  parsen. Relevant für Bäume deutlich über 50.000 Records. Der DataHandler-Teil ist
+  bereits gechunkt; offen ist der streamende Parser/Importfluss.
+- [ ] **Veröffentlichung** über Packagist (`composer require`) und TER.

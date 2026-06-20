@@ -152,7 +152,7 @@ ddev exec vendor/bin/typo3 impexpnl:export <Start-PID> <Zielpfad> [Optionen]
 | `--since=2026-01-01` | Zeitbasierter Filter. Es werden nur Records exportiert, deren `tstamp` nach dem angegebenen Datum liegt. Damit wird die Datenmenge bei Delta-Transfers erheblich reduziert. |
 | `--content-types=text,textmedia` | Einschränkung auf bestimmte CTypes. Alle anderen Inhaltselemente werden nicht exportiert. |
 | `--csv` | Erzeugung zusätzlicher CSV-Dateien (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). Diese Dateien können in Tabellenkalkulationsprogrammen geöffnet werden, um die Exportdaten vor dem Import tabellarisch zu prüfen oder mit anderen Datenquellen abzugleichen. |
-| `--jsonl` | Speicherschonendes JSONL-Format (ein JSON-Objekt pro Zeile) für sehr große Bäume. Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. |
+| `--jsonl` | Zeilenweise geschriebenes JSONL-Format (ein JSON-Objekt pro Zeile) — kompakt und speicherschonend beim Export (kein einzelnes `json_encode` über den gesamten Block). Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. (Hinweis: Der Import parst beide Formate aktuell vollständig in den Speicher — siehe Abschnitt „Chunked Verarbeitung".) |
 
 ### Erzeugte Dateien
 
@@ -219,7 +219,9 @@ Der Import in einen Workspace (z.B. `--target-workspace=1`) nutzt den regulären
 
 Bei großen Seitenbäumen (mehrere tausend Records) werden die Daten automatisch in Batches à 500 Records verarbeitet. Seiten werden vor den Inhalten verarbeitet, damit die PID-Zuordnung beim Import der Inhalte bereits aufgelöst ist. Eine Fortschrittsanzeige gibt Rückmeldung über den Verarbeitungsstand.
 
-Die Prüfsummenberechnung erfolgt inkrementell pro Record, sodass der Speicherbedarf nicht mit der Gesamtgröße des Exports skaliert. Die JSON-Datei selbst wird jedoch vollständig in den Speicher geladen; bei extrem großen Bäumen (deutlich über 50.000 Records) ist perspektivisch ein streamingfähiges Format (JSONL) vorgesehen.
+Die Prüfsummenberechnung erfolgt inkrementell pro Record. Beim **Export** schreibt das JSONL-Format (`--jsonl`) zeilenweise und vermeidet so ein einzelnes, sehr großes `json_encode` über den gesamten Datenblock.
+
+Beim **Import** werden derzeit beide Formate (JSON wie JSONL) zunächst vollständig in den Speicher geparst; erst die anschließende DataHandler-Verarbeitung läuft gechunkt (Batches à 500 Records). JSONL ist hier kompakter und zeilenweise lesbar, senkt den Spitzenbedarf des Datei-Parsens aber nur begrenzt. Ein **vollständig streamender Import** (konstanter Speicher unabhängig von der Dateigröße, für Bäume deutlich über 50.000 Records) ist als künftige Ausbaustufe vorgesehen — siehe [ROADMAP.md](ROADMAP.md).
 
 ### Slug-Regenerierung
 
