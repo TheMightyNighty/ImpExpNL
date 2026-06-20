@@ -28,6 +28,30 @@ Schwerpunkt nach der v14-Migration ist die Robustheit des vorhandenen Funktionsu
   Functional-Tests zusätzlich gegen MariaDB (nicht nur SQLite) in der Matrix;
   Prüfen, ob das PHPStan-Level angehoben werden kann.
 
+### Konfiguration & Community-Profile (Extensibility-Härtung)
+
+Grundlage existiert bereits: Jede aktive Extension mit `Configuration/ImpExpNL.yaml`
+(`impexpnl.tables`) wird automatisch in die Registry gemerged
+(`ConfigurationService::getRegisteredTables()`). Das ist die bevorzugte Konvention
+(„Extensions liefern ihre Profile selbst mit", analog zu Site Sets) — **bewusst
+keine** separaten `impexpnl-preset-*`-Pakete, die nur Wartungsaufwand brächten.
+Die Community kann so Stück für Stück Profile beisteuern, ohne dass der Core wächst.
+
+Diese Erweiterbarkeit robust und einladend machen:
+
+- [ ] **`impexpnl:validate-config`** — validiert die gemergte Registry: Existieren
+  die Tabellen im TCA? Existieren referenzierte Felder (`match_field`, `pid_field`,
+  `rewrite_links`, `link_rewrite.fields`)? Sind pro `type` (mm/record) die nötigen
+  Schlüssel gesetzt und die Werte gültig? Klare, umsetzbare Fehlermeldungen.
+- [ ] **JSON-/YAML-Schema** für `ImpExpNL.yaml` → Autocomplete + Inline-Validierung
+  in IDEs und optional in der CI.
+- [ ] **Klare Fehlermeldungen** bei ungültigen Tabellen/Feldern (Ausgabe von
+  `validate-config`; auch zur Laufzeit statt stillem Überspringen).
+- [ ] **Beispiele** als kommentierte `Configuration/ImpExpNL.yaml`-Snippets:
+  Standardfall sowie FAL, MM, IRRE, Kategorien (Pfad-Matching) und FlexForms.
+- [ ] **Test-Fixtures für Extension-Profile** — Functional-Test, der ein
+  Beispiel-Profil einer Fremd-Extension mergt und validiert.
+
 ## Später
 
 - [ ] **Backend-Modul (GUI)** — *zurückgestellt*
