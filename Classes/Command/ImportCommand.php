@@ -28,6 +28,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 #[AsCommand(name: 'impexpnl:import', description: 'Importiert Seiten und Inhalte aus einer JSON-Datei.')]
 class ImportCommand extends Command
@@ -47,7 +48,6 @@ class ImportCommand extends Command
             ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Nur Analyse, keine Datenänderung')
             ->addOption('delta', null, InputOption::VALUE_NONE, 'Nur Änderungen importieren')
             ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Konflikt-Strategie: overwrite, skip, ask', 'overwrite')
-            ->addOption('verbose', 'v', InputOption::VALUE_NONE, 'Feld-Diff bei Änderungen anzeigen')
             ->addOption('target-workspace', 'w', InputOption::VALUE_OPTIONAL, 'Ziel-Workspace (0=Live)', 0)
             ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Import-Profil laden (aus var/impexpnl_profiles/)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
@@ -71,12 +71,14 @@ class ImportCommand extends Command
             $io->note("Profil '$profileName' geladen.");
         } else {
             $file = $input->getArgument('file');
-            $targetPid = (int)$input->getArgument('targetPid');
+            $targetPidArg = $input->getArgument('targetPid');
 
-            if (!$file || !$targetPid) {
+            // targetPid 0 (Wurzel) ist gültig – daher explizit auf null prüfen, nicht auf "falsy".
+            if ($file === null || $targetPidArg === null) {
                 $io->error('Entweder --profile oder <file> und <targetPid> angeben.');
                 return Command::FAILURE;
             }
+            $targetPid = (int)$targetPidArg;
 
             $options = [
                 'workspaceId' => (int)$input->getOption('target-workspace'),
@@ -85,8 +87,13 @@ class ImportCommand extends Command
             ];
         }
 
+        // Pfad symmetrisch zum Export auflösen (relativ zum Public-Verzeichnis).
+        $file = GeneralUtility::getFileAbsFileName((string)$file) ?: (string)$file;
+
         $options['dryRun'] = (bool)$input->getOption('dry-run');
-        $options['verbose'] = (bool)$input->getOption('verbose');
+        // Feld-Diff über die eingebaute Symfony-Verbosity (-v) statt eigener Option
+        // (Letztere kollidiert mit dem globalen --verbose).
+        $options['verbose'] = $output->isVerbose();
         $jsonOutput = (bool)$input->getOption('json');
 
         // Konflikt-Strategie früh validieren (ungültige Werte sollen nicht still wie overwrite wirken).

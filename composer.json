@@ -1,8 +1,8 @@
 {
-    "name": "robbi/imp-exp-nl",
+    "name": "themightynighty/impexpnl",
     "type": "typo3-cms-extension",
     "description": "Enterprise CLI Exporter für TYPO3 v13 & GSB 11",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "license": "GPL-2.0-or-later",
     "authors": [
         {

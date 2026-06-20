@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.0.2
+
+Hardening der CLI-Befehle (TYPO3 v13.4 / Symfony 6). Beim realen DDEV-/Container-Test gefunden.
+
+### Behoben
+- `impexpnl:import` lief unter Symfony 6 nicht: eigene `--verbose`-Option kollidierte mit dem globalen `-v` → entfernt, Feld-Diff nun über die eingebaute Verbosity (`-v`).
+- `impexpnl:import`: Ziel-PID `0` (Wurzel) wurde fälschlich als „fehlt" gewertet.
+- `impexpnl:import`: relative Dateipfade werden wie beim Export aufgelöst (`getFileAbsFileName`).
+- `BootstrapService`: CLI-Backend-User (`_cli_`) wird korrekt authentifiziert und der Backend-Request mit `applicationType` (Int `REQUESTTYPE_BE`) versehen — behebt „Attempt to modify table … without permission" bzw. „No valid attribute applicationType found in request object" beim CLI-Import.
+- `ImportLogRepository::findLatest()`: eindeutiger Tie-Break (`uid`) bei Importen in derselben Sekunde.
+
+### Geändert
+- Composer-Paketname auf `themightynighty/impexpnl` (einheitlich über alle Branches für Packagist).
+- `phpunit.functional.xml`: `memory_limit=512M` (v13.4 `TcaSchemaFactory`).
+
 ## 1.0.0
 
 Erste Version als **ImpExpNL** — strukturierter Export/Import von TYPO3-Seitenbäumen
