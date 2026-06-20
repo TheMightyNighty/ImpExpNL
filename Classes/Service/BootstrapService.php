@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Robbi\ImpExpNL\Service;
 
 use TYPO3\CMS\Core\Authentication\BackendUserAuthentication;
+use TYPO3\CMS\Core\Authentication\CommandLineUserAuthentication;
 use TYPO3\CMS\Core\Core\Bootstrap;
 use TYPO3\CMS\Core\Http\ApplicationType;
 use TYPO3\CMS\Core\Http\ServerRequest;
@@ -26,12 +27,16 @@ class BootstrapService
 {
     /**
      * Stellt den Backend-Kontext für CLI-Commands über den nativen TYPO3
-     * CLI-Backend-User (_cli_) her. Ein bereits vorhandener BE_USER
+     * CLI-Backend-User (_cli_) her. Ein bereits *authentifizierter* BE_USER
      * (Functional-Tests, Backend-Modul) wird respektiert.
      */
     public function initializeBackendContext(int $workspaceId = 0): void
     {
-        if (($GLOBALS['BE_USER'] ?? null) instanceof BackendUserAuthentication) {
+        $beUser = $GLOBALS['BE_USER'] ?? null;
+        // Wichtig: nur ein wirklich authentifizierter User (->user geladen) zählt.
+        // Ein bloß instanziierter, aber nicht eingeloggter BE_USER (->user leer)
+        // führt sonst zu „Attempt to modify table … without permission“.
+        if ($beUser instanceof BackendUserAuthentication && !empty($beUser->user['uid'])) {
             $this->setWorkspace($workspaceId);
             return;
         }
@@ -42,12 +47,13 @@ class BootstrapService
                 ->withAttribute('applicationType', ApplicationType::BACKEND);
         }
 
-        // Nativer CLI-Backend-User (_cli_) des TYPO3-Cores.
+        // Nativen CLI-Backend-User (_cli_, Admin) erzeugen UND authentifizieren.
+        Bootstrap::initializeBackendUser(CommandLineUserAuthentication::class, $GLOBALS['TYPO3_REQUEST']);
         Bootstrap::initializeBackendAuthentication();
 
-        if (!(($GLOBALS['BE_USER'] ?? null) instanceof BackendUserAuthentication)) {
+        if (empty($GLOBALS['BE_USER']->user['uid'])) {
             throw new \RuntimeException(
-                'Backend-Authentifizierung fehlgeschlagen: Es konnte kein CLI-Backend-User (_cli_) initialisiert werden.'
+                'Backend-Authentifizierung fehlgeschlagen: Es konnte kein CLI-Backend-User (_cli_) authentifiziert werden.'
             );
         }
 
