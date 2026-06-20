@@ -612,17 +612,23 @@ den eingebauten Auto-Rollback. Der nächste Lauf erkennt den stehengebliebenen L
 (`impexpnl:status`) und das als „abgebrochen" markierte Import-Protokoll; dann gilt **undo-then-retry**
 statt blindem Neustart. Pod-Memory ausreichend dimensionieren (große Bäume) oder JSONL nutzen.
 
-### Migration aus „robbi_copy"
+### Migration aus älteren Versionen
 
-Bestehende Installationen der Vorgänger-Extension nach dem Schema-Update übernehmen:
+`impexpnl:migrate-legacy-schema` überführt bestehende Installationen nach dem
+Schema-Update. Der Befehl erkennt beide Altstände automatisch:
+
+- **ImpExpNL 1.x → 2.0:** das Herkunfts-Feld `tx_impexpnl_remote_uid` auf
+  `pages`/`tt_content` wird in die neue Tabelle `tx_impexpnl_uid_map` überführt.
+- **Vorgänger-Extension „robbi_copy":** Daten aus `tx_robbicopy_*` werden übernommen.
 
 ```bash
-vendor/bin/typo3 extension:setup                        # neues Schema (tx_impexpnl_*) anlegen
-vendor/bin/typo3 impexpnl:migrate-legacy-schema         # Daten aus tx_robbicopy_* übernehmen
-vendor/bin/typo3 impexpnl:migrate-legacy-schema --drop-legacy   # optional: Alt-Schema entfernen
+vendor/bin/typo3 extension:setup                        # neues Schema (tx_impexpnl_uid_map etc.) anlegen
+vendor/bin/typo3 impexpnl:migrate-legacy-schema         # Herkunfts-Mapping/Altdaten übernehmen
+vendor/bin/typo3 impexpnl:migrate-legacy-schema --drop-legacy   # optional: Alt-Spalten/-Tabellen entfernen
 ```
 
-Der Befehl ist idempotent und pipeline-tauglich.
+> **Reihenfolge wichtig:** erst migrieren, dann `--drop-legacy` – sonst geht das
+> Herkunfts-Mapping verloren. Der Befehl ist idempotent und pipeline-tauglich.
 
 ---
 
@@ -648,7 +654,7 @@ Die Testdatenbank wird pro Testlauf automatisch erstellt und nach Abschluss gel�
 Das `typo3/testing-framework` (`^9.3` für TYPO3 v14) ist bereits als `require-dev` in der `composer.json` eingetragen und wird durch `composer install` mitinstalliert. Bei Bedarf manuell:
 
 ```bash
-ddev composer require --dev typo3/testing-framework:^8.0
+ddev composer require --dev typo3/testing-framework:^9.3
 ```
 
 ### Datenbank-Konfiguration
