@@ -1,0 +1,11 @@
+name: impexpnl-demo
+type: typo3
+docroot: public
+php_version: "8.4"
+webserver_type: nginx-fpm
+database:
+  type: mariadb
+  version: "10.11"
+composer_version: "2"
+# Die Extension wird über ein Path-Repository aus dem Repo-Wurzelverzeichnis
+# eingebunden (siehe composer.json) – kein TER/Packagist nötig.

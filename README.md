@@ -43,6 +43,8 @@ EXT:impexp kann UID-Remapping, Relationen und FAL durchaus – die Tabelle hebt 
 - TYPO3 14 LTS
 - Composer-basierte TYPO3-Installation
 
+> **Schnell ausprobieren:** Ein lauffähiges DDEV-Demo-Projekt (vanilla TYPO3 v14, Extension per Path-Repository) liegt unter [`Build/demo/`](Build/demo/README.md) — `ddev start` und loslegen.
+
 ---
 
 ## Installation
@@ -187,7 +189,7 @@ Ein Konflikt liegt vor, wenn ein Record auf dem Zielsystem einen neueren Zeitste
 
 ### Workspace-Import
 
-Der Import in einen Workspace (z.B. `--target-workspace=1`) entspricht dem Freigabeprozess des GSB 11. Die importierten Inhalte erscheinen nicht sofort auf der Live-Website, sondern werden in einem Entwurfs-Workspace abgelegt. Die Veröffentlichung erfolgt über die regulären TYPO3-Workspace-Funktionen.
+Der Import in einen Workspace (z.B. `--target-workspace=1`) nutzt den regulären TYPO3-Workspace-Freigabeprozess (im GSB 11 der Redaktions-Workflow). Die importierten Inhalte erscheinen nicht sofort auf der Live-Website, sondern werden in einem Entwurfs-Workspace abgelegt. Die Veröffentlichung erfolgt über die regulären TYPO3-Workspace-Funktionen.
 
 ### Chunked Verarbeitung
 
@@ -385,7 +387,7 @@ import:
     fields:                     # Felder mit t3://page-Links
       - bodytext
       - pi_flexform
-      - tx_gsb_accordion_text
+      # eigene/Extension-Felder ergänzen, z.B. bei GSB 11: tx_gsb_accordion_text
 
 impexpnl:
   tables:
@@ -431,13 +433,15 @@ Wird eine signierte Datei auf einem System ohne (passenden) Schlüssel importier
 
 ---
 
-## GSB 11
+## Praxis-Szenarien
+
+ImpExpNL ist eine generische TYPO3-Extension und benötigt kein bestimmtes Sitepackage. Die folgenden Szenarien funktionieren auf normalem TYPO3 v14 ebenso wie auf **GSB 11** (Government Site Builder, TYPO3-13-basiert; dort über den `13.x`-Branch) — die GSB-Kompatibilität ist ein Bonus, keine Voraussetzung.
 
 **Container-Layouts.** Die `tx_container_parent`-Verknüpfungen des b13/container-Pakets werden beim Import auf die neuen UIDs umgeschrieben. Grid-Layouts, Akkordeons und Tabs bleiben nach dem Import intakt.
 
 **FAL.** Dateireferenzen werden über den Dateipfad (`identifier`) aufgelöst, nicht über die `sys_file.uid`. Das ermöglicht den Transfer zwischen Instanzen mit unterschiedlicher FAL-Indexierung.
 
-**Workspaces.** Der Import in einen Entwurfs-Workspace entspricht dem Freigabeprozess der Bundesverwaltung.
+**Workspaces.** Der Import in einen Entwurfs-Workspace nutzt den regulären TYPO3-Workspace-Freigabeprozess (z. B. den Redaktions-Workflow im GSB 11).
 
 **Redirects.** `sys_redirect`-Einträge werden über die Table-Registry exportiert, importiert und beim Rollback entfernt. Links im `target`-Feld werden automatisch umgeschrieben.
 

@@ -1,0 +1,38 @@
+{
+    "name": "robbi/imp-exp-nl-demo",
+    "description": "DDEV-Demo-Projekt für ImpExpNL auf TYPO3 v14 (vanilla, kein GSB).",
+    "license": "GPL-2.0-or-later",
+    "type": "project",
+    "require": {
+        "php": "^8.2",
+        "typo3/cms-core": "^14.0",
+        "typo3/cms-backend": "^14.0",
+        "typo3/cms-frontend": "^14.0",
+        "typo3/cms-install": "^14.0",
+        "typo3/cms-setup": "^14.0",
+        "typo3/cms-tstemplate": "^14.0",
+        "typo3/cms-fluid-styled-content": "^14.0",
+        "typo3/cms-rte-ckeditor": "^14.0",
+        "robbi/imp-exp-nl": "@dev"
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../..",
+            "options": { "symlink": true }
+        }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "typo3/class-alias-loader": true,
+            "typo3/cms-composer-installers": true
+        }
+    },
+    "extra": {
+        "typo3/cms": {
+            "web-dir": "public"
+        }
+    }
+}

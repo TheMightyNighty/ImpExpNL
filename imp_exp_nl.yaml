@@ -25,10 +25,12 @@ import:
   fal:
     storage_id: 1             # Default-Storage, falls eine Referenz keine eigene Angabe trägt
   link_rewrite:
+    # Felder, in denen t3://page-Links auf die Ziel-UIDs umgeschrieben werden.
+    # Hier eigene/Extension-spezifische Felder ergänzen, z.B. bei GSB 11:
+    #   - tx_gsb_accordion_text
     fields:
       - bodytext
       - pi_flexform
-      - tx_gsb_accordion_text
 
 # ============================================================================
 # Table-Registry: Deklarativer Export/Import beliebiger Tabellen.
