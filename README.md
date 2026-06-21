@@ -1,4 +1,4 @@
-# ImpExpNL v2.0.0 (TYPO3 v14)
+# ImpExpNL — TYPO3 v14 (2.x)
 
 ImpExpNL ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist für **TYPO3 v14 LTS** entwickelt (Doctrine DBAL 4). Für **TYPO3 v13.4 LTS** (und GSB 11) siehe den Branch `13.x` / die `1.x`-Releases.
 
@@ -610,13 +610,16 @@ Geprüft werden:
 
 - **Datenbankschema:** Existenz der Tabellen `tx_impexpnl_import_log`, `tx_impexpnl_lock` und `tx_impexpnl_uid_map`.
 - **Dateisystem:** Schreibrechte auf `var/` und `var/log/`. Existenz des Profil-Verzeichnisses `var/impexpnl_profiles/`.
-- **YAML-Konfiguration:** Syntaxprüfung der `imp_exp_nl.yaml`. Auflistung der registrierten Tabellen und Link-Rewrite-Felder.
+- **Registry-Validierung (Preflight):** `check` führt dieselbe Prüfung wie `impexpnl:validate-config` aus — registrierte Tabellen existieren, `pid_field`/`rewrite_links`/MM-Felder und `match_tables` referenzieren bekannte TCA-Tabellen, `type` gültig (inkl. Herkunfts-Angabe und „Did you mean?"-Vorschlägen bei Tippfehlern).
+- **Laufzeit-Checks:** FAL-Default-Storage erreichbar, Import-Lock-Status, Signing-Key-Modus (HMAC aktiv/inaktiv), Parsing der Profile inkl. Existenz des Ziel-Workspaces.
 - **Extension-Scan:** Erkennung aller geladenen Extensions, die eine eigene `Configuration/ImpExpNL.yaml` bereitstellen.
 
-Bei Fehlern gibt der Befehl Exit-Code 1 zurück. Bei Warnungen ohne Fehler wird Exit-Code 0 zurückgegeben. Das ermöglicht die Einbindung in Deployment-Skripte:
+Für die reine Konfigurationsprüfung ohne Laufzeit-Checks gibt es zusätzlich `impexpnl:validate-config`. Beide Befehle unterstützen `--json`.
+
+Bei einem Fehler geben `check`/`validate-config` Exit-Code **`2`** (ungültige Konfiguration) zurück, sonst `0`; Warnungen allein führen nicht zum Fehlschlag. Die vollständige Liste der Exit-Codes steht im Abschnitt [Exit-Codes](#exit-codes). Das ermöglicht die Einbindung in Deployment-Skripte:
 
 ```bash
-vendor/bin/typo3 impexpnl:check || echo "ImpExpNL: Systemprüfung fehlgeschlagen"
+vendor/bin/typo3 impexpnl:check || echo "ImpExpNL: Systemprüfung fehlgeschlagen (siehe Exit-Code)"
 ```
 
 ---

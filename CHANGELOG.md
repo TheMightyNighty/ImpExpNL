@@ -53,6 +53,9 @@ kompatible Features (differenzierte Exit-Codes, `--conflict=abort`).
 - README: Installation **Composer-first** geordnet (`composer require` als Hauptweg; Path-/VCS-Repo
   für Entwicklung, TER optional, DDEV-Demo nur zum Ausprobieren). Die beiden Exit-Code-Tabellen
   zu einer kanonischen zusammengeführt.
+- README: Titel neutral auf „TYPO3 v14 (2.x)" (keine harte Versionsnummer mehr im Kopf).
+- README: Abschnitt **„Systemprüfung"** auf den aktuellen `check`-Stand gebracht (Registry-Preflight
+  wie `validate-config`, Laufzeit-Checks, Exit-Code `2` statt `1`, Verweis auf die Exit-Code-Tabelle).
 
 ### Tests
 - Neu: `DryRunMatchesImportTest`, `RollbackSafetyTest`, `FalEdgeCasesTest`,
