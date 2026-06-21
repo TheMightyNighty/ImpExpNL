@@ -189,7 +189,7 @@ Ein Konflikt liegt vor, wenn ein Record auf dem Zielsystem einen neueren Zeitste
 
 ### Workspace-Import
 
-Der Import in einen Workspace (z.B. `--target-workspace=1`) entspricht dem Freigabeprozess des GSB 11. Die importierten Inhalte erscheinen nicht sofort auf der Live-Website, sondern werden in einem Entwurfs-Workspace abgelegt. Die Veröffentlichung erfolgt über die regulären TYPO3-Workspace-Funktionen.
+Der Import in einen Workspace (z.B. `--target-workspace=1`) entspricht dem Freigabeprozess des GSB 11. Die importierten Inhalte erscheinen nicht sofort auf der Live-Website, sondern werden als Workspace-Versionen abgelegt und über die regulären TYPO3-Workspace-Funktionen freigegeben. Beim Freigeben (Publish) werden die Versionen mit korrekt umgeschriebenen Links nach Live überführt. Ein noch nicht freigegebener Workspace-Import lässt sich mit `impexpnl:undo` rückstandsfrei zurücknehmen (siehe Abschnitt „Rollback").
 
 ### Chunked Verarbeitung
 
@@ -247,7 +247,7 @@ ddev exec vendor/bin/typo3 impexpnl:undo --dry-run
 ddev exec vendor/bin/typo3 impexpnl:undo 20260329_142348_a1b2c3 --force
 ```
 
-Vor dem Löschen zeigt `undo` eine Vorschau (betroffene Anzahl, Quelldatei) und warnt, falls importierte Records nach dem Import lokal bearbeitet wurden – deren Änderungen gingen sonst unbemerkt verloren. Ohne `--force` wird interaktiv bestätigt; `--dry-run` zeigt nur die Vorschau.
+Vor dem Löschen zeigt `undo` eine Vorschau (betroffene Anzahl, Quelldatei). Wurden importierte Records nach dem Import lokal bearbeitet (neuerer `tstamp` als der Import), **bricht der Rollback ab** und listet die betroffenen Records auf – damit lokale Änderungen nicht unbemerkt verloren gehen. Mit `--force` wird trotzdem gelöscht (der Auto-Rollback nach einem Importabbruch nutzt diesen Pfad intern für seine eigenen Records). Ohne `--force` wird zusätzlich interaktiv bestätigt; `--dry-run` zeigt nur die Vorschau.
 
 Der Rollback entfernt in fester Reihenfolge:
 
@@ -257,6 +257,8 @@ Der Rollback entfernt in fester Reihenfolge:
 4. Seiten (`pages`), in umgekehrter Reihenfolge (Kindseiten vor Elternseiten)
 
 Das Import-Protokoll wird nach erfolgreichem Rollback aus der Datenbank entfernt. Der Rollback wird im Transaktionslog dokumentiert.
+
+Der Rollback läuft im selben Workspace wie der ursprüngliche Import (die `workspace_id` steht im Protokoll). Ein Workspace-Import wird damit korrekt rückgängig gemacht – die im Workspace angelegten Versionen werden entfernt, das Live-System bleibt unberührt.
 
 ---
 

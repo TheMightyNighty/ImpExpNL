@@ -29,6 +29,7 @@ use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Core\DataHandling\TableColumnType;
 use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
@@ -62,6 +63,9 @@ class ImportService
 
     /** @var array<string, array<string, true>> Vorhandene DB-Spalten je Tabelle (Cache). */
     private array $knownColumnsCache = [];
+
+    /** @var array<string, array<string, true>> Relations-Container-Felder je Tabelle (Cache). */
+    private array $relationFieldCache = [];
 
     public function __construct(
         private readonly EventDispatcherInterface $eventDispatcher,
@@ -177,6 +181,9 @@ class ImportService
         $exportedPageUids = array_column($pages, 'uid');
         $exportedContentUids = array_column($ttContent, 'uid');
         $stats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0, 'errors' => 0];
+        // Alt-UID der Übersetzung → Alt-UID des Übersetzungs-Elternteils. Nach dem Batch
+        // werden l10n_parent/l18n_parent auf die remappten Eltern-UIDs aufgelöst.
+        $l10nFixups = ['pages' => [], 'tt_content' => []];
 
         $pageDatamap = [];
         foreach ($pages as $page) {
@@ -225,6 +232,7 @@ class ImportService
             if (((int)($page['sys_language_uid'] ?? 0) > 0) && !empty($page['l10n_parent']) && $page['l10n_parent'] > 0) {
                 $pOld = (int)$page['l10n_parent'];
                 $recordData['l10n_parent'] = $this->uidMap->get('pages', $pOld) ?? self::NEW_PAGE_PREFIX . $pOld;
+                $l10nFixups['pages'][$oldUid] = $pOld;
             }
 
             $pageDatamap[$newIdString] = $recordData;
@@ -277,6 +285,7 @@ class ImportService
             if (((int)($content['sys_language_uid'] ?? 0) > 0) && !empty($content['l18n_parent']) && $content['l18n_parent'] > 0) {
                 $pOld = (int)$content['l18n_parent'];
                 $recordData['l18n_parent'] = $this->uidMap->get('tt_content', $pOld) ?? self::NEW_CONTENT_PREFIX . $pOld;
+                $l10nFixups['tt_content'][$oldContentUid] = $pOld;
             }
 
             if (!empty($config['import']['container_support']) && !empty($content['tx_container_parent'])
@@ -308,6 +317,9 @@ class ImportService
         unset($recordData);
 
         $this->executeBatchedDataHandler('tt_content', $contentDatamap, $onProgress);
+
+        // l10n_parent/l18n_parent der Übersetzungen auf die remappten Eltern-UIDs auflösen.
+        $this->applyL10nFixups($l10nFixups);
 
         // Sub-Services arbeiten weiterhin auf dem Array (teils mutierend per Referenz).
         // Wir materialisieren einmal, lassen sie ihre Ergänzungen vornehmen und
@@ -707,6 +719,10 @@ class ImportService
     protected function buildRecordData(array $source, string $table = ''): array
     {
         $knownColumns = $table !== '' ? $this->getKnownColumns($table) : [];
+        // Relations-Container-Felder (inline/file/category) enthalten im Export nur einen
+        // Zähler statt einer UID-Liste. Als Datamap-Wert übergeben, brechen sie bei
+        // Übersetzungen den DataMapProcessor (trimExplode erwartet string, bekommt int).
+        $relationFields = $table !== '' ? $this->getRelationContainerFields($table) : [];
         $data = [];
         foreach ($source as $field => $value) {
             if (in_array($field, $this->excludedFields, true)) {
@@ -716,9 +732,64 @@ class ImportService
             if (!empty($knownColumns) && !isset($knownColumns[$field])) {
                 continue;
             }
+            if (isset($relationFields[$field])) {
+                continue;
+            }
             $data[$field] = $value;
         }
         return $data;
+    }
+
+    /**
+     * Schreibt l10n_parent/l18n_parent der importierten Übersetzungen auf die
+     * remappten Eltern-UIDs um (NEW_-Platzhalter werden vom DataHandler nicht
+     * zuverlässig in diesen Feldern aufgelöst).
+     *
+     * @param array{pages: array<int,int>, tt_content: array<int,int>} $fixups
+     */
+    private function applyL10nFixups(array $fixups): void
+    {
+        foreach (['pages' => 'l10n_parent', 'tt_content' => 'l18n_parent'] as $table => $parentField) {
+            foreach ($fixups[$table] as $oldUid => $oldParentUid) {
+                $newUid = $this->uidMap->get($table, (int)$oldUid);
+                $newParent = $this->uidMap->get($table, (int)$oldParentUid);
+                if ($newUid === null || $newParent === null) {
+                    continue;
+                }
+                $this->connectionPool->getConnectionForTable($table)
+                    ->update($table, [$parentField => $newParent], ['uid' => $newUid]);
+            }
+        }
+    }
+
+    /**
+     * Relations-Container-Felder (inline/file/category) einer Tabelle (gecacht).
+     *
+     * @return array<string, true> Feldname → true
+     */
+    private function getRelationContainerFields(string $table): array
+    {
+        if (isset($this->relationFieldCache[$table])) {
+            return $this->relationFieldCache[$table];
+        }
+        $fields = [];
+        try {
+            if ($this->tcaSchemaFactory->has($table)) {
+                foreach ($this->tcaSchemaFactory->get($table)->getFields() as $field) {
+                    if (
+                        $field->isType(TableColumnType::INLINE)
+                        || $field->isType(TableColumnType::FILE)
+                        || $field->isType(TableColumnType::CATEGORY)
+                    ) {
+                        $fields[$field->getName()] = true;
+                    }
+                }
+            }
+        } catch (\Throwable) {
+            // TCA nicht verfügbar -> keine Filterung.
+        }
+        $this->relationFieldCache[$table] = $fields;
+        return $fields;
     }
 
     /**

@@ -26,6 +26,9 @@ use TYPO3\CMS\Core\Resource\ResourceFactory;
 
 class FalResolverService
 {
+    /** Referenz-Metadaten, die beim Import erhalten bleiben müssen. */
+    private const METADATA_FIELDS = ['title', 'description', 'alternative', 'link', 'crop', 'sorting_foreign'];
+
     public function __construct(
         private readonly ResourceFactory $resourceFactory,
         private readonly ConnectionPool $connectionPool,
@@ -100,13 +103,20 @@ class FalResolverService
             $uidMap['sys_file'][$ref['uid_local']] = $liveSysFileUid;
 
             $tempRefId = 'NEW_REF_' . $ref['uid'];
-            $dataMap['sys_file_reference'][$tempRefId] = [
+            $newRef = [
                 'uid_local' => $liveSysFileUid,
                 'uid_foreign' => $newForeignUid,
                 'tablenames' => $tableName,
                 'fieldname' => $ref['fieldname'],
                 'pid' => $uidMap['pages'][$ref['pid']] ?? $ref['pid'],
             ];
+            // Referenz-Metadaten mitnehmen (sonst gehen Crop, Alt-Text, Titel etc. verloren).
+            foreach (self::METADATA_FIELDS as $metaField) {
+                if (array_key_exists($metaField, $ref) && $ref[$metaField] !== null) {
+                    $newRef[$metaField] = $ref[$metaField];
+                }
+            }
+            $dataMap['sys_file_reference'][$tempRefId] = $newRef;
         }
 
         $errors = 0;

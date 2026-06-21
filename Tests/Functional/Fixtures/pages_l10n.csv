@@ -1,0 +1,5 @@
+"pages",,,,,,,,,
+,"uid","pid","title","slug","doktype","sys_language_uid","l10n_parent","sorting","hidden"
+,1,0,"Home","/",1,0,0,128,0
+,2,1,"Ueber uns","/ueber-uns",1,0,0,256,0
+,3,1,"About us","/about-us",1,1,2,256,0
