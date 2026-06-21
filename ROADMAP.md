@@ -6,14 +6,16 @@ Legende: `[x]` erledigt · `[~]` teilweise vorhanden · `[ ]` offen.
 
 ---
 
-## Meilenstein: Hardening-Release
+## Meilenstein: Hardening-Release ✅ ABGESCHLOSSEN & VERÖFFENTLICHT
 
-Nächster großer Schritt ist **kein** Feature-Release, sondern Härtung des Bestands:
-Validierung, Tests, Doku-Klarheit, CI/MariaDB, Crash-/Rollback-Sicherheit. Grundlage
-ist die Vorschlagsliste (`vorschläge.txt`).
+Härtung des Bestands: Validierung, Tests, Doku-Klarheit, CI/MariaDB, Crash-/Rollback-
+Sicherheit. Grundlage war die Vorschlagsliste (`vorschläge.txt`).
 
-> Offene Entscheidung: Versionsnummer des Hardening-Release — 2.0.0 noch einmal
-> sauber neu schneiden (solange unveröffentlicht) **oder** als 2.0.1 herausgeben.
+> **Released am 2026-06-21** als Minor-Bump (neue abwärtskompatible Features):
+> **v2.1.0** (TYPO3 v14, `main`, „Latest") und **v1.1.0** (TYPO3 v13.4, `13.x`).
+> Tags + GitHub-Releases gesetzt, beide Branches gepusht.
+>
+> Blöcke A–E erledigt; offen nur noch als „gering" markierte Test-Edge-Cases (siehe unten).
 
 ### A. Konfiguration & Registry härten  *(Vorschlag #1, #9)*
 
@@ -33,54 +35,88 @@ Architekturmodell: Jede Extension liefert ihre `Configuration/ImpExpNL.yaml` sel
 
 ### B. Tests: Vertrauen härten  *(#2, #3, #4, #6, #7, #8)*
 
-- [ ] **Dry-Run == realer Import**: Prognose (new/updated/skipped/conflicts) deckt sich exakt
-      mit dem echten Effekt — für neuer Baum, `--delta`, lokale Änderung, `conflict=skip`,
-      versteckte Records, Sprachversionen, Registry-Tabelle, MM-Tabelle, FAL-Referenz.
-- [ ] **Rollback-Semantik glasklar**: gefährliche Fälle (Teil-Import, zweiter Delta, lokal
-      geänderte Ziel-Records, Registry/MM, Workspace, gelöschte Zielseite, fehlende FAL-Datei).
-      Invariante: Rollback löscht **nie** Records, die nicht durch genau diesen Import entstanden;
-      lokal veränderte → Warnung statt blindem Löschen (ohne `--force`). Pro Record prüfen,
-      nicht nur Anzahl.
-- [ ] **FAL-Edge-Cases**: Datei fehlt im Ziel, Datei vorhanden aber nicht indexiert, anderer
-      Storage, gleicher Identifier/anderer Inhalt, fehlende Metadaten, mehrere Referenzen auf
-      dieselbe Datei, Felder `crop`/`alternative`/`title`/`description`, Referenzen in
-      übersetzten Inhalten und Container-Kindern.
-- [ ] **Sprach- & Workspace-Tests** (Hochrisiko): Default+Übersetzung, Übersetzung ohne
-      übersetzten Parent, `l10n_parent`, WS-Import/Delta/Rollback, Freigabe nach WS-Import,
-      Slug-Regeneration pro Sprache.
+- [~] **Dry-Run == realer Import**: Prognose (new/changed/identical) == Effekt (new/updated/skipped).
+      `DryRunMatchesImportTest` deckt ab: neuer Baum, Delta-Re-Import, Delta mit lokaler Änderung,
+      **`conflict=skip`** (Prognose „geändert" = `updated + conflict_skipped`).
+      Offen (gering): versteckte Records, Sprachversionen-Parität.
+- [~] **Rollback-Semantik glasklar**: Kern-Invariante umgesetzt — lokal nach dem Import
+      geänderte Ziel-Records (tstamp neuer als Import) brechen den Rollback ab (`RollbackService`
+      wirft), außer `impexpnl:undo --force`; Auto-Rollback bei Abbruch nutzt `force` (eigene
+      Records). `RollbackSafetyTest` deckt Abbruch + `--force` ab; bestehende Rollback-/Delta-Tests
+      grün. Registry/MM-Rollback (Block E), **bereits gelöschter Ziel-Record** (`RollbackSafetyTest`)
+      abgedeckt. Fehlende FAL-Referenz ist trivial (DELETE trifft nichts → kein Fehler).
+- [~] **FAL-Edge-Cases**: `FalEdgeCasesTest` deckt ab — Referenz-**Metadaten** (`crop`/`alternative`/
+      `title`/`description`/`link`/`sorting_foreign`) bleiben beim Import erhalten (vorher Bug: gingen
+      verloren — in `FalResolverService` behoben), und fehlende Zieldatei wird ohne Fehler übersprungen.
+      **mehrere Referenzen auf dieselbe Datei** (`FalEdgeCasesTest`) abgedeckt.
+      Offen (gering): nicht indexierte Datei, anderer Storage, gleicher Identifier/anderer Inhalt,
+      Referenzen in Übersetzungen/Container-Kindern.
+- [~] **Sprach-Tests** — `LanguageImportTest` deckt Default+Übersetzung (Seiten & Inhalte) ab.
+      Dabei **zwei echte Bugs behoben**: (1) Relations-Container-Felder (inline/file/category, nur
+      Counts) brachen den `DataMapProcessor` bei Übersetzungen → in `buildRecordData` gefiltert;
+      (2) `l10n_parent`/`l18n_parent` wurden nicht auf die neuen Eltern-UIDs aufgelöst → Nachpass
+      (`applyL10nFixups`). Offen: Übersetzung ohne übersetzten Parent, Slug-Regeneration pro Sprache.
+- [x] **Workspace-Tests** (Hochrisiko): `WorkspacePublishTest` deckt WS-Import (Versionen),
+      WS-Delta-Idempotenz, **Freigabe** (`ActionService::publishWorkspace` → Live mit umgeschriebenen
+      Links) und WS-Rollback ab. Harness ohne `SiteBasedTestTrait`: `sys_workspace` manuell anlegen +
+      `coreExtensionsToLoad=['workspaces']`. **Echter Bug gefunden+behoben:** Rollback lief im
+      Live-Workspace (0) und ließ WS-Versionen liegen → `RollbackService` initialisiert jetzt den
+      Kontext mit der `workspace_id` aus dem Import-Protokoll.
+- [x] **v13-Backport** auf `13.x`, **veröffentlicht als v1.1.0** (2026-06-21):
+      - `35da583`: Block-B-Härtung — l10n (Container-Filter + `applyL10nFixups`), WS-Rollback
+        (`workspace_id`), Rollback-Sicherheit, FAL-Metadaten + Tests.
+      - `7be4ac2`: Rollback in DB-Transaktion (~135 s → ~36 s) + `PerformanceBaselineTest`.
+      - `299cba4`: **Import in DB-Transaktionen** (Fund: v14-Optimierung fehlte auf v13 →
+        Import ~147 s → ~40 s).
+      Alles auf v13.4.31 verifiziert (CS 0, PHPStan ok, Unit 64, Functional 32). Test-Container
+      `impexpnl_v13test` (testing-framework 8).
 - [~] **Locking/Crash simulieren**: `FullRoundtripAbortTest` deckt Crash mitten im Import +
-      Auto-Rollback bereits ab. Ergänzen: Lock gesetzt / zweiter Import abgewiesen / Dry-Run
-      ohne Lock / stale-Lock erkannt / `unlock` (mit und ohne `--force`) / Status zeigt Abbruch.
-- [ ] **Profil-Contract-Tests** (`Tests/Profile/<ext>/` mit YAML + Fixtures + Test): Ein Profil
-      gilt erst als „unterstützt", wenn Export/Import/Delta-Idempotenz/Rollback/Link-Rewrite/
-      Kategorie-Mapping/FAL bestehen.
+      Auto-Rollback ab. `ImportLockTest` ergänzt: zweiter `acquire` abgewiesen, `release` gibt
+      frei, **stale-Lock wird beim `acquire` automatisch geerntet**, `getActiveLock` ohne Lock =
+      null, `forceReleaseDbLock` meldet ob ein Lock bestand (= `impexpnl:unlock`-Pfad).
+      Offen: Datei-Lock-Fast-Fail prozessübergreifend, Status-CLI zeigt Abbruch.
+- [~] **Profil-Contract-Tests**: Harness steht — `Tests/Functional/Profile/AbstractProfileContract`
+      definiert die Vertragsklauseln als Tests (Export enthält alle Records · Import bildet alle ab ·
+      Delta-Idempotenz · Rollback entfernt alles; optional Link-Rewrite/Kategorie/FAL per `verify*`).
+      `CoreProfileContractTest` (Seiten+Inhalte, Link-Rewrite, sys_category-MM) ist grün — FAL für das
+      Core-Profil bewusst übersprungen. Neue unterstützte Extension = neue Subklasse + Fixtures.
+      Offen: YAML-getriebene Profile statt PHP-Subklassen, FAL-Profil, Profil pro Ziel-Extension.
 
 ### C. CLI & CI  *(#10, #11, #12)*
 
-- [ ] **Differenzierte Exit-Codes** für CI/CD: `0` ok, `1` generisch, `2` ungültige Config,
-      `3` Lock aktiv, `4` Prüfsumme/Signatur, `5` Konflikte, `6` Teil-Import/Rollback nötig,
-      `7` Dateien/Assets fehlen.
-- [ ] **CI um MariaDB ergänzen** (10.11/11.x) zusätzlich zu SQLite — realistischer für
-      DBAL/Locks/Transaktionen/Unique-Keys/MM/große Inserts.
-- [ ] **Performance-Baseline** festschreiben (Small 100/500, Medium 1.000/5.000, Large
-      10.000/20.000) und je Release dokumentieren: Export-/Import-/Rollback-Dauer, Peak
-      JSON vs. JSONL — als Regressionsschutz, nicht als Marketing.
+- [x] **Differenzierte Exit-Codes** für CI/CD: `Domain\ExitCode` + typisierte `Exception\*`
+      (`ConfigException`=2, `LockException`=3, `IntegrityException`=4, `ConflictException`=5,
+      `AbortedImportException`=6). Commands mappen Exceptions → Code, `--json` führt `exitCode`.
+      Neue Strategie `--conflict=abort` (=5). `ExitCodeTest` deckt 2–6 ab. Code `7` (Assets fehlen)
+      ist definiert, aber reserviert (Strict-Asset-Modus später; Default überspringt fehlende Dateien).
+- [x] **CI um MariaDB ergänzen**: Job `functional-mariadb` (Matrix 10.11 + 11.4, PHP 8.3,
+      `mysqli`) zusätzlich zum SQLite-Lauf. Lokal gegen MariaDB 11.4 verifiziert: 72 Tests grün
+      (identisch zu SQLite, keine DB-spezifischen Findings).
+- [x] **Performance-Baseline** festgeschrieben: `Documentation/PERFORMANCE.md` + reproduzierbarer
+      `PerformanceBaselineTest` (Small/Medium/Large, JSON vs. JSONL, Export-/Import-/Rollback-Dauer +
+      Peak). **Finding+Fix:** Rollback lief im Autocommit → jetzt in einer DB-Transaktion gebündelt
+      (medium ~135 s → ~29 s). Large braucht >512 MB (In-Memory) → Hebel: streamender Import (siehe „Später").
 
 ### D. Doku & Distribution  *(#5, #13, #15)*
 
 - [x] JSONL-/Speicher-Aussagen im README konsistent (Export schreibt zeilenweise; Import parst
       aktuell vollständig in den Speicher; streamender Import ist „Später").
-- [ ] **„Grenzen / Nicht-Ziele"-Sektion** im README (kein DB-Dump-Ersatz, kein generischer
-      Import ohne YAML-Profil, kein Datei-Transfer ohne rsync, kein Merge-Tool, Rollback ≠
-      Snapshot-Restore, direkte MM-Imports umgehen DataHandler bewusst, Workspaces projektspezifisch).
-- [ ] **Installation Composer-first** ordnen: Packagist als Hauptweg, Path-/VCS-Repo nur für
-      Entwicklung, TER optional, DDEV-Demo separat.
+- [x] **„Grenzen / Nicht-Ziele"-Sektion** im README ergänzt (kein DB-Dump-Ersatz, kein generischer
+      Import ohne YAML-Profil, kein Datei-Transfer, kein Merge-Tool, Rollback ≠ Snapshot-Restore,
+      MM-Importe umgehen DataHandler bewusst, Workspaces projektspezifisch).
+- [x] **Installation Composer-first** geordnet: `composer require` als Hauptweg, Path-/VCS-Repo für
+      Entwicklung, TER optional, DDEV-Demo als reines Ausprobier-Beispiel. Zudem die zwei
+      Exit-Code-Tabellen im README zu einer kanonischen konsolidiert.
 
 ### E. Beispielprofile als Qualitätsmaßstab  *(#14)*
 
-- [ ] 2–3 Profile **hart** machen statt 10 halb: `sys_redirect`, `sys_category_record_mm`,
-      optional `tx_news_domain_model_news`. Je YAML + Fixture + Export-/Import-/Delta-/
-      Rollback-Test + README-Beispiel. Dient als Muster für Community-Beiträge.
+- [x] 2 Profile **hart** gemacht: `sys_redirect` (`RedirectProfileContractTest` — Export/Remap/
+      `target`-Link-Rewrite/externes Ziel/Rollback) und `sys_category_record_mm`
+      (`CategoryProfileContractTest` — Pfad-Mapping/Delta-Idempotenz/Rollback). Je Fixture +
+      Contract-Test in `Tests/Functional/Profile/` (Vorlage für Community) + README-Tabelle.
+      `typo3/cms-redirects` als `require-dev`. Befund dokumentiert: `record`-Registry-Tabellen
+      sind noch nicht delta-idempotent (MM mit `category_match: path` schon).
+      Optional offen: `tx_news` (3rd-party-Dependency, bewusst ausgelassen).
 
 ---
 
