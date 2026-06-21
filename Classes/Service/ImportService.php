@@ -469,6 +469,25 @@ class ImportService
     }
 
     /**
+     * Führt einen DataHandler-Lauf in einer DB-Transaktion aus. Ohne sie läuft jede
+     * Anweisung im Autocommit (pro Statement ein fsync); bei großen Bäumen kostet das
+     * ein Vielfaches. Bei einem Abbruch wird der Teilstand sauber zurückgerollt.
+     * Greift voll, solange die beteiligten Tabellen auf einer DB-Connection liegen.
+     */
+    private function processInTransaction(string $table, callable $process): void
+    {
+        $connection = $this->connectionPool->getConnectionForTable($table);
+        $connection->beginTransaction();
+        try {
+            $process();
+            $connection->commit();
+        } catch (\Throwable $e) {
+            $connection->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
      * Verarbeitet die Records in Batches, um den Speicherbedarf bei großen Bäumen zu begrenzen.
      */
     private function executeBatchedDataHandler(string $table, array $datamap, ?callable $onProgress): void
@@ -503,7 +522,7 @@ class ImportService
 
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             $dataHandler->start([$table => $batch], []);
-            $dataHandler->process_datamap();
+            $this->processInTransaction($table, $dataHandler->process_datamap(...));
 
             $this->recordDataHandlerErrors($dataHandler, $table);
 
@@ -571,7 +590,7 @@ class ImportService
         if (!empty($datamap)) {
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $dh->start($datamap, []);
-            $dh->process_datamap();
+            $this->processInTransaction('pages', $dh->process_datamap(...));
             $this->recordDataHandlerErrors($dh, 'slug');
             $this->logger->info('Slugs angepasst', ['count' => count($datamap['pages'])]);
         }
@@ -856,7 +875,7 @@ class ImportService
         if (!empty($datamap)) {
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $dh->start($datamap, []);
-            $dh->process_datamap();
+            $this->processInTransaction($table, $dh->process_datamap(...));
             $this->recordDataHandlerErrors($dh, 'irre');
         }
     }

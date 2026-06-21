@@ -29,6 +29,9 @@ Functional-Tests abgesichert. Keine Schema-Änderungen, keine API-Brüche.
   Importabbruch nutzt diesen Pfad für seine eigenen Records.
 
 ### Performance
+- **Import in DB-Transaktionen** gebündelt (Nachzug der v14-Optimierung, die auf v13 fehlte):
+  alle DataHandler-Läufe (Seiten/Inhalte, Slug, IRRE) laufen je in einer Transaktion statt
+  im Autocommit. Messung (SQLite, 1.000 Seiten / 5.000 Inhalte): Import **~147 s → ~40 s**.
 - **Rollback in einer DB-Transaktion** gebündelt (wie der Import): die vielen einzelnen
   DataHandler-Deletes liefen zuvor im Autocommit. Messung (SQLite, 1.000 Seiten / 5.000
   Inhalte): Rollback **~135 s → ~36 s**; kleine Klasse ~2,4 s. Der Rollback liegt damit
