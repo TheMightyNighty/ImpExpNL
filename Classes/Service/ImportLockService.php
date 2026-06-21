@@ -19,6 +19,7 @@ namespace Robbi\ImpExpNL\Service;
 
 use Doctrine\DBAL\Exception\UniqueConstraintViolationException;
 use Psr\Log\LoggerInterface;
+use Robbi\ImpExpNL\Exception\LockException;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -58,7 +59,7 @@ class ImportLockService
         if ($handle && !flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
             $this->releaseDbLock();
-            throw new \RuntimeException('Ein anderer Import läuft (Datei-Lock): ' . $lockFile);
+            throw new LockException('Ein anderer Import läuft (Datei-Lock): ' . $lockFile);
         }
         if ($handle) {
             ftruncate($handle, 0);
@@ -121,7 +122,7 @@ class ImportLockService
                 'created' => time(),
             ]);
         } catch (UniqueConstraintViolationException $e) {
-            throw new \RuntimeException('Ein anderer Import läuft bereits (DB-Lock aktiv). Bei einem Crash wird der Lock nach ' . $staleSeconds . 's automatisch freigegeben.');
+            throw new LockException('Ein anderer Import läuft bereits (DB-Lock aktiv). Bei einem Crash wird der Lock nach ' . $staleSeconds . 's automatisch freigegeben.');
         }
 
         $this->dbLockHeld = true;

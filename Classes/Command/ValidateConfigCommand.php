@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Command;
 
+use Robbi\ImpExpNL\Domain\ExitCode;
 use Robbi\ImpExpNL\Service\ConfigurationService;
 use Robbi\ImpExpNL\Service\ConfigValidationService;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -68,7 +69,7 @@ class ValidateConfigCommand extends Command
                 'errors' => $errors,
                 'warnings' => $warnings,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            return $success ? Command::SUCCESS : Command::FAILURE;
+            return $success ? Command::SUCCESS : ExitCode::INVALID_CONFIG;
         }
 
         $io = new SymfonyStyle($input, $output);
@@ -83,7 +84,7 @@ class ValidateConfigCommand extends Command
         }
         if ($errors !== []) {
             $io->error(array_map(static fn(array $i): string => $i['message'], $errors));
-            return Command::FAILURE;
+            return ExitCode::INVALID_CONFIG;
         }
 
         $io->success('Konfiguration gültig – alle registrierten Tabellen und Felder existieren.');

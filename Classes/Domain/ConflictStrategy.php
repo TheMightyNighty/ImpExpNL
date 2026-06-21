@@ -34,6 +34,9 @@ enum ConflictStrategy: string
     /** Pro Konflikt wird interaktiv nachgefragt. */
     case Ask = 'ask';
 
+    /** Beim ersten Konflikt wird der gesamte Import abgebrochen (CI-tauglich, Exit-Code 5). */
+    case Abort = 'abort';
+
     /**
      * Normalisiert eine Eingabe (CLI/Profil) zu einer Strategie.
      * Ungültige Werte führen zu einem Fehler, statt still wie Overwrite zu wirken.

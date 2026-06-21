@@ -184,7 +184,7 @@ ddev exec vendor/bin/typo3 impexpnl:import <Datei> <Ziel-PID> [Optionen]
 |---|---|
 | `--dry-run` / `-d` | Differenzanalyse ohne Datenänderung. Es wird kein Lock gesetzt und keine Datenbankoperation ausgeführt. |
 | `--delta` | Delta-Import. Jeder Record wird Feld-für-Feld mit dem bestehenden Record auf dem Zielsystem verglichen. Identische Records werden übersprungen, geänderte per DataHandler aktualisiert, neue angelegt. |
-| `--conflict=X` | Konflikt-Strategie für den Delta-Import (siehe unten). |
+| `--conflict=X` | Konflikt-Strategie für den Delta-Import: `overwrite` (Standard), `skip`, `ask`, `abort` (siehe unten). |
 | `--verbose` / `-v` | Erweiterte Ausgabe bei Änderungen. Für jeden geänderten Record werden die konkreten Feldunterschiede angezeigt (alter Wert, neuer Wert). |
 | `--target-workspace=N` | Import in einen TYPO3-Workspace. Bei `0` (Standard) werden die Inhalte direkt im Live-System angelegt. Bei `1` oder höher werden sie in einen Entwurfs-Workspace importiert und können dort geprüft und freigegeben werden. |
 | `--profile=name` | Laden eines Import-Profils. Alle anderen Argumente und Optionen werden aus dem Profil übernommen. |
@@ -210,6 +210,24 @@ Ein Konflikt liegt vor, wenn ein Record auf dem Zielsystem einen neueren Zeitste
 | `--conflict=overwrite` | Der Export überschreibt die lokale Änderung. Dies ist das Standardverhalten. |
 | `--conflict=skip` | Records mit Konflikten werden übersprungen. Alle anderen Records werden normal importiert. |
 | `--conflict=ask` | Für jeden Konflikt wird interaktiv auf der Konsole abgefragt, ob überschrieben werden soll. |
+| `--conflict=abort` | Beim ersten Konflikt wird der gesamte Import abgebrochen (Exit-Code `5`). Bereits geschriebene Teil-Records werden – wie bei jedem Abbruch – automatisch zurückgerollt. Gedacht für unbeaufsichtigte CI/CD-Läufe, in denen ein Konflikt eine bewusste Entscheidung erzwingen soll. |
+
+### Exit-Codes (CI/CD)
+
+Alle Commands liefern differenzierte Exit-Codes, damit Pipelines gezielt reagieren können
+(z. B. Lock → erneut versuchen, Konflikt → Review erzwingen). Mit `--json` steht der Code
+zusätzlich im Feld `exitCode`.
+
+| Code | Bedeutung |
+|---|---|
+| `0` | Erfolg |
+| `1` | Generischer/unerwarteter Fehler |
+| `2` | Ungültige Konfiguration oder Profil (`validate-config`/`check`, Profil-Parsing) |
+| `3` | Ein anderer Import hält den Lock (DB- oder Datei-Lock) |
+| `4` | Prüfsummen-/Signaturprüfung der Importdatei fehlgeschlagen |
+| `5` | Konflikte erkannt und `--conflict=abort` gesetzt |
+| `6` | Import mitten drin abgebrochen; Teilimport wurde (auto-)zurückgerollt |
+| `7` | Referenzierte Dateien/Assets fehlen auf dem Zielsystem *(reserviert für künftigen Strict-Asset-Modus; Standard überspringt fehlende Dateien)* |
 
 ### Workspace-Import
 
@@ -282,7 +300,7 @@ Der Rollback entfernt in fester Reihenfolge:
 3. Inhaltselemente (`tt_content`)
 4. Seiten (`pages`), in umgekehrter Reihenfolge (Kindseiten vor Elternseiten)
 
-Das Import-Protokoll wird nach erfolgreichem Rollback aus der Datenbank entfernt. Der Rollback wird im Transaktionslog dokumentiert.
+Das Import-Protokoll wird nach erfolgreichem Rollback aus der Datenbank entfernt. Der Rollback wird im Transaktionslog dokumentiert. Die Lösch-Operationen werden – wie der Import – in einer Datenbank-Transaktion gebündelt, sodass der Rollback in der Größenordnung des Imports bleibt (siehe [`Documentation/PERFORMANCE.md`](Documentation/PERFORMANCE.md)).
 
 Der Rollback läuft im selben Workspace wie der ursprüngliche Import (die `workspace_id` steht im Protokoll). Ein Workspace-Import wird damit korrekt rückgängig gemacht – die im Workspace angelegten Versionen werden entfernt, das Live-System bleibt unberührt.
 

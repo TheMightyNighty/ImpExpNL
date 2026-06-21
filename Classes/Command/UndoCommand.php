@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Command;
 
+use Robbi\ImpExpNL\Domain\ExitCode;
+use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Service\RollbackService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -102,13 +104,14 @@ class UndoCommand extends Command
             $this->rollbackService->runRollback($preview['importId'], $force);
             $io->success('Rollback erfolgreich abgeschlossen.');
             return Command::SUCCESS;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            $exitCode = $e instanceof ImpExpException ? $e->getExitCode() : ExitCode::GENERIC;
             if ($jsonOutput) {
-                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage(), 'exitCode' => $exitCode], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
                 $io->error('Fehler beim Rollback: ' . $e->getMessage());
             }
-            return Command::FAILURE;
+            return $exitCode;
         }
     }
 }

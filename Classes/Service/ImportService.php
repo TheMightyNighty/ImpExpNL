@@ -24,6 +24,10 @@ use Robbi\ImpExpNL\Domain\ExportManifest;
 use Robbi\ImpExpNL\Domain\SystemFields;
 use Robbi\ImpExpNL\Domain\UidMap;
 use Robbi\ImpExpNL\Event\ModifyImportDataEvent;
+use Robbi\ImpExpNL\Exception\AbortedImportException;
+use Robbi\ImpExpNL\Exception\ConflictException;
+use Robbi\ImpExpNL\Exception\ImpExpException;
+use Robbi\ImpExpNL\Exception\IntegrityException;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
@@ -146,6 +150,12 @@ class ImportService
         } catch (\Throwable $e) {
             if ($this->hasMappedRecords()) {
                 $this->handleAbortedImport($timestamp, $jsonPath, $options, $e);
+                // Typisierte Ursachen (z. B. Konflikt = 5) behalten ihren Exit-Code;
+                // ein sonstiger Crash mit Teilimport-Rollback signalisiert Exit-Code 6.
+                if ($e instanceof ImpExpException) {
+                    throw $e;
+                }
+                throw new AbortedImportException($e->getMessage(), $e);
             }
             throw $e;
         }
@@ -202,6 +212,9 @@ class ImportService
                 }
 
                 $conflict = $this->conflictResolver->detectConflict($page, $existingPageMap[$oldUid]);
+                if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
+                    throw new ConflictException('Konflikt (pages uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
+                }
                 if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
                     $this->uidMap->set('pages', $oldUid, $existingUid);
                     $stats['conflict_skipped']++;
@@ -260,6 +273,9 @@ class ImportService
                 }
 
                 $conflict = $this->conflictResolver->detectConflict($content, $existingContentMap[$oldContentUid]);
+                if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
+                    throw new ConflictException('Konflikt (tt_content uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
+                }
                 if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
                     $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
                     $stats['conflict_skipped']++;
@@ -663,7 +679,7 @@ class ImportService
 
         $checksum = $manifest->getChecksum();
         if ($checksum !== null && !$this->integrityService->verify($manifest->toArray(), $checksum)) {
-            throw new \RuntimeException(
+            throw new IntegrityException(
                 'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '
                 . 'konfigurierten Schlüssel (IMPEXPNL_SIGNING_KEY) nicht verifiziert werden.'
             );

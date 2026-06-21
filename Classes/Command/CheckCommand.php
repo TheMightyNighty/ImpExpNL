@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Command;
 
+use Robbi\ImpExpNL\Domain\ExitCode;
 use Robbi\ImpExpNL\Service\ConfigurationService;
 use Robbi\ImpExpNL\Service\ConfigValidationService;
 use Robbi\ImpExpNL\Service\ImportLockService;
@@ -83,11 +84,11 @@ class CheckCommand extends Command
                 'warnings' => $this->warnings,
                 'checks' => $this->checks,
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            return $success ? Command::SUCCESS : Command::FAILURE;
+            return $success ? Command::SUCCESS : ExitCode::INVALID_CONFIG;
         }
 
         $this->render(new SymfonyStyle($input, $output));
-        return $success ? Command::SUCCESS : Command::FAILURE;
+        return $success ? Command::SUCCESS : ExitCode::INVALID_CONFIG;
     }
 
     private function record(string $section, string $level, string $message): void

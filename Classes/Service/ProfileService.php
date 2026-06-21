@@ -19,6 +19,7 @@ namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
 use Robbi\ImpExpNL\Domain\ConflictStrategy;
+use Robbi\ImpExpNL\Exception\ConfigException;
 use TYPO3\CMS\Core\Core\Environment;
 
 /**
@@ -65,7 +66,7 @@ class ProfileService
         }
 
         if (!file_exists($file)) {
-            throw new \RuntimeException(
+            throw new ConfigException(
                 "Profil '$name' nicht gefunden. Erwartet: $file\n"
                 . 'Verfügbare Profile: ' . implode(', ', $this->listProfiles())
             );
@@ -73,7 +74,7 @@ class ProfileService
 
         $content = \Symfony\Component\Yaml\Yaml::parse(file_get_contents($file));
         if (!is_array($content)) {
-            throw new \RuntimeException("Profil '$name' ist kein gültiges YAML.");
+            throw new ConfigException("Profil '$name' ist kein gültiges YAML.");
         }
 
         // Defaults setzen
@@ -86,16 +87,16 @@ class ProfileService
         ];
 
         if (empty($profile['source_file'])) {
-            throw new \RuntimeException("Profil '$name': 'source_file' fehlt.");
+            throw new ConfigException("Profil '$name': 'source_file' fehlt.");
         }
         if ($profile['target_pid'] <= 0) {
-            throw new \RuntimeException("Profil '$name': 'target_pid' muss > 0 sein.");
+            throw new ConfigException("Profil '$name': 'target_pid' muss > 0 sein.");
         }
         // Konflikt-Strategie früh validieren, mit Profil-Kontext in der Fehlermeldung.
         try {
             ConflictStrategy::fromInput($profile['conflict']);
         } catch (\InvalidArgumentException $e) {
-            throw new \RuntimeException("Profil '$name': " . $e->getMessage());
+            throw new ConfigException("Profil '$name': " . $e->getMessage());
         }
 
         $this->logger->info('Profil geladen', ['name' => $name, 'config' => $profile]);

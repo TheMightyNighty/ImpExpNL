@@ -28,13 +28,32 @@ abgesichert. Keine Schema-Änderungen, keine API-Brüche.
   `impexpnl:undo --force` wird trotzdem gelöscht; der Auto-Rollback nach einem
   Importabbruch nutzt diesen Pfad für seine eigenen Records.
 
+### Performance
+- **Rollback in einer DB-Transaktion** gebündelt (wie der Import): die vielen einzelnen
+  DataHandler-Deletes liefen zuvor im Autocommit. Messung (SQLite, 1.000 Seiten / 5.000
+  Inhalte): Rollback **~135 s → ~29 s**; kleine Klasse ~13 s → ~2,6 s. Der Rollback liegt
+  damit wieder in der Größenordnung des Imports.
+- **Performance-Baseline** dokumentiert (`Documentation/PERFORMANCE.md`) + reproduzierbar
+  über `PerformanceBaselineTest` (Größenklassen small/medium/large, JSON vs. JSONL,
+  Export-/Import-/Rollback-Dauer + Speicher-Peak) als Regressionsschutz.
+
+### Neu
+- **Differenzierte Exit-Codes** für CI/CD (`Domain\ExitCode` + typisierte
+  `Exception\*`): `0` ok, `1` generisch, `2` ungültige Config/Profil, `3` Lock aktiv,
+  `4` Prüfsumme/Signatur, `5` Konflikte (mit neuer Strategie `--conflict=abort`),
+  `6` Teilimport zurückgerollt. Code `7` (Assets fehlen) ist reserviert. Mit `--json`
+  steht der Code zusätzlich im Feld `exitCode`.
+- **`--conflict=abort`**: bricht den (Delta-)Import beim ersten Konflikt ab (Exit-Code 5),
+  inkl. Auto-Rollback bereits geschriebener Teil-Records.
+
 ### Tests
 - Neu: `DryRunMatchesImportTest`, `RollbackSafetyTest`, `FalEdgeCasesTest`,
   `LanguageImportTest`, `ImportLockTest`, `WorkspacePublishTest` (WS-Import/Delta/Publish/
-  Rollback).
+  Rollback), `ExitCodeTest`.
 - Neu: Profil-Contract-Harness (`Tests/Functional/Profile/AbstractProfileContract`) mit
   Pflichtklauseln (Export/Import/Delta-Idempotenz/Rollback) und optionalen Klauseln
   (Link-Rewrite/Kategorie/FAL); `CoreProfileContractTest` für Seiten + Inhalte.
+- CI: zusätzlicher Functional-Lauf gegen **MariaDB** (10.11 + 11.4) neben SQLite.
 
 ## 2.0.0
 

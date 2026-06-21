@@ -18,6 +18,8 @@ declare(strict_types=1);
 namespace Robbi\ImpExpNL\Command;
 
 use Robbi\ImpExpNL\Domain\ConflictStrategy;
+use Robbi\ImpExpNL\Domain\ExitCode;
+use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Service\ImportService;
 use Robbi\ImpExpNL\Service\ProfileService;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -47,7 +49,7 @@ class ImportCommand extends Command
             ->addArgument('targetPid', InputArgument::OPTIONAL, 'Ziel-PID (nicht nötig bei --profile)')
             ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Nur Analyse, keine Datenänderung')
             ->addOption('delta', null, InputOption::VALUE_NONE, 'Nur Änderungen importieren')
-            ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Konflikt-Strategie: overwrite, skip, ask', 'overwrite')
+            ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Konflikt-Strategie: overwrite, skip, ask, abort', 'overwrite')
             ->addOption('target-workspace', 'w', InputOption::VALUE_OPTIONAL, 'Ziel-Workspace (0=Live)', 0)
             ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Import-Profil laden (aus var/impexpnl_profiles/)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
@@ -58,9 +60,15 @@ class ImportCommand extends Command
         $io = new SymfonyStyle($input, $output);
 
         // Profil laden oder Argumente verwenden
+        $jsonOutput = (bool)$input->getOption('json');
+
         $profileName = $input->getOption('profile');
         if ($profileName) {
-            $profile = $this->profileService->loadProfile($profileName);
+            try {
+                $profile = $this->profileService->loadProfile($profileName);
+            } catch (\Throwable $e) {
+                return $this->fail($io, $output, $jsonOutput, $e);
+            }
             $file = $profile['source_file'];
             $targetPid = $profile['target_pid'];
             $options = [
@@ -96,14 +104,17 @@ class ImportCommand extends Command
         // Feld-Diff über die eingebaute Symfony-Verbosity (-v) statt eigener Option
         // (Letztere kollidiert in Symfony 7 / TYPO3 v14 mit dem globalen --verbose).
         $options['verbose'] = $output->isVerbose();
-        $jsonOutput = (bool)$input->getOption('json');
 
         // Konflikt-Strategie früh validieren (ungültige Werte sollen nicht still wie overwrite wirken).
         try {
             $options['conflict'] = ConflictStrategy::fromInput($options['conflict'] ?? null);
         } catch (\InvalidArgumentException $e) {
-            $io->error($e->getMessage());
-            return Command::FAILURE;
+            if ($jsonOutput) {
+                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            } else {
+                $io->error($e->getMessage());
+            }
+            return ExitCode::INVALID_CONFIG;
         }
 
         // Interaktiver Ask-Modus
@@ -160,17 +171,30 @@ class ImportCommand extends Command
             }
 
             return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             if ($progressBar) {
                 $progressBar->finish();
                 $output->writeln('');
             }
-            if ($jsonOutput) {
-                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            } else {
-                $io->error($e->getMessage());
-            }
-            return Command::FAILURE;
+            return $this->fail($io, $output, $jsonOutput, $e);
         }
+    }
+
+    /**
+     * Gibt den Fehler aus und liefert den differenzierten Exit-Code:
+     * fachliche {@see ImpExpException} tragen ihren Code, alles andere ist generisch.
+     */
+    private function fail(SymfonyStyle $io, OutputInterface $output, bool $jsonOutput, \Throwable $e): int
+    {
+        $exitCode = $e instanceof ImpExpException ? $e->getExitCode() : ExitCode::GENERIC;
+        if ($jsonOutput) {
+            $output->writeln((string)json_encode(
+                ['success' => false, 'error' => $e->getMessage(), 'exitCode' => $exitCode],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
+            ));
+        } else {
+            $io->error($e->getMessage());
+        }
+        return $exitCode;
     }
 }
