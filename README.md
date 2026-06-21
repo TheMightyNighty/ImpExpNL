@@ -37,6 +37,31 @@ EXT:impexp kann UID-Remapping, Relationen und FAL durchaus – die Tabelle hebt 
 
 ---
 
+## Grenzen & Nicht-Ziele
+
+Damit klar ist, wofür ImpExpNL **nicht** gedacht ist:
+
+- **Kein DB-Dump-Ersatz.** Übertragen werden Seiten, Inhalte und registrierte Tabellen –
+  nicht der gesamte Datenbankzustand (Sessions, Caches, Backend-User, Systemkonfiguration).
+  Für vollständige Klone ist ein DB-Dump das richtige Werkzeug.
+- **Kein generischer Import beliebiger Tabellen.** Über `pages`/`tt_content` hinausgehende
+  Tabellen müssen per YAML-Profil (Table-Registry) registriert sein. Ohne Profil werden sie
+  nicht angefasst.
+- **Kein Datei-Transfer.** Exportiert wird eine Asset-Liste, nicht die Binärdateien. Der
+  physische Transfer des `fileadmin` bleibt Sache von `rsync`/`rclone`/S3 o. Ä.
+- **Kein Merge-Tool.** Bei Konflikten wird pro Record entschieden (overwrite/skip/ask/abort),
+  nicht feldweise zusammengeführt. Es gibt keine Drei-Wege-Merges.
+- **Rollback ≠ Snapshot-Restore.** Der Rollback macht *einen protokollierten Import*
+  rückgängig (die dabei angelegten/aktualisierten Records), er stellt keinen früheren
+  Gesamtzustand der Instanz wieder her.
+- **Direkte MM-Importe umgehen den DataHandler bewusst.** MM-Beziehungen (z. B. Kategorien)
+  werden über Pfad-Mapping direkt geschrieben – das ist gewollt (Performance/Idempotenz),
+  bedeutet aber, dass DataHandler-Hooks für diese MM-Tabellen nicht greifen.
+- **Workspaces sind projektspezifisch.** Der Workspace-Ziel-Import nutzt die regulären
+  TYPO3-Mechanismen; Staging-/Freigabe-Workflows (z. B. im GSB 11) bleiben Sache des Projekts.
+
+---
+
 ## Systemvoraussetzungen
 
 - PHP 8.2 oder höher
@@ -73,28 +98,39 @@ composer require themightynighty/impexpnl:"^1.0"   # TYPO3 v13.4
 
 ## Installation
 
-Die Extension wird in das Package-Verzeichnis des TYPO3-Projekts kopiert. Anschließend werden Autoloading, Datenbankschema und Cache aktualisiert.
+ImpExpNL ist eine Composer-Extension. **Empfohlener Weg ist Composer** – die passende
+Linie (v14 = `^2.0`, v13.4 = `^1.0`) wird über die Versions-Constraints automatisch gewählt.
 
 ```bash
-cp -r imp_exp_nl/ /var/www/html/packages/imp_exp_nl/
+composer require themightynighty/impexpnl
 
-ddev composer dump-autoload
-ddev exec vendor/bin/typo3 extension:setup
-ddev exec vendor/bin/typo3 database:updateschema
-ddev exec vendor/bin/typo3 cache:flush
+vendor/bin/typo3 extension:setup
+vendor/bin/typo3 database:updateschema
+vendor/bin/typo3 cache:flush
 ```
+
+(In einem DDEV-Projekt den Befehlen `ddev composer …` bzw. `ddev exec vendor/bin/typo3 …`
+voranstellen.)
 
 Durch `database:updateschema` werden die Tabellen `tx_impexpnl_import_log`, `tx_impexpnl_lock` und `tx_impexpnl_uid_map` angelegt. `tx_impexpnl_uid_map` hält das Herkunfts-Mapping (Quell-Record → Ziel-Record) zur Erkennung bereits importierter Records bei wiederholten Imports – Core-Tabellen (`pages`/`tt_content`) bleiben dabei unangetastet. Die Tabelle `tx_impexpnl_lock` realisiert den cluster-weiten Import-Lock. (Hinweis: Frühere Versionen nutzten ein Feld `tx_impexpnl_remote_uid` auf `pages`/`tt_content`; `impexpnl:migrate-legacy-schema` überführt es in die neue Tabelle.)
 
 Die Installation wird geprüft mit:
 
 ```bash
-ddev exec vendor/bin/typo3 list impexpnl
+vendor/bin/typo3 list impexpnl
 ```
 
 Es werden folgende Befehle ausgegeben: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock` und `impexpnl:migrate-legacy-schema`.
 
-Auf Systemen ohne DDEV wird das Präfix `ddev exec` weggelassen.
+### Weitere Bezugswege
+
+- **Entwicklung / noch nicht auf Packagist:** als Path- oder VCS-Repository einbinden.
+  Dazu in der `composer.json` des Projekts ein `repositories`-Eintrag auf das lokale
+  Verzeichnis bzw. das Git-Repo, dann `composer require themightynighty/impexpnl:@dev`.
+- **TER** (TYPO3 Extension Repository): optional, für Setups ohne Composer-Workflow.
+- **DDEV-Demo:** ein lauffähiges Beispielprojekt (vanilla TYPO3 v14, Extension per
+  Path-Repository) liegt unter [`Build/demo/`](Build/demo/README.md) – `ddev start` genügt.
+  Es dient zum Ausprobieren, **nicht** als Installationsweg für Produktivprojekte.
 
 ---
 
@@ -214,20 +250,9 @@ Ein Konflikt liegt vor, wenn ein Record auf dem Zielsystem einen neueren Zeitste
 
 ### Exit-Codes (CI/CD)
 
-Alle Commands liefern differenzierte Exit-Codes, damit Pipelines gezielt reagieren können
-(z. B. Lock → erneut versuchen, Konflikt → Review erzwingen). Mit `--json` steht der Code
-zusätzlich im Feld `exitCode`.
-
-| Code | Bedeutung |
-|---|---|
-| `0` | Erfolg |
-| `1` | Generischer/unerwarteter Fehler |
-| `2` | Ungültige Konfiguration oder Profil (`validate-config`/`check`, Profil-Parsing) |
-| `3` | Ein anderer Import hält den Lock (DB- oder Datei-Lock) |
-| `4` | Prüfsummen-/Signaturprüfung der Importdatei fehlgeschlagen |
-| `5` | Konflikte erkannt und `--conflict=abort` gesetzt |
-| `6` | Import mitten drin abgebrochen; Teilimport wurde (auto-)zurückgerollt |
-| `7` | Referenzierte Dateien/Assets fehlen auf dem Zielsystem *(reserviert für künftigen Strict-Asset-Modus; Standard überspringt fehlende Dateien)* |
+Konflikte mit `--conflict=abort` brechen den Import ab (Exit-Code `5`); ein unbeaufsichtigter
+Lauf kann so auf eine bewusste Entscheidung bestehen. Die vollständige Liste der
+differenzierten Exit-Codes steht im Abschnitt [Exit-Codes](#exit-codes).
 
 ### Workspace-Import
 
@@ -579,12 +604,20 @@ vendor/bin/typo3 impexpnl:check || echo "ImpExpNL: Systemprüfung fehlgeschlagen
 
 ## Exit-Codes
 
-Alle CLI-Befehle geben standardisierte Exit-Codes zurück:
+Alle CLI-Befehle geben differenzierte Exit-Codes zurück, damit Pipelines gezielt
+reagieren können (z. B. Lock → erneut versuchen, Konflikt → Review erzwingen). Mit
+`--json` steht der Code zusätzlich im Feld `exitCode`.
 
 | Code | Bedeutung |
 |---|---|
-| `0` | Erfolg. Der Befehl wurde ohne Fehler ausgeführt. |
-| `1` | Fehler. Der Befehl ist fehlgeschlagen (ungültige JSON, Datenbank-Fehler, Lock aktiv, etc.). |
+| `0` | Erfolg |
+| `1` | Generischer/unerwarteter Fehler |
+| `2` | Ungültige Konfiguration oder Profil (`validate-config`/`check`, Profil-Parsing) |
+| `3` | Ein anderer Import hält den Lock (DB- oder Datei-Lock) |
+| `4` | Prüfsummen-/Signaturprüfung der Importdatei fehlgeschlagen |
+| `5` | Konflikte erkannt und `--conflict=abort` gesetzt |
+| `6` | Import mitten drin abgebrochen; Teilimport wurde (auto-)zurückgerollt |
+| `7` | Referenzierte Dateien/Assets fehlen *(reserviert für künftigen Strict-Asset-Modus; Standard überspringt fehlende Dateien)* |
 
 Die Exit-Codes ermöglichen die Einbindung in automatisierte Workflows und Monitoring:
 

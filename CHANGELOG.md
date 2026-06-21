@@ -46,6 +46,13 @@ abgesichert. Keine Schema-Änderungen, keine API-Brüche.
 - **`--conflict=abort`**: bricht den (Delta-)Import beim ersten Konflikt ab (Exit-Code 5),
   inkl. Auto-Rollback bereits geschriebener Teil-Records.
 
+### Doku
+- README: neue Sektion **„Grenzen & Nicht-Ziele"** (kein DB-Dump-Ersatz, kein generischer
+  Import ohne Profil, kein Datei-Transfer, kein Merge-Tool, Rollback ≠ Snapshot-Restore usw.).
+- README: Installation **Composer-first** geordnet (`composer require` als Hauptweg; Path-/VCS-Repo
+  für Entwicklung, TER optional, DDEV-Demo nur zum Ausprobieren). Die beiden Exit-Code-Tabellen
+  zu einer kanonischen zusammengeführt.
+
 ### Tests
 - Neu: `DryRunMatchesImportTest`, `RollbackSafetyTest`, `FalEdgeCasesTest`,
   `LanguageImportTest`, `ImportLockTest`, `WorkspacePublishTest` (WS-Import/Delta/Publish/
