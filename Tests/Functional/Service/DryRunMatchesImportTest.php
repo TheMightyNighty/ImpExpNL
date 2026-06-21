@@ -125,6 +125,41 @@ class DryRunMatchesImportTest extends FunctionalTestCase
     }
 
     #[Test]
+    public function hiddenRecordsDryRunMatchesImport(): void
+    {
+        // Export inkl. versteckter Records (pages.csv enthält die versteckte Seite uid=5).
+        $json = $this->get(ExportService::class)->exportTree(1, ['includeHidden' => true]);
+        $file = $this->instancePath . '/var/dryrun_hidden.json';
+        @mkdir(dirname($file), 0775, true);
+        file_put_contents($file, $json);
+
+        $data = json_decode($json, true);
+        self::assertContains(5, array_column($data['pages'], 'uid'), 'Versteckte Seite fehlt im includeHidden-Export');
+
+        $importService = $this->get(ImportService::class);
+        $dry = $importService->runImport($file, 0, ['workspaceId' => 0, 'dryRun' => true]);
+        $diff = $dry['diff'];
+        $predNew = $diff['pages']['new'] + $diff['tt_content']['new'];
+
+        $real = $importService->runImport($file, 0, ['workspaceId' => 0]);
+
+        self::assertSame($predNew, $real['stats']['new'], 'Dry-Run-Prognose weicht bei versteckten Records ab');
+
+        // Die versteckte Seite muss tatsächlich (versteckt) importiert worden sein.
+        $newHidden = (int)GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map')
+            ->select('target_uid')->from('tx_impexpnl_uid_map')
+            ->where("table_name = 'pages'", 'source_uid = 5')
+            ->executeQuery()->fetchOne();
+        self::assertGreaterThan(0, $newHidden, 'Versteckte Seite wurde nicht importiert');
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('pages');
+        $qb->getRestrictions()->removeAll();
+        $hiddenFlag = (int)$qb->select('hidden')->from('pages')
+            ->where($qb->expr()->eq('uid', $qb->createNamedParameter($newHidden, \TYPO3\CMS\Core\Database\Connection::PARAM_INT)))
+            ->executeQuery()->fetchOne();
+        self::assertSame(1, $hiddenFlag, 'Hidden-Flag ging beim Import verloren');
+    }
+
+    #[Test]
     public function conflictSkipDryRunMatchesImport(): void
     {
         $importService = $this->get(ImportService::class);
