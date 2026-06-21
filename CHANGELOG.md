@@ -28,9 +28,16 @@ Functional-Tests abgesichert. Keine Schema-Änderungen, keine API-Brüche.
   `impexpnl:undo --force` wird trotzdem gelöscht; der Auto-Rollback nach einem
   Importabbruch nutzt diesen Pfad für seine eigenen Records.
 
+### Performance
+- **Rollback in einer DB-Transaktion** gebündelt (wie der Import): die vielen einzelnen
+  DataHandler-Deletes liefen zuvor im Autocommit. Messung (SQLite, 1.000 Seiten / 5.000
+  Inhalte): Rollback **~135 s → ~36 s**; kleine Klasse ~2,4 s. Der Rollback liegt damit
+  in der Größenordnung des Imports.
+
 ### Tests
 - Neu: `LanguageImportTest`, `RollbackSafetyTest`, `FalEdgeCasesTest`,
-  `WorkspacePublishTest` (WS-Import/Delta/Publish/Rollback).
+  `WorkspacePublishTest` (WS-Import/Delta/Publish/Rollback), `PerformanceBaselineTest`
+  (small/medium/large, Export-/Import-/Rollback-Dauer + Peak als Regressionsschutz).
 - `.php-cs-fixer`: Demo-Projekt (`Build/demo`) vom Coding-Standards-Check ausgenommen.
 
 ## 1.0.2

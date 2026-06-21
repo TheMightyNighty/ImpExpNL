@@ -196,7 +196,18 @@ class RollbackService
 
         if (!empty($cmd)) {
             $dataHandler->start([], $cmd);
-            $dataHandler->process_cmdmap();
+            // Die vielen Einzel-Deletes in einer DB-Transaktion bündeln – ohne sie
+            // läuft jede Anweisung im Autocommit (pro Statement ein fsync) und der
+            // Rollback dauert ein Vielfaches des Imports.
+            $connection = $this->connectionPool->getConnectionForTable('pages');
+            $connection->beginTransaction();
+            try {
+                $dataHandler->process_cmdmap();
+                $connection->commit();
+            } catch (\Throwable $e) {
+                $connection->rollBack();
+                throw $e;
+            }
         }
 
         $this->importLogRepository->delete($importId);
