@@ -15,10 +15,10 @@ class ConfigurationServiceTest extends TestCase
 {
     private function createSubject(array $config): ConfigurationService
     {
-        $yaml = $this->createMock(YamlFileLoader::class);
+        $yaml = $this->createStub(YamlFileLoader::class);
         $yaml->method('load')->willReturn($config);
 
-        $packageManager = $this->createMock(PackageManager::class);
+        $packageManager = $this->createStub(PackageManager::class);
         $packageManager->method('getActivePackages')->willReturn([]);
 
         return new ConfigurationService($yaml, $packageManager, new NullLogger());
