@@ -112,8 +112,6 @@ class RollbackService
      */
     public function runRollback(?string $importId = null, bool $force = false): void
     {
-        $this->bootstrapService->initializeBackendContext();
-
         $record = $importId
             ? $this->importLogRepository->findById($importId)
             : $this->importLogRepository->findLatest();
@@ -124,6 +122,10 @@ class RollbackService
                 : 'Keine Import-Protokolle gefunden.');
         }
         $importId = $record['import_id'];
+
+        // Rollback im selben Workspace wie der Import durchführen, sonst sind
+        // Workspace-Versionen für den DataHandler unsichtbar und bleiben liegen.
+        $this->bootstrapService->initializeBackendContext((int)($record['workspace_id'] ?? 0));
 
         $this->logger->info('Lade Protokoll: ' . $importId);
 
