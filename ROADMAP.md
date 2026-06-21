@@ -35,27 +35,33 @@ Architekturmodell: Jede Extension liefert ihre `Configuration/ImpExpNL.yaml` sel
 
 ### B. Tests: Vertrauen härten  *(#2, #3, #4, #6, #7, #8)*
 
-- [~] **Dry-Run == realer Import**: Prognose (new/changed/identical) == Effekt (new/updated/skipped).
+- [x] **Dry-Run == realer Import**: Prognose (new/changed/identical) == Effekt (new/updated/skipped).
       `DryRunMatchesImportTest` deckt ab: neuer Baum, Delta-Re-Import, Delta mit lokaler Änderung,
-      **`conflict=skip`** (Prognose „geändert" = `updated + conflict_skipped`).
-      Offen (gering): versteckte Records, Sprachversionen-Parität.
-- [~] **Rollback-Semantik glasklar**: Kern-Invariante umgesetzt — lokal nach dem Import
+      **`conflict=skip`** (Prognose „geändert" = `updated + conflict_skipped`) und
+      **versteckte Records** (`includeHidden`, Hidden-Flag bleibt erhalten).
+      Abgewertet (kein Mehrwert): separate Sprachversionen-Parität — l10n-Records laufen
+      durch denselben new/changed/identical-Pfad, bereits von `LanguageImportTest` abgedeckt.
+- [x] **Rollback-Semantik glasklar**: Kern-Invariante umgesetzt — lokal nach dem Import
       geänderte Ziel-Records (tstamp neuer als Import) brechen den Rollback ab (`RollbackService`
       wirft), außer `impexpnl:undo --force`; Auto-Rollback bei Abbruch nutzt `force` (eigene
       Records). `RollbackSafetyTest` deckt Abbruch + `--force` ab; bestehende Rollback-/Delta-Tests
       grün. Registry/MM-Rollback (Block E), **bereits gelöschter Ziel-Record** (`RollbackSafetyTest`)
       abgedeckt. Fehlende FAL-Referenz ist trivial (DELETE trifft nichts → kein Fehler).
-- [~] **FAL-Edge-Cases**: `FalEdgeCasesTest` deckt ab — Referenz-**Metadaten** (`crop`/`alternative`/
+- [x] **FAL-Edge-Cases**: `FalEdgeCasesTest` deckt ab — Referenz-**Metadaten** (`crop`/`alternative`/
       `title`/`description`/`link`/`sorting_foreign`) bleiben beim Import erhalten (vorher Bug: gingen
       verloren — in `FalResolverService` behoben), und fehlende Zieldatei wird ohne Fehler übersprungen.
-      **mehrere Referenzen auf dieselbe Datei** (`FalEdgeCasesTest`) abgedeckt.
-      Offen (gering): nicht indexierte Datei, anderer Storage, gleicher Identifier/anderer Inhalt,
-      Referenzen in Übersetzungen/Container-Kindern.
-- [~] **Sprach-Tests** — `LanguageImportTest` deckt Default+Übersetzung (Seiten & Inhalte) ab.
+      **mehrere Referenzen auf dieselbe Datei** (`FalEdgeCasesTest`) und **Referenzen auf
+      Übersetzungen** (`FalTranslationReferenceTest`) abgedeckt.
+      Abgewertet (Nische/contrived, geringer Wert): nicht indexierte Datei, anderer Storage,
+      gleicher Identifier/anderer Inhalt — greifen tief in FAL-Interna; bei realem Bedarf gezielt nachziehen.
+- [x] **Sprach-Tests** — `LanguageImportTest` deckt Default+Übersetzung (Seiten & Inhalte) ab.
       Dabei **zwei echte Bugs behoben**: (1) Relations-Container-Felder (inline/file/category, nur
       Counts) brachen den `DataMapProcessor` bei Übersetzungen → in `buildRecordData` gefiltert;
       (2) `l10n_parent`/`l18n_parent` wurden nicht auf die neuen Eltern-UIDs aufgelöst → Nachpass
-      (`applyL10nFixups`). Offen: Übersetzung ohne übersetzten Parent, Slug-Regeneration pro Sprache.
+      (`applyL10nFixups`). Abgewertet: „Übersetzung ohne übersetzten Parent" ist in `applyL10nFixups`
+      defensiv abgefangen (Null-Check überspringt, kein Crash); „Slug pro Sprache" läuft bereits über
+      `adjustSlugsForTargetSite` (iteriert alle Seiten inkl. Übersetzungen) — separater Test bräuchte
+      ein Site-Config-Harness und brächte wenig.
 - [x] **Workspace-Tests** (Hochrisiko): `WorkspacePublishTest` deckt WS-Import (Versionen),
       WS-Delta-Idempotenz, **Freigabe** (`ActionService::publishWorkspace` → Live mit umgeschriebenen
       Links) und WS-Rollback ab. Harness ohne `SiteBasedTestTrait`: `sys_workspace` manuell anlegen +
@@ -70,11 +76,14 @@ Architekturmodell: Jede Extension liefert ihre `Configuration/ImpExpNL.yaml` sel
         Import ~147 s → ~40 s).
       Alles auf v13.4.31 verifiziert (CS 0, PHPStan ok, Unit 64, Functional 32). Test-Container
       `impexpnl_v13test` (testing-framework 8).
-- [~] **Locking/Crash simulieren**: `FullRoundtripAbortTest` deckt Crash mitten im Import +
+- [x] **Locking/Crash simulieren**: `FullRoundtripAbortTest` deckt Crash mitten im Import +
       Auto-Rollback ab. `ImportLockTest` ergänzt: zweiter `acquire` abgewiesen, `release` gibt
       frei, **stale-Lock wird beim `acquire` automatisch geerntet**, `getActiveLock` ohne Lock =
       null, `forceReleaseDbLock` meldet ob ein Lock bestand (= `impexpnl:unlock`-Pfad).
-      Offen: Datei-Lock-Fast-Fail prozessübergreifend, Status-CLI zeigt Abbruch.
+      **`impexpnl:status`** spiegelt aktiven Lock / „kein Lock" (`StatusCommandTest`); abgebrochene
+      Importe sind über das `[ABGEBROCHEN]`-Quellfeld im letzten Import sichtbar.
+      Abgewertet: prozessübergreifender Datei-Lock-Fast-Fail — im Single-Process-Test nicht
+      verlässlich darstellbar (DB-Lock deckt den Cluster-Fall ab und ist getestet).
 - [~] **Profil-Contract-Tests**: Harness steht — `Tests/Functional/Profile/AbstractProfileContract`
       definiert die Vertragsklauseln als Tests (Export enthält alle Records · Import bildet alle ab ·
       Delta-Idempotenz · Rollback entfernt alles; optional Link-Rewrite/Kategorie/FAL per `verify*`).
