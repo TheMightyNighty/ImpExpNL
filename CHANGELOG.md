@@ -42,6 +42,9 @@ Functional-Tests abgesichert. Keine Schema-Änderungen, keine API-Brüche.
   `WorkspacePublishTest` (WS-Import/Delta/Publish/Rollback), `PerformanceBaselineTest`
   (small/medium/large, Export-/Import-/Rollback-Dauer + Peak als Regressionsschutz).
 - `.php-cs-fixer`: Demo-Projekt (`Build/demo`) vom Coding-Standards-Check ausgenommen.
+- CI: zusätzlicher Functional-Lauf gegen **MariaDB** (10.11 + 11.4) neben SQLite (lokal
+  gegen MariaDB 11.4 verifiziert: 32 Tests grün).
+- README: Titel neutral auf „TYPO3 v13.4 & GSB 11 (1.x)".
 
 ## 1.0.2
 

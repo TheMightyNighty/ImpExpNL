@@ -1,4 +1,4 @@
-# ImpExpNL v1.0.1 (TYPO3 v13)
+# ImpExpNL — TYPO3 v13.4 & GSB 11 (1.x)
 
 ImpExpNL ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist gezielt für **TYPO3 v13.4 LTS** und den Government Site Builder 11 (GSB 11) entwickelt (Doctrine DBAL 4).
 
