@@ -1,0 +1,4 @@
+"sys_redirect",,,,,,
+,"uid","pid","source_host","source_path","target","disabled","deleted"
+,1,2,"*","/alte-ueber-uns","t3://page?uid=3","0","0"
+,2,3,"*","/alte-kontaktseite","https://example.org/extern","0","0"

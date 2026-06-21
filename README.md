@@ -439,6 +439,25 @@ impexpnl:
       category_match: path
 ```
 
+### Mitgelieferte, contract-getestete Profile
+
+Zwei Profile liefert ImpExpNL bereits in der `imp_exp_nl.yaml` mit – sie gelten als
+*unterstützt*, weil sie einen vollständigen Functional-Contract bestehen (Export → Import
+→ Rollback, dazu profilspezifisch Link-Rewrite bzw. Delta-Idempotenz):
+
+| Profil | Typ | Contract-Test | Geprüft |
+|--------|-----|---------------|---------|
+| `sys_redirect` | record | `RedirectProfileContractTest` | Export, UID-Remapping, `t3://`-Rewrite im `target`, externes Ziel bleibt, Rollback |
+| `sys_category_record_mm` | mm | `CategoryProfileContractTest` | Export mit Pfaden, Pfad-Mapping auf neuen Inhalt, **Delta ohne Dublette**, Rollback |
+
+Diese Tests (`Tests/Functional/Profile/`) sind zugleich die **Vorlage für eigene Profile**:
+Wer eine weitere Tabelle „hart" machen will, kopiert einen dieser Tests, tauscht Fixture +
+Tabelle und stellt sicher, dass der Contract grün bleibt.
+
+> Hinweis: Registry-Tabellen vom Typ `record` sind heute noch **nicht delta-idempotent**
+> (ein erneuter Import legt neue Records an). MM-Tabellen mit `category_match: path` sind es.
+> Delta für `record`-Registry-Tabellen steht auf der Roadmap.
+
 ---
 
 ## Konfiguration

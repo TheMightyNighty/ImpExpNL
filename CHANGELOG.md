@@ -61,6 +61,10 @@ abgesichert. Keine Schema-Änderungen, keine API-Brüche.
   Pflichtklauseln (Export/Import/Delta-Idempotenz/Rollback) und optionalen Klauseln
   (Link-Rewrite/Kategorie/FAL); `CoreProfileContractTest` für Seiten + Inhalte.
 - CI: zusätzlicher Functional-Lauf gegen **MariaDB** (10.11 + 11.4) neben SQLite.
+- **Contract-Tests für die mitgelieferten Registry-Profile**: `RedirectProfileContractTest`
+  (`sys_redirect`: Export/Remap/`target`-Link-Rewrite/Rollback) und `CategoryProfileContractTest`
+  (`sys_category_record_mm`: Pfad-Mapping/Delta-Idempotenz/Rollback). Dienen als Vorlage für
+  eigene Profile. Dafür `typo3/cms-redirects` als `require-dev` aufgenommen.
 
 ## 2.0.0
 
