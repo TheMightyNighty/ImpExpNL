@@ -1,9 +1,10 @@
 # Changelog
 
-## Unreleased (Härtung)
+## 2.1.0 — Härtung (2026-06-21)
 
 Stabilitäts- und Korrektheits-Härtung des Bestands, breit mit Functional-Tests
-abgesichert. Keine Schema-Änderungen, keine API-Brüche.
+abgesichert. Keine Schema-Änderungen, keine API-Brüche. Enthält neue, abwärts-
+kompatible Features (differenzierte Exit-Codes, `--conflict=abort`).
 
 ### Behoben
 - **Übersetzungs-Import:** Relations-Container-Felder (inline/file/category, die nur
