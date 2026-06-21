@@ -61,6 +61,9 @@ abgesichert. Keine Schema-Änderungen, keine API-Brüche.
   Pflichtklauseln (Export/Import/Delta-Idempotenz/Rollback) und optionalen Klauseln
   (Link-Rewrite/Kategorie/FAL); `CoreProfileContractTest` für Seiten + Inhalte.
 - CI: zusätzlicher Functional-Lauf gegen **MariaDB** (10.11 + 11.4) neben SQLite.
+- Ergänzte Edge-Cases: Dry-Run-Parität unter `conflict=skip` (Prognose „geändert" =
+  aktualisiert + konfliktbedingt übersprungen), Rollback toleriert bereits gelöschte
+  Ziel-Records, FAL-Import mehrerer Referenzen auf dieselbe Datei.
 - **Contract-Tests für die mitgelieferten Registry-Profile**: `RedirectProfileContractTest`
   (`sys_redirect`: Export/Remap/`target`-Link-Rewrite/Rollback) und `CategoryProfileContractTest`
   (`sys_category_record_mm`: Pfad-Mapping/Delta-Idempotenz/Rollback). Dienen als Vorlage für

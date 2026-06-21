@@ -108,4 +108,40 @@ class RollbackSafetyTest extends FunctionalTestCase
 
         self::assertFalse($this->exists($targetUid), 'Rollback mit --force hat den Record nicht entfernt');
     }
+
+    #[Test]
+    public function rollbackToleratesAlreadyDeletedTargetRecord(): void
+    {
+        $json = $this->get(ExportService::class)->exportTree(1);
+        $file = $this->instancePath . '/var/rollback_predeleted.json';
+        @mkdir(dirname($file), 0775, true);
+        file_put_contents($file, $json);
+        $this->get(ImportService::class)->runImport($file, 0, ['workspaceId' => 0]);
+
+        // Einen importierten Inhalt vorab löschen (z.B. Redakteur hat ihn entfernt).
+        $cQb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        $contentUid = (int)$cQb->select('target_uid')->from('tx_impexpnl_uid_map')
+            ->where(
+                $cQb->expr()->eq('table_name', $cQb->createNamedParameter('tt_content')),
+                $cQb->expr()->eq('source_uid', $cQb->createNamedParameter(10, Connection::PARAM_INT))
+            )
+            ->executeQuery()->fetchOne();
+        self::assertGreaterThan(0, $contentUid);
+        GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content')
+            ->update('tt_content', ['deleted' => 1], ['uid' => $contentUid]);
+
+        // Rollback muss den bereits gelöschten Record tolerieren und sauber durchlaufen.
+        $this->get(RollbackService::class)->runRollback();
+
+        self::assertSame(0, $this->countMapped('pages'), 'Seiten-Mapping nicht geleert');
+        self::assertSame(0, $this->countMapped('tt_content'), 'Inhalts-Mapping nicht geleert');
+    }
+
+    private function countMapped(string $table): int
+    {
+        $qb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        return (int)$qb->count('uid')->from('tx_impexpnl_uid_map')
+            ->where($qb->expr()->eq('table_name', $qb->createNamedParameter($table)))
+            ->executeQuery()->fetchOne();
+    }
 }

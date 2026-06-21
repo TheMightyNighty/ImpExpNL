@@ -123,4 +123,45 @@ class DryRunMatchesImportTest extends FunctionalTestCase
         // Delta-Import (overwrite): Dry-Run-Prognose muss dem Effekt entsprechen.
         $this->assertDryRunMatchesImport(0, true);
     }
+
+    #[Test]
+    public function conflictSkipDryRunMatchesImport(): void
+    {
+        $importService = $this->get(ImportService::class);
+        $importService->runImport($this->exportFile, 0, ['workspaceId' => 0]);
+
+        // Konflikt erzeugen: einen importierten Inhalt inhaltlich ändern und in die
+        // Zukunft datieren -> im Dry-Run "geändert", im echten Import (skip) "conflict_skipped".
+        $mapQb = GeneralUtility::makeInstance(ConnectionPool::class)->getQueryBuilderForTable('tx_impexpnl_uid_map');
+        $targetUid = (int)$mapQb->select('target_uid')->from('tx_impexpnl_uid_map')
+            ->where(
+                $mapQb->expr()->eq('table_name', $mapQb->createNamedParameter('tt_content')),
+                $mapQb->expr()->eq('source_uid', $mapQb->createNamedParameter(10, \TYPO3\CMS\Core\Database\Connection::PARAM_INT))
+            )
+            ->executeQuery()->fetchOne();
+        self::assertGreaterThan(0, $targetUid, 'Mapping für Quell-Inhalt 10 nicht gefunden');
+
+        GeneralUtility::makeInstance(ConnectionPool::class)->getConnectionForTable('tt_content')
+            ->update('tt_content', ['header' => 'LOKAL GEÄNDERT', 'tstamp' => time() + 100000], ['uid' => $targetUid]);
+
+        $dry = $importService->runImport($this->exportFile, 0, ['workspaceId' => 0, 'deltaMode' => true, 'dryRun' => true]);
+        $diff = $dry['diff'];
+        $predNew = $diff['pages']['new'] + $diff['tt_content']['new'];
+        $predChanged = $diff['pages']['changed'] + $diff['tt_content']['changed'];
+        $predIdentical = $diff['pages']['identical'] + $diff['tt_content']['identical'];
+
+        $real = $importService->runImport($this->exportFile, 0, ['workspaceId' => 0, 'deltaMode' => true, 'conflict' => 'skip']);
+        $stats = $real['stats'];
+
+        self::assertGreaterThanOrEqual(1, $stats['conflict_skipped'], 'Es wurde kein Konflikt übersprungen');
+        self::assertSame($predNew, $stats['new'], 'Prognose "neu" weicht ab');
+        self::assertSame($predIdentical, $stats['skipped'], 'Prognose "identisch" weicht ab');
+        // Bei conflict=skip teilt sich die Prognose "geändert" auf echte Updates und
+        // wegen Konflikt übersprungene Records auf.
+        self::assertSame(
+            $predChanged,
+            $stats['updated'] + $stats['conflict_skipped'],
+            'Prognose "geändert" != tatsächlich aktualisiert + konfliktbedingt übersprungen'
+        );
+    }
 }

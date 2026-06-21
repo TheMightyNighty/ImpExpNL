@@ -121,4 +121,52 @@ class FalEdgeCasesTest extends FunctionalTestCase
         self::assertSame(0, $result['stats']['errors'], 'Fehlende FAL-Datei darf keinen DataHandler-Fehler verursachen');
         self::assertFalse($this->importedReference(), 'Für eine fehlende Datei darf keine Referenz angelegt werden');
     }
+
+    private function refUidLocalFor(int $contentUid): ?int
+    {
+        $qb = $this->get(ConnectionPool::class)->getQueryBuilderForTable('sys_file_reference');
+        $qb->getRestrictions()->removeAll();
+        $v = $qb->select('uid_local')->from('sys_file_reference')
+            ->where(
+                $qb->expr()->eq('tablenames', $qb->createNamedParameter('tt_content')),
+                $qb->expr()->eq('uid_foreign', $qb->createNamedParameter($contentUid, Connection::PARAM_INT)),
+                $qb->expr()->eq('deleted', $qb->createNamedParameter(0, Connection::PARAM_INT))
+            )
+            ->executeQuery()->fetchOne();
+        return $v === false ? null : (int)$v;
+    }
+
+    #[Test]
+    public function multipleReferencesToSameFileAreImported(): void
+    {
+        // Bestehende Referenz (Inhalt 10) zeigt auf eine sys_file – dieselbe Datei
+        // zusätzlich an Inhalt 11 referenzieren und neu exportieren.
+        $sysFileUid = $this->refUidLocalFor(10);
+        self::assertNotNull($sysFileUid);
+        $this->get(ConnectionPool::class)->getConnectionForTable('sys_file_reference')->insert(
+            'sys_file_reference',
+            [
+                'pid' => 2,
+                'uid_local' => $sysFileUid,
+                'uid_foreign' => 11,
+                'tablenames' => 'tt_content',
+                'fieldname' => 'image',
+                'sorting_foreign' => 1,
+            ]
+        );
+        $json = $this->get(ExportService::class)->exportTree(1);
+        file_put_contents($this->exportFile, $json);
+
+        $this->get(ImportService::class)->runImport($this->exportFile, 0, ['workspaceId' => 0]);
+
+        $c10 = $this->resolveTargetUid('tt_content', 10);
+        $c11 = $this->resolveTargetUid('tt_content', 11);
+        self::assertNotNull($c10);
+        self::assertNotNull($c11);
+        $file10 = $this->refUidLocalFor($c10);
+        $file11 = $this->refUidLocalFor($c11);
+        self::assertNotNull($file10, 'Referenz an Inhalt 10 fehlt');
+        self::assertNotNull($file11, 'Referenz an Inhalt 11 fehlt');
+        self::assertSame($file10, $file11, 'Beide Referenzen müssen auf dieselbe sys_file zeigen');
+    }
 }
