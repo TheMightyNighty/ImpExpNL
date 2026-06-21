@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (Härtung)
+## 1.1.0 — Härtung (2026-06-21)
 
 Backport der v14-Härtung (`main`) auf die v13.4-Linie. Reale Bugs, breit mit
 Functional-Tests abgesichert. Keine Schema-Änderungen, keine API-Brüche.
