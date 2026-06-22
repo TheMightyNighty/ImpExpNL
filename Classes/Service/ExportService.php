@@ -20,6 +20,7 @@ namespace Robbi\ImpExpNL\Service;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Robbi\ImpExpNL\Event\ModifyExportDataEvent;
+use Robbi\ImpExpNL\Transport\AssetTransportFactory;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\QueryBuilder;
@@ -49,6 +50,7 @@ class ExportService
         private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly ExportWriter $exportWriter,
         private readonly AssetManifestService $assetManifestService,
+        private readonly AssetTransportFactory $assetTransportFactory,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -70,9 +72,12 @@ class ExportService
     }
 
     /**
-     * Exportiert einen Seitenbaum als JSON-Datei inkl. Assets-Liste und Broken-Links-Report.
+     * Exportiert einen Seitenbaum als JSON-Datei inkl. Assets-Liste und Broken-Links-Report
+     * und wendet anschließend den gewählten Asset-Transport an (Default `external`).
+     *
+     * @return array{type:string, artifact:string|null, message:string} Transport-Ergebnis
      */
-    public function runExport(int $startPid, string $filePath, array $options = []): void
+    public function runExport(int $startPid, string $filePath, array $options = []): array
     {
         $this->bootstrapService->initializeBackendContext();
         $finalData = $this->collectAndDispatch($startPid, $options);
@@ -83,6 +88,9 @@ class ExportService
             !empty($options['jsonl']),
             !empty($options['csv'])
         );
+
+        $transport = $this->assetTransportFactory->get((string)($options['transport'] ?? 'external'));
+        return $transport->package($filePath, $finalData['assets'] ?? [], (array)($options['transportConfig'] ?? []));
     }
 
     private function collectAndDispatch(int $startPid, array $options): array

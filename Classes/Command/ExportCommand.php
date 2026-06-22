@@ -17,6 +17,8 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Command;
 
+use Robbi\ImpExpNL\Domain\ExitCode;
+use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Service\ExportService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -50,6 +52,7 @@ class ExportCommand extends Command
             ->addOption('content-types', null, InputOption::VALUE_OPTIONAL, 'Nur bestimmte CTypes (komma-separiert)')
             ->addOption('csv', null, InputOption::VALUE_NONE, 'Zusätzlich CSV-Dateien für Tabellenvergleich erzeugen')
             ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)')
+            ->addOption('transport', null, InputOption::VALUE_OPTIONAL, 'Asset-Transport: external (Standard) oder bundle (self-contained .tar.gz)', 'external')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
@@ -65,6 +68,7 @@ class ExportCommand extends Command
             'includeHidden' => (bool)$input->getOption('include-hidden'),
             'csv' => (bool)$input->getOption('csv'),
             'jsonl' => (bool)$input->getOption('jsonl'),
+            'transport' => (string)$input->getOption('transport'),
         ];
 
         if ($input->getOption('pages')) {
@@ -116,7 +120,7 @@ class ExportCommand extends Command
             }
 
             $startTime = microtime(true);
-            $this->exportService->runExport($startPid, $absolutePath, $options);
+            $transportResult = $this->exportService->runExport($startPid, $absolutePath, $options);
             $durationMs = (int)((microtime(true) - $startTime) * 1000);
 
             if ($progressBar) {
@@ -132,23 +136,26 @@ class ExportCommand extends Command
                     'bytes' => is_file($absolutePath) ? (int)filesize($absolutePath) : 0,
                     'format' => $options['jsonl'] ? 'jsonl' : 'json',
                     'durationMs' => $durationMs,
+                    'transport' => $transportResult,
                 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
                 $io->success(sprintf('Export geschrieben → %s', $outputFile));
+                $io->text($transportResult['message']);
             }
 
             return Command::SUCCESS;
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             if ($progressBar) {
                 $progressBar->finish();
                 $output->writeln('');
             }
+            $exitCode = $e instanceof ImpExpException ? $e->getExitCode() : ExitCode::GENERIC;
             if ($jsonOutput) {
-                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage()], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage(), 'exitCode' => $exitCode], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
                 $io->error($e->getMessage());
             }
-            return Command::FAILURE;
+            return $exitCode;
         }
     }
 }
