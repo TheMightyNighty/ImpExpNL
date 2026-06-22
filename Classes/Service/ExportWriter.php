@@ -46,6 +46,7 @@ class ExportWriter
 
         $baseDir = dirname($filePath);
         $this->writeAssetsList($data, $baseDir);
+        $this->writeAssetManifest($data, $baseDir);
         $this->writeBrokenLinksReport($data, $baseDir);
         if ($csv) {
             $this->writeCsv($data, $baseDir);
@@ -94,6 +95,23 @@ class ExportWriter
         sort($ids);
         if (file_put_contents($dir . '/impexpnl_assets.txt', implode("\n", $ids) . "\n") === false) {
             $this->logger->warning('Asset-Liste konnte nicht geschrieben werden: ' . $dir . '/impexpnl_assets.txt');
+        }
+    }
+
+    /**
+     * Gehärtetes Asset-Manifest als JSON (pro Datei storage/identifier/size/sha256).
+     * Ergänzt die rsync-taugliche `impexpnl_assets.txt` um Integritäts-/Transfer-Metadaten.
+     *
+     * @param array<string, mixed> $data
+     */
+    private function writeAssetManifest(array $data, string $dir): void
+    {
+        if (empty($data['assets']) || !is_array($data['assets'])) {
+            return;
+        }
+        $json = json_encode($data['assets'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($json === false || file_put_contents($dir . '/impexpnl_assets.json', $json . "\n") === false) {
+            $this->logger->warning('Asset-Manifest konnte nicht geschrieben werden: ' . $dir . '/impexpnl_assets.json');
         }
     }
 

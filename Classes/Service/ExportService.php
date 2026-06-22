@@ -48,6 +48,7 @@ class ExportService
         private readonly IntegrityService $integrityService,
         private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly ExportWriter $exportWriter,
+        private readonly AssetManifestService $assetManifestService,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -161,6 +162,9 @@ class ExportService
 
         if ($this->configurationService->isFileReferencesEnabled('export')) {
             $data['sys_file_reference'] = $this->exportFileReferences($pageUids, $data['tt_content']);
+            // Gehärtetes Asset-Manifest (eindeutige Dateien mit size + sha256) – Teil des
+            // Datenblocks und damit von der Prüfsumme abgedeckt.
+            $data['assets'] = $this->assetManifestService->build($data['sys_file_reference']);
         }
 
         $contentUids = array_column($data['tt_content'], 'uid');
