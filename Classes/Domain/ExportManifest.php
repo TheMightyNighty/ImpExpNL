@@ -64,6 +64,16 @@ final class ExportManifest
     }
 
     /**
+     * Gehärtetes Asset-Manifest (pro Datei storage/identifier/size/sha256).
+     *
+     * @return array<int, array{storage?:int, identifier?:string, size?:int, sha256?:string|null}>
+     */
+    public function getAssets(): array
+    {
+        return $this->data['assets'] ?? [];
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function getIrreRelations(): array

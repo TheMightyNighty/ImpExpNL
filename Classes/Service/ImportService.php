@@ -86,6 +86,7 @@ class ImportService
         private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly RollbackService $rollbackService,
         private readonly UidMapRepository $uidMapRepository,
+        private readonly AssetManifestService $assetManifestService,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -349,6 +350,7 @@ class ImportService
 
         $fileReferences = $manifest->getFileReferences();
         if (!empty($config['import']['include']['file_references']) && !empty($fileReferences)) {
+            $this->warnOnAssetIntegrityIssues($manifest->getAssets());
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $this->dataHandlerErrors += $this->falResolverService->importReferences($fileReferences, $uidArray, $dh, ['storageId' => $this->configurationService->getFalStorageId(), 'upsert' => $deltaMode]);
         }
@@ -487,6 +489,38 @@ class ImportService
             'importId' => $timestamp,
             'error' => $e->getMessage(),
         ]);
+    }
+
+    /**
+     * Warnt (ohne Abbruch), wenn eine im Manifest gelistete Datei auf dem Ziel denselben
+     * Identifier, aber anderen Inhalt hat (sha256-Abgleich). Die bestehende Zieldatei
+     * wird bewusst nicht überschrieben – der Datei-Transfer bleibt Operator-Sache.
+     *
+     * @param array<int, array{storage?:int, identifier?:string, sha256?:string|null}> $assets
+     */
+    private function warnOnAssetIntegrityIssues(array $assets): void
+    {
+        if ($assets === []) {
+            return;
+        }
+        $mismatches = 0;
+        foreach ($this->assetManifestService->verifyAgainstTarget($assets) as $issue) {
+            if ($issue['reason'] !== 'mismatch') {
+                continue;
+            }
+            $mismatches++;
+            $this->logger->warning(sprintf(
+                'Asset-Integrität: "%s" (Storage %d) hat auf dem Ziel anderen Inhalt als im Export '
+                . '(erwartet sha256 %s…, vorhanden %s…). Bestehende Datei bleibt unverändert.',
+                $issue['identifier'],
+                $issue['storage'],
+                substr((string)$issue['expected'], 0, 12),
+                substr((string)$issue['actual'], 0, 12)
+            ));
+        }
+        if ($mismatches > 0) {
+            $this->logger->warning(sprintf('Asset-Integrität: %d Datei(en) mit abweichendem Inhalt auf dem Ziel.', $mismatches));
+        }
     }
 
     /**

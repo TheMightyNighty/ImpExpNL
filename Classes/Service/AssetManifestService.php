@@ -19,6 +19,7 @@ namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Resource\File;
+use TYPO3\CMS\Core\Resource\FileInterface;
 use TYPO3\CMS\Core\Resource\StorageRepository;
 
 /**
@@ -86,14 +87,7 @@ class AssetManifestService
             $file = $storageObject->getFile($identifier);
             $size = $file instanceof File ? (int)$file->getSize() : 0;
 
-            $sha256 = null;
-            $localPath = $file->getForLocalProcessing(false);
-            if (is_file($localPath)) {
-                $hash = hash_file('sha256', $localPath);
-                $sha256 = $hash !== false ? $hash : null;
-            }
-
-            return [$size, $sha256];
+            return [$size, $this->sha256Of($file)];
         } catch (\Throwable $e) {
             $this->logger->warning('Asset-Manifest: Metadaten nicht ermittelbar', [
                 'storage' => $storage,
@@ -102,5 +96,62 @@ class AssetManifestService
             ]);
             return [0, null];
         }
+    }
+
+    /**
+     * Vergleicht das Manifest gegen die Dateien auf dem (Ziel-)System: meldet
+     * fehlende Dateien (`missing`) und – Kern der Integritätsprüfung – Dateien mit
+     * gleichem Identifier, aber anderem Inhalt (`mismatch`). Reine Lese-Operation.
+     *
+     * @param array<int, array{storage?:int, identifier?:string, sha256?:string|null}> $assets
+     * @return list<array{storage:int, identifier:string, reason:string, expected:string|null, actual:string|null}>
+     */
+    public function verifyAgainstTarget(array $assets): array
+    {
+        $issues = [];
+        foreach ($assets as $asset) {
+            $storage = (int)($asset['storage'] ?? 0);
+            $identifier = (string)($asset['identifier'] ?? '');
+            if ($identifier === '') {
+                continue;
+            }
+            $expected = isset($asset['sha256']) ? (string)$asset['sha256'] : null;
+
+            try {
+                $storageObject = $this->storageRepository->getStorageObject($storage);
+                if (!$storageObject->hasFile($identifier)) {
+                    $issues[] = ['storage' => $storage, 'identifier' => $identifier, 'reason' => 'missing', 'expected' => $expected, 'actual' => null];
+                    continue;
+                }
+                if ($expected === null) {
+                    // Beim Export kein Hash ermittelbar gewesen -> nichts zu vergleichen.
+                    continue;
+                }
+                $actual = $this->sha256Of($storageObject->getFile($identifier));
+                if ($actual !== null && !hash_equals($expected, $actual)) {
+                    $issues[] = ['storage' => $storage, 'identifier' => $identifier, 'reason' => 'mismatch', 'expected' => $expected, 'actual' => $actual];
+                }
+            } catch (\Throwable $e) {
+                $this->logger->warning('Asset-Integritätsprüfung fehlgeschlagen', [
+                    'storage' => $storage,
+                    'identifier' => $identifier,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        return $issues;
+    }
+
+    /**
+     * sha256 über den Dateiinhalt (lokaler Pfad, streamend); null bei Nicht-Lesbarkeit.
+     */
+    private function sha256Of(FileInterface $file): ?string
+    {
+        $localPath = $file->getForLocalProcessing(false);
+        if (!is_file($localPath)) {
+            return null;
+        }
+        $hash = hash_file('sha256', $localPath);
+        return $hash !== false ? $hash : null;
     }
 }
