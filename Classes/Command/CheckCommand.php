@@ -200,11 +200,18 @@ class CheckCommand extends Command
     {
         $section = 'Registry-Validierung';
         try {
-            $issues = $this->configValidationService->validate(
-                $this->configurationService->getRegisteredTables(),
-                $this->configurationService->getLinkRewriteFields(),
-                'tt_content',
-                $this->configurationService->getTableSources()
+            $config = $this->configurationService->getConfig();
+            $issues = array_merge(
+                $this->configValidationService->validate(
+                    $this->configurationService->getRegisteredTables(),
+                    $this->configurationService->getLinkRewriteFields(),
+                    'tt_content',
+                    $this->configurationService->getTableSources()
+                ),
+                $this->configValidationService->validateTransferProfiles(
+                    (array)($config['transferProfiles'] ?? []),
+                    (array)($config['assetTransports'] ?? [])
+                )
             );
             if ($issues === []) {
                 $this->record($section, 'ok', 'Alle registrierten Tabellen und Felder existieren im Schema.');

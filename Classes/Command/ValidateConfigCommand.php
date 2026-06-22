@@ -56,7 +56,14 @@ class ValidateConfigCommand extends Command
         $extensionFiles = $this->configurationService->getExtensionConfigFiles();
         $sources = $this->configurationService->getTableSources();
 
-        $issues = $this->configValidationService->validate($tables, $linkFields, 'tt_content', $sources);
+        $config = $this->configurationService->getConfig();
+        $issues = array_merge(
+            $this->configValidationService->validate($tables, $linkFields, 'tt_content', $sources),
+            $this->configValidationService->validateTransferProfiles(
+                (array)($config['transferProfiles'] ?? []),
+                (array)($config['assetTransports'] ?? [])
+            )
+        );
         $errors = array_values(array_filter($issues, static fn(array $i): bool => $i['level'] === 'error'));
         $warnings = array_values(array_filter($issues, static fn(array $i): bool => $i['level'] === 'warning'));
         $success = $errors === [];

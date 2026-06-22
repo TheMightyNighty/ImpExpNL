@@ -17,6 +17,7 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Service;
 
+use Robbi\ImpExpNL\Domain\ConflictStrategy;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 
@@ -31,6 +32,7 @@ use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 class ConfigValidationService
 {
     private const VALID_TYPES = ['mm', 'record'];
+    private const VALID_TRANSPORT_TYPES = ['external', 'bundle'];
 
     /** @var array<string, array<string, true>> Spalten je Tabelle (Cache). */
     private array $columnCache = [];
@@ -79,6 +81,59 @@ class ConfigValidationService
                 $issues[] = $this->error(
                     "link_rewrite: Feld \"$field\" existiert nicht in Tabelle \"$linkRewriteTable\"." . $this->didYouMean($linkRewriteTable, $field)
                 );
+            }
+        }
+
+        return $issues;
+    }
+
+    /**
+     * Prüft Transfer-Profile und Asset-Transporte aus der YAML-Config.
+     *
+     * @param array<string, mixed> $profiles transferProfiles
+     * @param array<string, mixed> $transports assetTransports
+     * @return array<int, array{level:string, message:string}>
+     */
+    public function validateTransferProfiles(array $profiles, array $transports): array
+    {
+        $issues = [];
+
+        foreach ($transports as $name => $config) {
+            $type = is_array($config) ? (string)($config['type'] ?? '') : '';
+            if (!in_array($type, self::VALID_TRANSPORT_TYPES, true)) {
+                $issues[] = $this->error(sprintf(
+                    'assetTransport "%s": ungültiger type "%s" (erlaubt: %s).',
+                    $name,
+                    $type,
+                    implode(', ', self::VALID_TRANSPORT_TYPES)
+                ));
+            }
+        }
+
+        foreach ($profiles as $name => $config) {
+            if (!is_array($config)) {
+                $issues[] = $this->error("transferProfile \"$name\": ungültige Definition (erwartet wird eine Abbildung).");
+                continue;
+            }
+            $transport = (string)($config['transport'] ?? 'external');
+            if (!isset($transports[$transport]) && !in_array($transport, self::VALID_TRANSPORT_TYPES, true)) {
+                $issues[] = $this->error(sprintf(
+                    'transferProfile "%s": Transport "%s" ist weder ein definierter assetTransport noch ein bekannter Typ (%s).',
+                    $name,
+                    $transport,
+                    implode(', ', self::VALID_TRANSPORT_TYPES)
+                ));
+            }
+            if (isset($config['conflictStrategy'])) {
+                try {
+                    ConflictStrategy::fromInput((string)$config['conflictStrategy']);
+                } catch (\InvalidArgumentException $e) {
+                    $issues[] = $this->error("transferProfile \"$name\": " . $e->getMessage());
+                }
+            }
+            $context = $config['allowedContext'] ?? [];
+            if (!is_array($context) || $context === []) {
+                $issues[] = $this->warning("transferProfile \"$name\": \"allowedContext\" ist leer – das Profil ist in jeder Umgebung ausführbar (keine dev/prod-Bindung).");
             }
         }
 

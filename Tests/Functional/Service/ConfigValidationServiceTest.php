@@ -142,4 +142,48 @@ class ConfigValidationServiceTest extends FunctionalTestCase
         );
         self::assertStringContainsString('[EXT:my_events]', $this->errorMessages($issues));
     }
+
+    #[Test]
+    public function validTransferProfilesProduceNoErrors(): void
+    {
+        $issues = $this->subject()->validateTransferProfiles(
+            ['prod_to_dev' => ['transport' => 'ext', 'conflictStrategy' => 'overwrite', 'allowedContext' => ['Development']]],
+            ['ext' => ['type' => 'external']]
+        );
+        $errors = array_filter($issues, static fn(array $i): bool => $i['level'] === 'error');
+        self::assertSame([], $errors, $this->errorMessages($issues));
+    }
+
+    #[Test]
+    public function unknownTransportReferenceIsError(): void
+    {
+        $issues = $this->subject()->validateTransferProfiles(
+            ['p' => ['transport' => 'does_not_exist', 'allowedContext' => ['Production']]],
+            ['ext' => ['type' => 'external']]
+        );
+        self::assertStringContainsString('does_not_exist', $this->errorMessages($issues));
+    }
+
+    #[Test]
+    public function invalidTransportTypeAndConflictStrategyAreErrors(): void
+    {
+        $issues = $this->subject()->validateTransferProfiles(
+            ['p' => ['transport' => 'weird', 'conflictStrategy' => 'nope', 'allowedContext' => ['Production']]],
+            ['weird' => ['type' => 'ftp']]
+        );
+        $messages = $this->errorMessages($issues);
+        self::assertStringContainsString('ungültiger type "ftp"', $messages);
+        self::assertStringContainsString('nope', $messages);
+    }
+
+    #[Test]
+    public function emptyAllowedContextIsWarning(): void
+    {
+        $issues = $this->subject()->validateTransferProfiles(
+            ['p' => ['transport' => 'external']],
+            []
+        );
+        $warnings = array_filter($issues, static fn(array $i): bool => $i['level'] === 'warning');
+        self::assertNotSame([], $warnings, 'Leeres allowedContext sollte eine Warnung erzeugen');
+    }
 }
