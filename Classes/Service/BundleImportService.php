@@ -1,0 +1,122 @@
+<?php
+
+declare(strict_types=1);
+
+/*
+ * This file is part of the TYPO3 CMS extension "imp_exp_nl".
+ *
+ * (c) 2026 Robert Schleiermacher
+ *
+ * It is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, either version 2
+ * of the License, or any later version.
+ *
+ * For the full copyright and license information, please read the
+ * LICENSE file that was distributed with this source code.
+ */
+
+namespace Robbi\ImpExpNL\Service;
+
+use Psr\Log\LoggerInterface;
+use TYPO3\CMS\Core\Core\Environment;
+use TYPO3\CMS\Core\Resource\Enum\DuplicationBehavior;
+use TYPO3\CMS\Core\Resource\StorageRepository;
+use TYPO3\CMS\Core\Utility\GeneralUtility;
+
+/**
+ * Gegenstück zu {@see \Robbi\ImpExpNL\Transport\BundleTransport}: nimmt ein beim
+ * Export erzeugtes `.tar.gz`, entpackt es, legt die enthaltenen Asset-Dateien in die
+ * Ziel-Storages (FAL indiziert sie beim späteren Import) und liefert den Pfad zur
+ * enthaltenen Export-Datei zurück. Macht `bundle` zum echten Cross-Instance-Round-Trip.
+ */
+class BundleImportService
+{
+    public function __construct(
+        private readonly StorageRepository $storageRepository,
+        private readonly LoggerInterface $logger
+    ) {}
+
+    public function isBundle(string $path): bool
+    {
+        return preg_match('/\.(tar\.gz|tgz|tar)$/i', $path) === 1;
+    }
+
+    /**
+     * Entpackt das Bundle, platziert (außer im Dry-Run) die Asset-Dateien im Ziel
+     * und gibt den Pfad zur enthaltenen Export-Datei (JSON/JSONL) zurück.
+     */
+    public function extract(string $bundlePath, bool $placeAssets = true): string
+    {
+        if (!is_file($bundlePath)) {
+            throw new \RuntimeException("Bundle nicht gefunden: $bundlePath");
+        }
+
+        $targetDir = Environment::getVarPath() . '/transient/impexpnl_bundle_' . bin2hex(random_bytes(6));
+        GeneralUtility::mkdir_deep($targetDir);
+
+        $phar = new \PharData($bundlePath);
+        $phar->extractTo($targetDir, null, true);
+
+        $exportFile = $this->findExportFile($targetDir);
+        if ($exportFile === null) {
+            throw new \RuntimeException('Bundle enthält keine Export-Datei (JSON/JSONL).');
+        }
+
+        $placed = 0;
+        if ($placeAssets) {
+            $manifest = json_decode((string)file_get_contents($exportFile), true);
+            foreach (($manifest['assets'] ?? []) as $asset) {
+                if ($this->placeAsset($targetDir, (int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''))) {
+                    $placed++;
+                }
+            }
+        }
+        $this->logger->info('Bundle entpackt', ['export' => basename($exportFile), 'assetsPlaced' => $placed]);
+
+        return $exportFile;
+    }
+
+    private function findExportFile(string $dir): ?string
+    {
+        foreach ((array)glob($dir . '/*.{json,jsonl}', GLOB_BRACE) as $file) {
+            if (basename($file) !== 'impexpnl_assets.json') {
+                return $file;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Legt eine extrahierte Asset-Datei in den Ziel-Storage, falls dort noch nicht vorhanden.
+     */
+    private function placeAsset(string $bundleDir, int $storage, string $identifier): bool
+    {
+        if ($identifier === '') {
+            return false;
+        }
+        $localFile = $bundleDir . '/files/' . ltrim($identifier, '/');
+        if (!is_file($localFile)) {
+            return false;
+        }
+        try {
+            $storageObject = $this->storageRepository->getStorageObject($storage);
+            if ($storageObject->hasFile($identifier)) {
+                return false;
+            }
+            $folderPath = trim(dirname($identifier), '/');
+            $folder = ($folderPath === '' || $folderPath === '.')
+                ? $storageObject->getRootLevelFolder()
+                : ($storageObject->hasFolder($folderPath) ? $storageObject->getFolder($folderPath) : $storageObject->createFolder($folderPath));
+
+            $storageObject->addFile($localFile, $folder, basename($identifier), DuplicationBehavior::REPLACE, false);
+            return true;
+        } catch (\Throwable $e) {
+            $this->logger->warning('Bundle: Asset konnte nicht platziert werden', [
+                'storage' => $storage,
+                'identifier' => $identifier,
+                'error' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+}

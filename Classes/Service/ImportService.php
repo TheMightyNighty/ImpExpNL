@@ -90,6 +90,7 @@ class ImportService
         private readonly AssetManifestService $assetManifestService,
         private readonly TransferProfileService $transferProfileService,
         private readonly UrlRewriteService $urlRewriteService,
+        private readonly BundleImportService $bundleImportService,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -126,6 +127,13 @@ class ImportService
         }
 
         $this->bootstrapService->initializeBackendContext($workspaceId);
+
+        // Bundle (.tar.gz) entpacken: Asset-Dateien ins Ziel legen (außer Dry-Run),
+        // dann mit der enthaltenen Export-Datei weiterarbeiten.
+        if ($this->bundleImportService->isBundle($jsonPath)) {
+            $jsonPath = $this->bundleImportService->extract($jsonPath, !$dryRun);
+        }
+
         $this->uidMap = new UidMap();
         $this->createdMap = new UidMap();
         $this->rollbackMap = [];
