@@ -51,8 +51,27 @@ class ExportService
         private readonly ExportWriter $exportWriter,
         private readonly AssetManifestService $assetManifestService,
         private readonly AssetTransportFactory $assetTransportFactory,
+        private readonly SanitizeService $sanitizeService,
         private readonly LoggerInterface $logger
     ) {}
+
+    /**
+     * Wendet PII-Scrubbing an: Regeln aus den Optionen (Vorrang) oder aus
+     * `export.sanitize`. Default aus.
+     *
+     * @param array<string, mixed> $data
+     * @param array<string, mixed> $options
+     * @return array<string, mixed>
+     */
+    private function applySanitize(array $data, array $options): array
+    {
+        $cfg = $options['sanitize'] ?? ($this->configurationService->getConfig()['export']['sanitize'] ?? []);
+        if (empty($cfg['enabled']) || empty($cfg['rules']) || !is_array($cfg['rules'])) {
+            return $data;
+        }
+        $this->logger->info('PII-Sanitizing aktiv', ['tables' => array_keys($cfg['rules'])]);
+        return $this->sanitizeService->sanitize($data, $cfg['rules']);
+    }
 
     /**
      * Export-Optionen:
@@ -100,6 +119,11 @@ class ExportService
         $event = new ModifyExportDataEvent($data);
         $this->eventDispatcher->dispatch($event);
         $finalData = $event->getExportData();
+
+        // PII-Scrubbing VOR der Prüfsumme – sonst würde die Manipulation als
+        // Integritätsverletzung gewertet und personenbezogene Daten wären bereits
+        // in die signierten Daten geflossen.
+        $finalData = $this->applySanitize($finalData, $options);
 
         $finalData['_meta'] = $this->buildExportMeta($startPid, $finalData, $options);
         return $finalData;

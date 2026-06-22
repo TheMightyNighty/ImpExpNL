@@ -103,3 +103,28 @@ transferProfiles:
     conflictStrategy: abort
     allowedContext:
       - Production
+
+# ============================================================================
+# Optionale Content-Transformationen (Default aus) – Vorlagen zum Einkommentieren.
+#
+# rewrite_urls (Import): absolute Domain-URLs feldbezogen ersetzen (getrennt vom
+# t3://page-Link-Rewriter). sanitize (Export): PII vor dem Schreiben anonymisieren.
+# ============================================================================
+#
+# import:
+#   rewrite_urls:
+#     enabled: true
+#     fields: [bodytext, header_link]
+#     rules:
+#       - { search: 'https://www.prod.example.com', replace: 'https://dev.example.com' }
+#       - { search: '#https?://(stage|prod)\.example\.com#', replace: 'https://dev.example.com', regex: true }
+#
+# export:
+#   sanitize:
+#     enabled: true
+#     rules:
+#       fe_users:
+#         - { field: email,    strategy: hash }
+#         - { field: username, strategy: hash }
+#         - { field: password, strategy: clear }
+#         - { field: first_name, strategy: fixed, value: 'Anonym' }
