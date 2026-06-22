@@ -89,6 +89,7 @@ class ImportService
         private readonly UidMapRepository $uidMapRepository,
         private readonly AssetManifestService $assetManifestService,
         private readonly TransferProfileService $transferProfileService,
+        private readonly UrlRewriteService $urlRewriteService,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -379,6 +380,7 @@ class ImportService
         $rawData = $manifest->toArray();
         $this->dataHandlerErrors += $this->tableRegistry->importRegisteredTables($rawData, $uidArray);
         $this->linkRewriterService->rewriteLinks($uidArray, $workspaceId);
+        $this->rewriteAbsoluteUrls($uidArray, $config, $workspaceId);
 
         $this->uidMap = UidMap::fromArray($uidArray);
         $this->rollbackMap = $this->buildRollbackMap($uidArray);
@@ -559,6 +561,29 @@ class ImportService
             }
         }
         return ['total' => count($assets), 'missing' => $missing, 'mismatch' => $mismatch];
+    }
+
+    /**
+     * Wendet die konfigurierten URL-Ersetzungen (`import.rewrite_urls`) auf die
+     * importierten Records an – bewusst getrennt vom t3://-Link-Rewriter, Default aus.
+     *
+     * @param array<string, array<int,int>> $uidMap
+     * @param array<string, mixed> $config
+     */
+    private function rewriteAbsoluteUrls(array $uidMap, array $config, int $workspaceId): void
+    {
+        $cfg = $config['import']['rewrite_urls'] ?? [];
+        if (empty($cfg['enabled']) || empty($cfg['rules']) || !is_array($cfg['rules'])) {
+            return;
+        }
+        $fields = !empty($cfg['fields']) && is_array($cfg['fields'])
+            ? array_values(array_map('strval', $cfg['fields']))
+            : $this->configurationService->getLinkRewriteFields();
+
+        $changed = $this->urlRewriteService->rewrite($uidMap, array_values($cfg['rules']), $fields, $workspaceId);
+        if ($changed > 0) {
+            $this->logger->info(sprintf('rewrite_urls: %d Feld(er) angepasst.', $changed));
+        }
     }
 
     /**
