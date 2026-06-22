@@ -161,13 +161,21 @@ class ImportCommand extends Command
             }
 
             $errors = (int)($result['stats']['errors'] ?? 0);
+            $isDryRun = !empty($result['dryRun']);
 
             if ($jsonOutput) {
                 $output->writeln((string)json_encode(['success' => $errors === 0] + $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
-            } elseif ($errors > 0) {
-                $io->warning(sprintf('Import abgeschlossen, aber %d DataHandler-Fehler aufgetreten (siehe Log).', $errors));
             } else {
-                $io->success('Import abgeschlossen.');
+                if ($isDryRun && isset($result['assets'])) {
+                    $this->renderAssetPreflight($io, $result['assets']);
+                }
+                if ($isDryRun) {
+                    $io->success('Dry-Run abgeschlossen — keine Änderungen geschrieben.');
+                } elseif ($errors > 0) {
+                    $io->warning(sprintf('Import abgeschlossen, aber %d DataHandler-Fehler aufgetreten (siehe Log).', $errors));
+                } else {
+                    $io->success('Import abgeschlossen.');
+                }
             }
 
             return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
@@ -177,6 +185,34 @@ class ImportCommand extends Command
                 $output->writeln('');
             }
             return $this->fail($io, $output, $jsonOutput, $e);
+        }
+    }
+
+    /**
+     * Asset-Preflight im Dry-Run: fehlende / inhaltlich abweichende Dateien auf dem Ziel.
+     *
+     * @param array{total:int, missing:list<string>, mismatch:list<string>} $assets
+     */
+    private function renderAssetPreflight(SymfonyStyle $io, array $assets): void
+    {
+        $total = $assets['total'];
+        if ($total === 0) {
+            return;
+        }
+        $missing = $assets['missing'];
+        $mismatch = $assets['mismatch'];
+
+        if ($missing === [] && $mismatch === []) {
+            $io->text(sprintf('Asset-Preflight: %d Datei(en) im Manifest, alle auf dem Ziel vorhanden und inhaltsgleich.', $total));
+            return;
+        }
+        if ($missing !== []) {
+            $io->warning(sprintf('%d von %d Asset-Datei(en) fehlen auf dem Ziel — vor dem Import übertragen (z. B. via rsync):', count($missing), $total));
+            $io->listing(array_slice($missing, 0, 20));
+        }
+        if ($mismatch !== []) {
+            $io->note(sprintf('%d Asset-Datei(en) haben auf dem Ziel abweichenden Inhalt — die bestehende Datei bleibt beim Import erhalten:', count($mismatch)));
+            $io->listing(array_slice($mismatch, 0, 20));
         }
     }
 

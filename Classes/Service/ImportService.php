@@ -101,7 +101,7 @@ class ImportService
      *  onConflictAsk: callable(array $conflict): bool  - Für 'ask'-Modus
      */
     /**
-     * @return array{dryRun:bool, importId?:string, stats?:array<string,int>, diff?:array<string,array<string,int>>}
+     * @return array{dryRun:bool, importId?:string, stats?:array<string,int>, diff?:array<string,array<string,int>>, assets?:array{total:int, missing:list<string>, mismatch:list<string>}}
      */
     public function runImport(string $jsonPath, int $targetPid, array $options = []): array
     {
@@ -118,8 +118,9 @@ class ImportService
         if ($dryRun) {
             $manifest = $this->loadAndValidateJson($jsonPath);
             $diff = $this->runDiffAnalysis($manifest, (bool)($options['verbose'] ?? false));
+            $assets = $this->buildAssetPreflight($manifest->getAssets());
             $this->logger->info('DRY-RUN BEENDET.');
-            return ['dryRun' => true, 'diff' => $diff];
+            return ['dryRun' => true, 'diff' => $diff, 'assets' => $assets];
         }
 
         $lockHandle = $this->importLock->acquire();
@@ -521,6 +522,27 @@ class ImportService
         if ($mismatches > 0) {
             $this->logger->warning(sprintf('Asset-Integrität: %d Datei(en) mit abweichendem Inhalt auf dem Ziel.', $mismatches));
         }
+    }
+
+    /**
+     * Asset-Preflight für den Dry-Run: Welche im Manifest gelisteten Dateien fehlen auf
+     * dem Ziel (müssen noch übertragen werden) bzw. haben abweichenden Inhalt?
+     *
+     * @param array<int, array{storage?:int, identifier?:string, sha256?:string|null}> $assets
+     * @return array{total:int, missing:list<string>, mismatch:list<string>}
+     */
+    private function buildAssetPreflight(array $assets): array
+    {
+        $missing = [];
+        $mismatch = [];
+        foreach ($this->assetManifestService->verifyAgainstTarget($assets) as $issue) {
+            if ($issue['reason'] === 'missing') {
+                $missing[] = $issue['identifier'];
+            } elseif ($issue['reason'] === 'mismatch') {
+                $mismatch[] = $issue['identifier'];
+            }
+        }
+        return ['total' => count($assets), 'missing' => $missing, 'mismatch' => $mismatch];
     }
 
     /**
