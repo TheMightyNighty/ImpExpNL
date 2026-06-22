@@ -52,6 +52,7 @@ class ImportCommand extends Command
             ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Konflikt-Strategie: overwrite, skip, ask, abort', 'overwrite')
             ->addOption('target-workspace', 'w', InputOption::VALUE_OPTIONAL, 'Ziel-Workspace (0=Live)', 0)
             ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Import-Profil laden (aus var/impexpnl_profiles/)')
+            ->addOption('transfer-profile', 't', InputOption::VALUE_OPTIONAL, 'Transfer-Profil aus der YAML-Config (Umgebungs-Bindung + Konflikt-Policy)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
@@ -104,6 +105,9 @@ class ImportCommand extends Command
         // Feld-Diff über die eingebaute Symfony-Verbosity (-v) statt eigener Option
         // (Letztere kollidiert in Symfony 7 / TYPO3 v14 mit dem globalen --verbose).
         $options['verbose'] = $output->isVerbose();
+        if ($input->getOption('transfer-profile')) {
+            $options['transferProfile'] = (string)$input->getOption('transfer-profile');
+        }
 
         // Konflikt-Strategie früh validieren (ungültige Werte sollen nicht still wie overwrite wirken).
         try {

@@ -73,3 +73,33 @@ impexpnl:
       uid_remap: true
       rewrite_links:
         - target
+
+# ============================================================================
+# Transfer- & Transport-Profile (optional)
+#
+# assetTransports = das "Wie" (Verpackung), transferProfiles = das "Was"/Policy.
+# Auswahl beim Import:  impexpnl:import <file> <pid> --transfer-profile=<name>
+# Beim Export wählt der Transport-Typ die Verpackung: --transport=external|bundle
+# ============================================================================
+
+assetTransports:
+  external_default:
+    type: external            # nur Manifest + Asset-Liste; Transfer via rsync/rclone/S3
+  bundle_full:
+    type: bundle              # self-contained .tar.gz inkl. der Asset-Dateien
+    includeAssets: true
+
+transferProfiles:
+  # Inhalte von Produktion nach Dev holen: Überschreiben ok, nur auf Dev/Test erlaubt.
+  prod_to_dev:
+    transport: external_default
+    conflictStrategy: overwrite
+    allowedContext:
+      - Development
+      - Testing
+  # Freigabe-Paket für Produktion: bei Konflikt abbrechen, nur auf Production erlaubt.
+  stage_to_prod_release:
+    transport: bundle_full
+    conflictStrategy: abort
+    allowedContext:
+      - Production

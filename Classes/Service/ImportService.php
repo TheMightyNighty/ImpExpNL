@@ -25,6 +25,7 @@ use Robbi\ImpExpNL\Domain\SystemFields;
 use Robbi\ImpExpNL\Domain\UidMap;
 use Robbi\ImpExpNL\Event\ModifyImportDataEvent;
 use Robbi\ImpExpNL\Exception\AbortedImportException;
+use Robbi\ImpExpNL\Exception\ConfigException;
 use Robbi\ImpExpNL\Exception\ConflictException;
 use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Exception\IntegrityException;
@@ -87,6 +88,7 @@ class ImportService
         private readonly RollbackService $rollbackService,
         private readonly UidMapRepository $uidMapRepository,
         private readonly AssetManifestService $assetManifestService,
+        private readonly TransferProfileService $transferProfileService,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -107,6 +109,20 @@ class ImportService
     {
         $dryRun = (bool)($options['dryRun'] ?? false);
         $workspaceId = (int)($options['workspaceId'] ?? 0);
+
+        // Transfer-Profil: Umgebungs-Bindung + Guardrails durchsetzen, Konflikt-Strategie übernehmen.
+        if (!empty($options['transferProfile'])) {
+            $profile = $this->transferProfileService->resolve((string)$options['transferProfile']);
+            $this->transferProfileService->assertContextAllowed($profile);
+            if ($profile->requireDryRun && !$dryRun) {
+                throw new ConfigException(sprintf(
+                    "Transfer-Profil '%s' erlaubt nur Dry-Run (requireDryRun). Mit --dry-run ausführen.",
+                    $profile->name
+                ));
+            }
+            $options['conflict'] = $profile->conflictStrategy;
+            $this->logger->info('Transfer-Profil aktiv', ['profile' => $profile->name, 'conflict' => $profile->conflictStrategy->value]);
+        }
 
         $this->bootstrapService->initializeBackendContext($workspaceId);
         $this->uidMap = new UidMap();
