@@ -86,7 +86,12 @@ class BundleTransportTest extends FunctionalTestCase
         self::assertFileExists($result['artifact']);
         self::assertStringEndsWith('.tar.gz', $result['artifact']);
 
-        $phar = new \PharData($result['artifact']);
+        // PharData cacht Archive prozessweit pro Pfad; das soeben erzeugte Bundle wird
+        // im selben Prozess über eine eindeutige Kopie gelesen (cache-frei, wie ein
+        // echter Import in getrenntem Prozess).
+        $readCopy = $dir . '/verify_' . bin2hex(random_bytes(4)) . '.tar.gz';
+        copy($result['artifact'], $readCopy);
+        $phar = new \PharData($readCopy);
         self::assertTrue(isset($phar['export.json']), 'Export-Datei fehlt im Bundle');
         self::assertTrue(isset($phar['impexpnl_assets.json']), 'Asset-Manifest fehlt im Bundle');
         self::assertTrue(isset($phar['files/dummy.txt']), 'Asset-Datei fehlt im Bundle');

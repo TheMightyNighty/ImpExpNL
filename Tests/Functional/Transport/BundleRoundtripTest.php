@@ -99,4 +99,50 @@ class BundleRoundtripTest extends FunctionalTestCase
             ->executeQuery()->fetchOne();
         self::assertGreaterThan(0, $count, 'FAL-Referenz auf dem importierten Inhalt fehlt');
     }
+
+    /**
+     * Regression: Bei einem JSONL-Export scheiterte das frühere json_decode der
+     * Gesamtdatei und es wurden still 0 Assets platziert. Der Round-Trip muss auch
+     * für JSONL die Datei aus dem Bundle ins Ziel zurückbringen.
+     */
+    #[Test]
+    public function bundleCarriesAssetForJsonlExport(): void
+    {
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/pages.csv');
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/tt_content.csv');
+        $this->importCSVDataSet(__DIR__ . '/../Fixtures/be_users.csv');
+        $this->setUpBackendUser(1);
+
+        $fileadmin = Environment::getPublicPath() . '/fileadmin';
+        GeneralUtility::mkdir_deep($fileadmin);
+        file_put_contents($fileadmin . '/dummy.txt', self::FILE_CONTENT);
+
+        $storageRepository = $this->get(StorageRepository::class);
+        $storageUid = $storageRepository->createLocalStorage('fileadmin', 'fileadmin/', 'relative', '', true);
+        $sysFileUid = $storageRepository->findByUid($storageUid)->getFile('/dummy.txt')->getUid();
+
+        $this->get(ConnectionPool::class)->getConnectionForTable('sys_file_reference')->insert('sys_file_reference', [
+            'pid' => 2,
+            'uid_local' => $sysFileUid,
+            'uid_foreign' => 10,
+            'tablenames' => 'tt_content',
+            'fieldname' => 'image',
+            'sorting_foreign' => 1,
+        ]);
+
+        $dir = $this->instancePath . '/var/roundtrip_jsonl';
+        GeneralUtility::mkdir_deep($dir);
+        $result = $this->get(ExportService::class)->runExport(1, $dir . '/export.jsonl', ['transport' => 'bundle', 'jsonl' => true]);
+        $bundle = $result['artifact'];
+        self::assertNotNull($bundle);
+
+        unlink($fileadmin . '/dummy.txt');
+        self::assertFileDoesNotExist($fileadmin . '/dummy.txt');
+
+        $importResult = $this->get(ImportService::class)->runImport($bundle, 0, ['workspaceId' => 0]);
+        self::assertSame(0, $importResult['stats']['errors']);
+
+        self::assertFileExists($fileadmin . '/dummy.txt', 'JSONL-Bundle hat die Asset-Datei nicht ins fileadmin zurückgebracht');
+        self::assertSame(self::FILE_CONTENT, file_get_contents($fileadmin . '/dummy.txt'));
+    }
 }

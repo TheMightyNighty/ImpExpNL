@@ -54,8 +54,22 @@ class BundleImportService
         $targetDir = Environment::getVarPath() . '/transient/impexpnl_bundle_' . bin2hex(random_bytes(6));
         GeneralUtility::mkdir_deep($targetDir);
 
-        $phar = new \PharData($bundlePath);
-        $phar->extractTo($targetDir, null, true);
+        // PharData cacht geöffnete Archive prozessweit pro Pfad. Wird im selben Prozess
+        // erst ein Bundle erzeugt (compress/unlinkArchive) und dann wieder geöffnet
+        // (Export→Import in einem Lauf, z. B. selbe Instanz oder Funktionaltest), liefert
+        // extractTo() für den bekannten Pfad inkonsistente (noch komprimierte) Bytes.
+        // Eine eindeutig benannte Arbeitskopie umgeht den Cache.
+        $workCopy = $targetDir . '.' . pathinfo($bundlePath, PATHINFO_BASENAME);
+        if (!copy($bundlePath, $workCopy)) {
+            throw new \RuntimeException("Bundle nicht lesbar: $bundlePath");
+        }
+        try {
+            $phar = new \PharData($workCopy);
+            $phar->extractTo($targetDir, null, true);
+        } finally {
+            unset($phar);
+            @unlink($workCopy);
+        }
 
         $exportFile = $this->findExportFile($targetDir);
         if ($exportFile === null) {
@@ -64,8 +78,7 @@ class BundleImportService
 
         $placed = 0;
         if ($placeAssets) {
-            $manifest = json_decode((string)file_get_contents($exportFile), true);
-            foreach (($manifest['assets'] ?? []) as $asset) {
+            foreach ($this->readAssetList($targetDir, $exportFile) as $asset) {
                 if ($this->placeAsset($targetDir, (int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''))) {
                     $placed++;
                 }
@@ -74,6 +87,35 @@ class BundleImportService
         $this->logger->info('Bundle entpackt', ['export' => basename($exportFile), 'assetsPlaced' => $placed]);
 
         return $exportFile;
+    }
+
+    /**
+     * Liefert die zu platzierenden Assets. Bevorzugt das mitgepackte Manifest
+     * `impexpnl_assets.json` (format-unabhängig); nur als Fallback wird die
+     * Export-Datei gelesen – und das ausschließlich für JSON (bei JSONL würde
+     * ein json_decode der Gesamtdatei fehlschlagen und still 0 Assets liefern).
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function readAssetList(string $dir, string $exportFile): array
+    {
+        $manifestFile = $dir . '/impexpnl_assets.json';
+        if (is_file($manifestFile)) {
+            $assets = json_decode((string)file_get_contents($manifestFile), true);
+            if (is_array($assets)) {
+                return $assets;
+            }
+        }
+
+        if (str_ends_with(strtolower($exportFile), '.json')) {
+            $manifest = json_decode((string)file_get_contents($exportFile), true);
+            if (is_array($manifest) && is_array($manifest['assets'] ?? null)) {
+                return $manifest['assets'];
+            }
+        }
+
+        $this->logger->warning('Bundle: kein Asset-Manifest gefunden, keine Dateien platziert.', ['export' => basename($exportFile)]);
+        return [];
     }
 
     private function findExportFile(string $dir): ?string
