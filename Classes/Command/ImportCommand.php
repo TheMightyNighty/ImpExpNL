@@ -165,10 +165,27 @@ class ImportCommand extends Command
             }
 
             $errors = (int)($result['stats']['errors'] ?? 0);
+            $assetsMissing = (int)($result['stats']['assets_missing'] ?? 0);
             $isDryRun = !empty($result['dryRun']);
 
+            // Im Dry-Run kommt die Fehlmenge aus dem Preflight, beim echten Import aus
+            // den übersprungenen Referenzen.
+            if ($isDryRun) {
+                $assetsMissing = count($result['assets']['missing'] ?? []);
+            }
+
+            // Exit-Code differenziert: DataHandler-Fehler haben Vorrang (generischer
+            // Fehler), sonst signalisieren fehlende Ziel-Assets Exit-Code 7 – auch im
+            // Dry-Run, damit er als CI-Preflight-Gate taugt.
+            $exitCode = ExitCode::OK;
+            if ($errors > 0) {
+                $exitCode = ExitCode::GENERIC;
+            } elseif ($assetsMissing > 0) {
+                $exitCode = ExitCode::ASSETS_MISSING;
+            }
+
             if ($jsonOutput) {
-                $output->writeln((string)json_encode(['success' => $errors === 0] + $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                $output->writeln((string)json_encode(['success' => $exitCode === ExitCode::OK] + $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
                 if ($isDryRun && isset($result['assets'])) {
                     $this->renderAssetPreflight($io, $result['assets']);
@@ -177,12 +194,17 @@ class ImportCommand extends Command
                     $io->success('Dry-Run abgeschlossen — keine Änderungen geschrieben.');
                 } elseif ($errors > 0) {
                     $io->warning(sprintf('Import abgeschlossen, aber %d DataHandler-Fehler aufgetreten (siehe Log).', $errors));
+                } elseif ($assetsMissing > 0) {
+                    $io->warning(sprintf('Import abgeschlossen, aber %d referenzierte Datei(en) fehlen auf dem Ziel.', $assetsMissing));
                 } else {
                     $io->success('Import abgeschlossen.');
                 }
+                if ($exitCode !== ExitCode::OK) {
+                    $this->renderExitGuidance($io, $exitCode);
+                }
             }
 
-            return $errors > 0 ? Command::FAILURE : Command::SUCCESS;
+            return $exitCode;
         } catch (\Throwable $e) {
             if ($progressBar) {
                 $progressBar->finish();
@@ -234,7 +256,46 @@ class ImportCommand extends Command
             ));
         } else {
             $io->error($e->getMessage());
+            $this->renderExitGuidance($io, $exitCode);
         }
         return $exitCode;
+    }
+
+    /**
+     * Konkrete, handlungsorientierte Hilfe je Exit-Code – damit ein Code ≠ 0 dem
+     * Operator sagt, was als Nächstes zu tun ist (statt nur „fehlgeschlagen").
+     */
+    private function renderExitGuidance(SymfonyStyle $io, int $exitCode): void
+    {
+        $hints = match ($exitCode) {
+            ExitCode::INVALID_CONFIG => [
+                'Konfiguration/Profil prüfen: vendor/bin/typo3 impexpnl:validate-config',
+                'Konflikt-Strategie muss overwrite, skip, ask oder abort sein.',
+            ],
+            ExitCode::LOCK_ACTIVE => [
+                'Ein anderer Import hält den Lock. Läuft kein Import mehr, Lock lösen: vendor/bin/typo3 impexpnl:unlock',
+            ],
+            ExitCode::INTEGRITY => [
+                'Die Importdatei wurde verändert oder die Signatur ist ohne Schlüssel nicht prüfbar.',
+                'Datei neu exportieren oder IMPEXPNL_SIGNING_KEY passend zur Quelle setzen.',
+            ],
+            ExitCode::CONFLICTS => [
+                'Konflikte erkannt und conflict=abort. Mit --conflict=skip oder --conflict=overwrite erneut ausführen,',
+                'oder zunächst --dry-run -v für den Feld-Diff.',
+            ],
+            ExitCode::PARTIAL_ROLLBACK => [
+                'Teilimport wurde automatisch zurückgerollt. Ursache im Log prüfen und Import wiederholen.',
+                'Falls kein Auto-Rollback: vendor/bin/typo3 impexpnl:undo <importId>.',
+            ],
+            ExitCode::ASSETS_MISSING => [
+                'Referenzierte Dateien fehlen auf dem Ziel; die betroffenen FAL-Referenzen wurden übersprungen.',
+                'Dateien aus impexpnl_assets.txt übertragen (z. B. rsync) und den Import erneut ausführen –',
+                'oder den Transport "bundle" nutzen, der die Dateien selbst mitliefert.',
+            ],
+            default => [
+                'Details stehen im TYPO3-Log. Vorab mit --dry-run prüfen.',
+            ],
+        };
+        $io->note(array_merge([sprintf('Nächste Schritte (Exit-Code %d):', $exitCode)], $hints));
     }
 }

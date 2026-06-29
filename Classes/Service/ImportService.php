@@ -200,7 +200,7 @@ class ImportService
      * Führt die eigentlichen Schreiboperationen aus und liefert die Statistik zurück.
      * Die Protokollierung erfolgt in executeImport() (auch im Fehlerfall).
      *
-     * @return array{new:int, updated:int, skipped:int, conflict_skipped:int, errors:int}
+     * @return array{new:int, updated:int, skipped:int, conflict_skipped:int, errors:int, assets_missing:int}
      */
     private function processImport(ExportManifest $manifest, int $targetPid, array $options, array $config): array
     {
@@ -220,7 +220,7 @@ class ImportService
 
         $exportedPageUids = array_column($pages, 'uid');
         $exportedContentUids = array_column($ttContent, 'uid');
-        $stats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0, 'errors' => 0];
+        $stats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0, 'errors' => 0, 'assets_missing' => 0];
         // Übersetzungen: Quell-UID => Quell-Eltern-UID, für den l10n-Eltern-Nachpass.
         $l10nFixups = ['pages' => [], 'tt_content' => []];
 
@@ -376,7 +376,7 @@ class ImportService
 
         $fileReferences = $manifest->getFileReferences();
         if (!empty($config['import']['include']['file_references']) && !empty($fileReferences)) {
-            $this->warnOnAssetIntegrityIssues($manifest->getAssets());
+            $stats['assets_missing'] = $this->warnOnAssetIntegrityIssues($manifest->getAssets());
             $dh = GeneralUtility::makeInstance(DataHandler::class);
             $this->dataHandlerErrors += $this->falResolverService->importReferences($fileReferences, $uidArray, $dh, ['storageId' => $this->configurationService->getFalStorageId(), 'upsert' => $deltaMode]);
         }
@@ -519,19 +519,32 @@ class ImportService
     }
 
     /**
-     * Warnt (ohne Abbruch), wenn eine im Manifest gelistete Datei auf dem Ziel denselben
-     * Identifier, aber anderen Inhalt hat (sha256-Abgleich). Die bestehende Zieldatei
-     * wird bewusst nicht überschrieben – der Datei-Transfer bleibt Operator-Sache.
+     * Warnt (ohne Abbruch) über Asset-Probleme auf dem Ziel: fehlende Dateien (deren
+     * FAL-Referenzen beim Import übersprungen werden) und Dateien mit gleichem Identifier,
+     * aber anderem Inhalt (sha256-Abgleich). Die bestehende Zieldatei wird bewusst nicht
+     * überschrieben – der Datei-Transfer bleibt Operator-Sache.
      *
      * @param array<int, array{storage?:int, identifier?:string, sha256?:string|null}> $assets
+     * @return int Anzahl der auf dem Ziel fehlenden Dateien (für Exit-Code ASSETS_MISSING)
      */
-    private function warnOnAssetIntegrityIssues(array $assets): void
+    private function warnOnAssetIntegrityIssues(array $assets): int
     {
         if ($assets === []) {
-            return;
+            return 0;
         }
         $mismatches = 0;
+        $missing = 0;
         foreach ($this->assetManifestService->verifyAgainstTarget($assets) as $issue) {
+            if ($issue['reason'] === 'missing') {
+                $missing++;
+                $this->logger->warning(sprintf(
+                    'Asset fehlt auf dem Ziel: "%s" (Storage %d). Die FAL-Referenz wird übersprungen – '
+                    . 'Datei vor dem Import übertragen (siehe impexpnl_assets.txt).',
+                    $issue['identifier'],
+                    $issue['storage']
+                ));
+                continue;
+            }
             if ($issue['reason'] !== 'mismatch') {
                 continue;
             }
@@ -548,6 +561,10 @@ class ImportService
         if ($mismatches > 0) {
             $this->logger->warning(sprintf('Asset-Integrität: %d Datei(en) mit abweichendem Inhalt auf dem Ziel.', $mismatches));
         }
+        if ($missing > 0) {
+            $this->logger->warning(sprintf('Asset-Integrität: %d Datei(en) fehlen auf dem Ziel.', $missing));
+        }
+        return $missing;
     }
 
     /**
