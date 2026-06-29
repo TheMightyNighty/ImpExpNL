@@ -38,6 +38,12 @@ class AssetDisplayTest extends FunctionalTestCase
 {
     use UidMapTestTrait;
 
+    // frontend liefert die echte Inline-FAL-TCA für tt_content.image – ohne sie wäre das
+    // Feld kein Inline-Relation-Feld und der Counter-Pflege-Pfad ließe sich nicht testen.
+    protected array $coreExtensionsToLoad = [
+        'frontend',
+    ];
+
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
@@ -57,6 +63,15 @@ class AssetDisplayTest extends FunctionalTestCase
         $storageRepository = $this->get(StorageRepository::class);
         $storageUid = $storageRepository->createLocalStorage('fileadmin', 'fileadmin/', 'relative', '', true);
         $sysFileUid = $storageRepository->findByUid($storageUid)->getFile('/bild.jpg')->getUid();
+
+        // Bild-Referenz an einen CType hängen, der das image-Feld führt (CType "image").
+        // Beim "text"-Typ ist image nicht im showitem; der DataHandler würde die Relation
+        // beim regulären Import zurecht verwerfen.
+        $this->get(ConnectionPool::class)->getConnectionForTable('tt_content')->update(
+            'tt_content',
+            ['CType' => 'image'],
+            ['uid' => 10]
+        );
 
         $this->get(ConnectionPool::class)->getConnectionForTable('sys_file_reference')->insert('sys_file_reference', [
             'pid' => 2,
@@ -81,12 +96,13 @@ class AssetDisplayTest extends FunctionalTestCase
         self::assertCount(1, $files, 'Frontend-API findet das importierte Bild nicht');
         self::assertSame('bild.jpg', $files[0]->getName());
 
-        // Diagnose: Zustand des Zählfelds tt_content.image am importierten Record.
+        // Das Zählfeld tt_content.image muss die Referenz mitzählen – sonst verwirft ein
+        // späterer BE-Save die Relation (DataHandler rekonziliert Inline-Felder über den Count).
         $qb = $this->get(ConnectionPool::class)->getQueryBuilderForTable('tt_content');
         $qb->getRestrictions()->removeAll();
         $imageCount = $qb->select('image')->from('tt_content')
             ->where($qb->expr()->eq('uid', $qb->createNamedParameter($newContent, Connection::PARAM_INT)))
             ->executeQuery()->fetchOne();
-        fwrite(STDERR, sprintf("\n[AssetDisplay] tt_content.image (Zählfeld) am importierten Inhalt = %s\n", var_export($imageCount, true)));
+        self::assertSame(1, (int)$imageCount, 'Zählfeld tt_content.image am importierten Inhalt ist stale (erwartet 1)');
     }
 }
