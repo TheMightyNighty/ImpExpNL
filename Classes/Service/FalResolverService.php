@@ -152,10 +152,13 @@ class FalResolverService
      * lebender sys_file_reference-Einträge (idempotent, korrekt auch bei Delta/Upsert,
      * inkl. Drift nach unten bis 0 über den Delete-Pfad).
      *
-     * Bewusst Live-bezogen: der Zähler wird direkt auf dem Eltern-Record gesetzt und der
-     * Count ohne t3ver_wsid-Filter ermittelt. Workspace-Importe (workspaceId > 0) pflegen
-     * den Zähler der Workspace-Version damit nicht separat – das ist für den unterstützten
-     * Live-Import (Standard) korrekt; ein echter Workspace-Pfad müsste hier überlagern.
+     * Workspace: Beim Import in einen Nicht-Live-Workspace entstehen die neuen Inhalte als
+     * Workspace-Neu-Platzhalter mit eigener UID (t3ver_oid=0). uid_foreign der Referenz zeigt
+     * direkt auf diese UID, daher trifft der Zähler-Nachpass den richtigen Record – verifiziert
+     * durch AssetWorkspaceCounterTest. Nicht abgedeckt ist allein die Kombination
+     * --delta/Upsert *in* einen Workspace für bereits live existierende Records (Overlay-Fall);
+     * das ist eine breitere Baustelle (uidMap/Rollback sind dort ebenfalls nicht overlay-fähig)
+     * und kein reines Zähler-Thema.
      *
      * @param array<string, array<int, array<string, true>>> $targets table => uid => field => true
      */
