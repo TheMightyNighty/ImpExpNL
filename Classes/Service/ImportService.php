@@ -1230,8 +1230,11 @@ class ImportService
      */
     private function firstChangedField(array $new, array $existing): string
     {
+        // Ordnungs-/Volatile-Felder driften oft als Import-Artefakt – das aussagekräftige
+        // Inhaltsfeld (z. B. bodytext) ist als Diff-Beispiel relevanter.
+        $skip = ['sorting', 'sorting_foreign', 'l10n_diffsource'];
         foreach ($new as $field => $value) {
-            if (in_array($field, $this->excludedFields, true) || is_array($value)) {
+            if (in_array($field, $this->excludedFields, true) || in_array($field, $skip, true) || is_array($value)) {
                 continue;
             }
             if ((string)$value !== (string)($existing[$field] ?? '')) {
