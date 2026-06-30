@@ -1,0 +1,29 @@
+# Deklarative Profil-Contracts.
+#
+# Je Profil nur Fixtures + erwartete Quell-UIDs angeben; der DeclarativeProfileContractTest
+# prüft daraus generisch die vier PFLICHTKLAUSELN eines unterstützten Profils:
+#   1. Export enthält alle erwarteten Records
+#   2. Import bildet alle Records ab (Mapping + Ziel-Record existiert)
+#   3. Delta-Re-Import ist idempotent (legt nichts Neues an)
+#   4. Rollback entfernt alle importierten Records wieder
+#
+# So lässt sich ein neues (auch Ziel-Extension-)Profil ohne PHP-Subklasse absichern.
+# Profil-spezifische Sonderlogik (Link-Rewrite, FAL, Kategorie-MM) bleibt bewusst in den
+# dedizierten Contract-Subklassen, da sie eigene Assertions braucht.
+profiles:
+  core:
+    fixtures: [pages.csv, tt_content.csv]
+    expected:
+      pages: [1, 2, 3, 4]
+      tt_content: [10, 11, 12, 13]
+
+  # Ziel-Extension-Profil: registrierte Record-Tabelle einer Extension (EXT:redirects).
+  # deltaIdempotent: false — Delta-Idempotenz ist für Registry-Tabellen noch offen
+  # (Roadmap „Multi-Source-Delta für Registry-Tabellen"; heute nur pages/tt_content).
+  redirect:
+    coreExtensions: [redirects]
+    deltaIdempotent: false
+    fixtures: [pages.csv, sys_redirect.csv]
+    expected:
+      pages: [1, 2, 3, 4]
+      sys_redirect: [1, 2]
