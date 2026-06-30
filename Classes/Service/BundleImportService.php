@@ -58,8 +58,12 @@ class BundleImportService
     /**
      * Entpackt das Bundle, platziert (außer im Dry-Run) die Asset-Dateien im Ziel
      * und gibt den Pfad zur enthaltenen Export-Datei (JSON/JSONL) zurück.
+     *
+     * @param callable|null $onAssetsPlaced Wird während der Platzierung periodisch (und am
+     *        Ende) mit der bisherigen Liste platzierter sys_file-UIDs aufgerufen – ermöglicht
+     *        ein Checkpointing, sodass auch ein Crash WÄHREND der Platzierung rückrollbar bleibt.
      */
-    public function extract(string $bundlePath, bool $placeAssets = true): string
+    public function extract(string $bundlePath, bool $placeAssets = true, ?callable $onAssetsPlaced = null): string
     {
         if (!is_file($bundlePath)) {
             throw new \RuntimeException("Bundle nicht gefunden: $bundlePath");
@@ -81,11 +85,20 @@ class BundleImportService
 
         $this->placedFileUids = [];
         if ($placeAssets) {
+            $since = 0;
             foreach ($this->readAssetList($targetDir, $exportFile) as $asset) {
                 $uid = $this->placeAsset($targetDir, (int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''));
                 if ($uid !== null) {
                     $this->placedFileUids[] = $uid;
                 }
+                // Periodischer Checkpoint (alle 200 Dateien), damit ein Crash mitten in der
+                // Platzierung die bis dahin platzierten Dateien rückrollbar lässt.
+                if ($onAssetsPlaced !== null && (++$since) % 200 === 0) {
+                    $onAssetsPlaced($this->placedFileUids);
+                }
+            }
+            if ($onAssetsPlaced !== null && $this->placedFileUids !== []) {
+                $onAssetsPlaced($this->placedFileUids);
             }
         }
         $this->logger->info('Bundle entpackt', ['export' => basename($exportFile), 'assetsPlaced' => count($this->placedFileUids)]);

@@ -143,8 +143,24 @@ class ImportService
         // Import die volle entpackte Kopie liegen – auch bei Abbruch).
         $bundleTempDir = null;
         $this->placedFileUids = [];
+        $this->currentImportId = '';
         if ($this->bundleImportService->isBundle($jsonPath)) {
-            $jsonPath = $this->bundleImportService->extract($jsonPath, !$dryRun);
+            // Beim echten Import das Protokoll schon VOR der Platzierung scharf schalten und
+            // die platzierten UIDs inkrementell fortschreiben – so ist auch ein Crash WÄHREND
+            // der Asset-Platzierung (vor dem ersten Record) per undo rückrollbar.
+            $onAssetsPlaced = null;
+            if (!$dryRun) {
+                $this->currentImportId = $this->generateImportId();
+                $this->currentWorkspaceId = $workspaceId;
+                $this->currentSourceFile = $jsonPath;
+                $this->currentDelta = (bool)($options['deltaMode'] ?? false);
+                $this->createdMap = new UidMap();
+                $onAssetsPlaced = function (array $uids): void {
+                    $this->placedFileUids = $uids;
+                    $this->checkpointImportLog();
+                };
+            }
+            $jsonPath = $this->bundleImportService->extract($jsonPath, !$dryRun, $onAssetsPlaced);
             $bundleTempDir = dirname($jsonPath);
             $this->placedFileUids = $this->bundleImportService->getPlacedFileUids();
         }
@@ -190,8 +206,9 @@ class ImportService
         $this->assertTargetPidExists($targetPid);
         $config = $this->configurationService->getConfig();
 
-        // Stabiler Import-Identifier: wird auch im Fehlerfall für das Notfall-Protokoll genutzt.
-        $timestamp = $this->generateImportId();
+        // Stabiler Import-Identifier: wurde beim Bundle-Import bereits vor der Platzierung
+        // erzeugt (Checkpointing); sonst hier neu. Wird auch im Fehlerfall fürs Protokoll genutzt.
+        $timestamp = $this->currentImportId !== '' ? $this->currentImportId : $this->generateImportId();
 
         // Kontext + Erst-Checkpoint VOR dem ersten Batch: schreibt bereits die platzierten
         // Assets ins Protokoll und legt die Zeile an, die danach pro Batch fortgeschrieben wird.
