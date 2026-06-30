@@ -67,6 +67,15 @@ abstract class AbstractProfileContract extends FunctionalTestCase
         return 1;
     }
 
+    /**
+     * Hook für profil-spezifischen Zusatz-Zustand, der VOR dem Export aufgebaut werden
+     * muss und sich nicht als CSV-Fixture abbilden lässt (z. B. ein echter FAL-Storage
+     * mit Datei). Default: nichts.
+     */
+    protected function prepareProfileState(): void
+    {
+    }
+
     protected function profileName(): string
     {
         return (new \ReflectionClass($this))->getShortName();
@@ -80,6 +89,10 @@ abstract class AbstractProfileContract extends FunctionalTestCase
         }
         $this->importCSVDataSet(__DIR__ . '/../Fixtures/be_users.csv');
         $this->setUpBackendUser(1);
+
+        // Profil-spezifischer Zusatz-Zustand VOR dem Export (z. B. FAL-Storage + Datei +
+        // sys_file_reference). Default: nichts.
+        $this->prepareProfileState();
 
         $json = $this->get(ExportService::class)->exportTree($this->rootPageUid());
         $this->exportFile = $this->instancePath . '/var/profile_' . $this->profileName() . '.json';
