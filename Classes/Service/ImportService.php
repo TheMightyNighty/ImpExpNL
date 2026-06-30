@@ -52,6 +52,9 @@ class ImportService
     /** @var array<string, array<int,int>> Rollback-Basis (erstellte Records inkl. Registry). */
     private array $rollbackMap = [];
 
+    /** @var list<int> Vom Bundle-Import neu platzierte sys_file-UIDs (Basis für Asset-GC). */
+    private array $placedFileUids = [];
+
     /** Anzahl der vom DataHandler gemeldeten Fehler. */
     private int $dataHandlerErrors = 0;
 
@@ -133,9 +136,11 @@ class ImportService
         // Entpack-Verzeichnis wird am Ende verlässlich aufgeräumt (sonst bleibt pro
         // Import die volle entpackte Kopie liegen – auch bei Abbruch).
         $bundleTempDir = null;
+        $this->placedFileUids = [];
         if ($this->bundleImportService->isBundle($jsonPath)) {
             $jsonPath = $this->bundleImportService->extract($jsonPath, !$dryRun);
             $bundleTempDir = dirname($jsonPath);
+            $this->placedFileUids = $this->bundleImportService->getPlacedFileUids();
         }
 
         try {
@@ -197,7 +202,9 @@ class ImportService
             throw $e;
         }
 
-        $this->importLogRepository->save($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->rollbackMap);
+        // ImportLog trägt zusätzlich die platzierten Assets (für den Rollback-GC); die
+        // UID-Map-Persistenz bekommt die unveränderte Tabellen-Map (kein Pseudo-Eintrag).
+        $this->importLogRepository->save($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->withPlacedFiles($this->rollbackMap));
         $this->uidMapRepository->persist($manifest->getSourceId(), $timestamp, $this->rollbackMap);
         $this->writeTransactionLog($timestamp, $workspaceId, $jsonPath, $stats, $deltaMode);
 
@@ -449,6 +456,22 @@ class ImportService
     }
 
     /**
+     * Ergänzt die Rollback-Map (nur für den ImportLog) um die vom Bundle-Import neu
+     * platzierten sys_file-UIDs unter dem reservierten Schlüssel `_placed_files`. Der
+     * Rollback-GC entfernt daraus später nur die danach unreferenzierten Dateien.
+     *
+     * @param array<string, mixed> $map
+     * @return array<string, mixed>
+     */
+    private function withPlacedFiles(array $map): array
+    {
+        if ($this->placedFileUids !== []) {
+            $map['_placed_files'] = array_values(array_unique($this->placedFileUids));
+        }
+        return $map;
+    }
+
+    /**
      * Protokolliert die Fehler eines DataHandler-Laufs und zählt sie zur
      * Gesamtfehlerzahl des Imports.
      */
@@ -500,7 +523,7 @@ class ImportService
             (int)($options['workspaceId'] ?? 0),
             $jsonPath . ' [ABGEBROCHEN]',
             (bool)($options['deltaMode'] ?? false),
-            $this->createdMap->toArray()
+            $this->withPlacedFiles($this->createdMap->toArray())
         );
 
         if ($this->configurationService->isAutoRollbackOnFailure()) {

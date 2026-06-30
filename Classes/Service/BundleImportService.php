@@ -31,6 +31,9 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  */
 class BundleImportService
 {
+    /** @var list<int> sys_file-UIDs, die der letzte extract()-Lauf NEU platziert hat. */
+    private array $placedFileUids = [];
+
     public function __construct(
         private readonly StorageRepository $storageRepository,
         private readonly LoggerInterface $logger
@@ -39,6 +42,17 @@ class BundleImportService
     public function isBundle(string $path): bool
     {
         return preg_match('/\.(tar\.gz|tgz|tar)$/i', $path) === 1;
+    }
+
+    /**
+     * sys_file-UIDs, die beim letzten extract() neu in den Ziel-Storage platziert wurden.
+     * Basis für den referenz-geprüften Asset-GC beim Rollback/Abbruch.
+     *
+     * @return list<int>
+     */
+    public function getPlacedFileUids(): array
+    {
+        return $this->placedFileUids;
     }
 
     /**
@@ -65,15 +79,16 @@ class BundleImportService
             throw new \RuntimeException('Bundle enthält keine Export-Datei (JSON/JSONL).');
         }
 
-        $placed = 0;
+        $this->placedFileUids = [];
         if ($placeAssets) {
             foreach ($this->readAssetList($targetDir, $exportFile) as $asset) {
-                if ($this->placeAsset($targetDir, (int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''))) {
-                    $placed++;
+                $uid = $this->placeAsset($targetDir, (int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''));
+                if ($uid !== null) {
+                    $this->placedFileUids[] = $uid;
                 }
             }
         }
-        $this->logger->info('Bundle entpackt', ['export' => basename($exportFile), 'assetsPlaced' => $placed]);
+        $this->logger->info('Bundle entpackt', ['export' => basename($exportFile), 'assetsPlaced' => count($this->placedFileUids)]);
 
         return $exportFile;
     }
@@ -201,34 +216,39 @@ class BundleImportService
     /**
      * Legt eine extrahierte Asset-Datei in den Ziel-Storage, falls dort noch nicht vorhanden.
      */
-    private function placeAsset(string $bundleDir, int $storage, string $identifier): bool
+    /**
+     * Legt eine extrahierte Asset-Datei in den Ziel-Storage. Liefert die UID des NEU
+     * angelegten sys_file zurück (Basis für den Rollback-GC) bzw. null, wenn die Datei
+     * bereits vorhanden war oder nicht platziert werden konnte.
+     */
+    private function placeAsset(string $bundleDir, int $storage, string $identifier): ?int
     {
         if ($identifier === '') {
-            return false;
+            return null;
         }
         $localFile = $bundleDir . '/files/' . ltrim($identifier, '/');
         if (!is_file($localFile)) {
-            return false;
+            return null;
         }
         try {
             $storageObject = $this->storageRepository->getStorageObject($storage);
             if ($storageObject->hasFile($identifier)) {
-                return false;
+                return null;
             }
             $folderPath = trim(dirname($identifier), '/');
             $folder = ($folderPath === '' || $folderPath === '.')
                 ? $storageObject->getRootLevelFolder()
                 : ($storageObject->hasFolder($folderPath) ? $storageObject->getFolder($folderPath) : $storageObject->createFolder($folderPath));
 
-            $storageObject->addFile($localFile, $folder, basename($identifier), DuplicationBehavior::REPLACE, false);
-            return true;
+            $file = $storageObject->addFile($localFile, $folder, basename($identifier), DuplicationBehavior::REPLACE, false);
+            return (int)$file->getUid();
         } catch (\Throwable $e) {
             $this->logger->warning('Bundle: Asset konnte nicht platziert werden', [
                 'storage' => $storage,
                 'identifier' => $identifier,
                 'error' => $e->getMessage(),
             ]);
-            return false;
+            return null;
         }
     }
 }

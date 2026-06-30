@@ -22,6 +22,7 @@ use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
+use TYPO3\CMS\Core\Resource\ResourceFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class RollbackService
@@ -32,6 +33,7 @@ class RollbackService
         private readonly TableRegistryService $tableRegistry,
         private readonly ImportLogRepository $importLogRepository,
         private readonly UidMapRepository $uidMapRepository,
+        private readonly ResourceFactory $resourceFactory,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -134,7 +136,9 @@ class RollbackService
             throw new \RuntimeException('Fehler beim Parsen der UID-Map: ' . json_last_error_msg());
         }
 
-        if (empty($lastImport['pages']) && empty($lastImport['tt_content'])) {
+        $placedFiles = array_map('intval', $lastImport['_placed_files'] ?? []);
+
+        if (empty($lastImport['pages']) && empty($lastImport['tt_content']) && $placedFiles === []) {
             $this->logger->warning('Protokolldaten sind leer.');
             $this->importLogRepository->delete($importId);
             return;
@@ -155,7 +159,7 @@ class RollbackService
             ));
         }
 
-        $stats = ['pages' => 0, 'tt_content' => 0, 'sys_file_reference' => 0, 'registry' => 0];
+        $stats = ['pages' => 0, 'tt_content' => 0, 'sys_file_reference' => 0, 'registry' => 0, 'assets' => 0];
 
         // FAL-Referenzen vor den Records selbst entfernen.
         foreach (['tt_content', 'pages'] as $tableName) {
@@ -211,18 +215,63 @@ class RollbackService
             }
         }
 
+        // Asset-GC: vom Bundle-Import NEU platzierte Dateien entfernen – aber nur die,
+        // die nach dem Entfernen der Referenzen (oben) niemand mehr nutzt. Operator-
+        // übertragene (external) Dateien sind hier nicht gelistet und bleiben unberührt.
+        $stats['assets'] = $this->rollbackPlacedAssets($placedFiles);
+
         $this->uidMapRepository->deleteByImportId($importId);
         $this->importLogRepository->delete($importId);
         $this->writeRollbackLog($importId, $stats);
 
         $this->logger->info(sprintf(
-            'Rollback %s: %d Seiten, %d Inhalte, %d FAL, %d Registry-Einträge gelöscht.',
+            'Rollback %s: %d Seiten, %d Inhalte, %d FAL, %d Registry-Einträge, %d Asset-Datei(en) gelöscht.',
             $importId,
             $stats['pages'],
             $stats['tt_content'],
             $stats['sys_file_reference'],
-            $stats['registry']
+            $stats['registry'],
+            $stats['assets']
         ));
+    }
+
+    /**
+     * Entfernt die beim Bundle-Import platzierten sys_file/Dateien – referenz-geprüft:
+     * nur, wenn auf die Datei keine lebende sys_file_reference mehr zeigt. So bleiben
+     * andernorts genutzte oder vorbestehende Dateien sicher erhalten.
+     *
+     * @param list<int> $fileUids
+     * @return int Anzahl tatsächlich gelöschter Dateien
+     */
+    private function rollbackPlacedAssets(array $fileUids): int
+    {
+        $deleted = 0;
+        foreach (array_unique($fileUids) as $fileUid) {
+            if ($fileUid <= 0) {
+                continue;
+            }
+            $qb = $this->connectionPool->getQueryBuilderForTable('sys_file_reference');
+            $qb->getRestrictions()->removeAll();
+            $remaining = (int)$qb->count('uid')->from('sys_file_reference')
+                ->where(
+                    $qb->expr()->eq('uid_local', $qb->createNamedParameter($fileUid, Connection::PARAM_INT)),
+                    $qb->expr()->eq('deleted', $qb->createNamedParameter(0, Connection::PARAM_INT))
+                )
+                ->executeQuery()->fetchOne();
+            if ($remaining > 0) {
+                continue;
+            }
+            try {
+                $this->resourceFactory->getFileObject($fileUid)->delete();
+                $deleted++;
+            } catch (\Throwable $e) {
+                $this->logger->warning('Rollback: platziertes Asset konnte nicht entfernt werden.', [
+                    'fileUid' => $fileUid,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        return $deleted;
     }
 
     private function writeRollbackLog(string $importId, array $stats): void
@@ -240,6 +289,7 @@ class RollbackService
             sprintf('Inhalte gelöscht:        %d', $stats['tt_content']),
             sprintf('FAL-Referenzen:          %d', $stats['sys_file_reference']),
             sprintf('Registry-Einträge:       %d', $stats['registry']),
+            sprintf('Asset-Dateien gelöscht:  %d', $stats['assets'] ?? 0),
             str_repeat('=', 72),
             '',
         ];
