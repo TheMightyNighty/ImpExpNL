@@ -46,6 +46,30 @@ class ImportLogRepository
         ]);
     }
 
+    /**
+     * Fügt das Protokoll ein oder aktualisiert es (per import_id). Grundlage für das
+     * fortlaufende Checkpointing während des Imports: ein vor/while-laufender Eintrag
+     * macht den Teilimport auch nach einem harten Crash (SIGKILL) per undo rückrollbar.
+     *
+     * @param array<string, mixed> $uidMap
+     */
+    public function upsert(string $importId, int $workspaceId, string $sourceFile, bool $delta, array $uidMap): void
+    {
+        $data = [
+            'tstamp' => time(),
+            'workspace_id' => $workspaceId,
+            'uid_map' => (string)json_encode($uidMap),
+            'source_file' => $sourceFile,
+            'delta_mode' => $delta ? 1 : 0,
+        ];
+        $connection = $this->connectionPool->getConnectionForTable(self::TABLE);
+        if ($this->findById($importId) !== null) {
+            $connection->update(self::TABLE, $data, ['import_id' => $importId]);
+        } else {
+            $connection->insert(self::TABLE, $data + ['import_id' => $importId]);
+        }
+    }
+
     public function findById(string $importId): ?array
     {
         $qb = $this->connectionPool->getQueryBuilderForTable(self::TABLE);

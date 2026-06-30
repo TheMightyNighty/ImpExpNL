@@ -55,6 +55,12 @@ class ImportService
     /** @var list<int> Vom Bundle-Import neu platzierte sys_file-UIDs (Basis für Asset-GC). */
     private array $placedFileUids = [];
 
+    /** Laufender Import-Kontext für das Checkpointing (SIGKILL-Robustheit). */
+    private string $currentImportId = '';
+    private int $currentWorkspaceId = 0;
+    private string $currentSourceFile = '';
+    private bool $currentDelta = false;
+
     /** Anzahl der vom DataHandler gemeldeten Fehler. */
     private int $dataHandlerErrors = 0;
 
@@ -187,6 +193,15 @@ class ImportService
         // Stabiler Import-Identifier: wird auch im Fehlerfall für das Notfall-Protokoll genutzt.
         $timestamp = $this->generateImportId();
 
+        // Kontext + Erst-Checkpoint VOR dem ersten Batch: schreibt bereits die platzierten
+        // Assets ins Protokoll und legt die Zeile an, die danach pro Batch fortgeschrieben wird.
+        // So ist ein Teilimport auch nach hartem Crash (SIGKILL, OOM) per undo rückrollbar.
+        $this->currentImportId = $timestamp;
+        $this->currentWorkspaceId = $workspaceId;
+        $this->currentSourceFile = $jsonPath;
+        $this->currentDelta = $deltaMode;
+        $this->checkpointImportLog();
+
         try {
             $stats = $this->processImport($manifest, $targetPid, $options, $config);
         } catch (\Throwable $e) {
@@ -202,9 +217,10 @@ class ImportService
             throw $e;
         }
 
-        // ImportLog trägt zusätzlich die platzierten Assets (für den Rollback-GC); die
-        // UID-Map-Persistenz bekommt die unveränderte Tabellen-Map (kein Pseudo-Eintrag).
-        $this->importLogRepository->save($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->withPlacedFiles($this->rollbackMap));
+        // ImportLog (per Upsert, aktualisiert die früh angelegte Checkpoint-Zeile) trägt
+        // zusätzlich die platzierten Assets (für den Rollback-GC); die UID-Map-Persistenz
+        // bekommt die unveränderte Tabellen-Map (kein Pseudo-Eintrag).
+        $this->importLogRepository->upsert($timestamp, $workspaceId, $jsonPath, $deltaMode, $this->withPlacedFiles($this->rollbackMap));
         $this->uidMapRepository->persist($manifest->getSourceId(), $timestamp, $this->rollbackMap);
         $this->writeTransactionLog($timestamp, $workspaceId, $jsonPath, $stats, $deltaMode);
 
@@ -472,6 +488,25 @@ class ImportService
     }
 
     /**
+     * Schreibt den aktuellen Stand (bisher angelegte Records + platzierte Assets) ins
+     * Protokoll. Wird vor dem ersten und nach jedem DataHandler-Batch aufgerufen, damit
+     * ein harter Crash (SIGKILL/OOM) einen per undo rückrollbaren Teilimport hinterlässt.
+     */
+    private function checkpointImportLog(): void
+    {
+        if ($this->currentImportId === '') {
+            return;
+        }
+        $this->importLogRepository->upsert(
+            $this->currentImportId,
+            $this->currentWorkspaceId,
+            $this->currentSourceFile,
+            $this->currentDelta,
+            $this->withPlacedFiles($this->createdMap->toArray())
+        );
+    }
+
+    /**
      * Protokolliert die Fehler eines DataHandler-Laufs und zählt sie zur
      * Gesamtfehlerzahl des Imports.
      */
@@ -518,7 +553,7 @@ class ImportService
      */
     private function handleAbortedImport(string $timestamp, string $jsonPath, array $options, \Throwable $e): void
     {
-        $this->importLogRepository->save(
+        $this->importLogRepository->upsert(
             $timestamp,
             (int)($options['workspaceId'] ?? 0),
             $jsonPath . ' [ABGEBROCHEN]',
@@ -712,6 +747,10 @@ class ImportService
                     $this->createdMap->set($table, $oldUid, (int)$newUid);
                 }
             }
+
+            // Checkpoint: dieser Batch ist committet → ins Protokoll fortschreiben, damit
+            // ein Crash danach einen rückrollbaren Stand hinterlässt.
+            $this->checkpointImportLog();
 
             $batchIndex++;
             if ($onProgress) {
