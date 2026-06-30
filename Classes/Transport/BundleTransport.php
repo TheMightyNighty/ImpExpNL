@@ -43,38 +43,41 @@ class BundleTransport implements TransportInterface
         $includeAssets = (bool)($config['includeAssets'] ?? true);
 
         $base = preg_replace('/\.jsonl?$/', '', $exportFile) ?? $exportFile;
-        $tarPath = $base . '.tar';
-        $gzPath = $tarPath . '.gz';
-        @unlink($tarPath);
+        $gzPath = $base . '.tar.gz';
         @unlink($gzPath);
 
-        $tar = new \PharData($tarPath);
-        $tar->addFile($exportFile, basename($exportFile));
-
+        // Archiv-Layout zusammenstellen: archivinterner Pfad => lokaler Quellpfad.
+        $entries = [basename($exportFile) => $exportFile];
         $assetsJson = dirname($exportFile) . '/impexpnl_assets.json';
         if (is_file($assetsJson)) {
-            $tar->addFile($assetsJson, 'impexpnl_assets.json');
+            $entries['impexpnl_assets.json'] = $assetsJson;
         }
 
         $bundled = 0;
         $missing = 0;
         if ($includeAssets) {
             foreach ($assets as $asset) {
-                $localName = 'files/' . ltrim((string)($asset['identifier'] ?? ''), '/');
-                $path = $this->localPath((int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''));
+                $identifier = (string)($asset['identifier'] ?? '');
+                $path = $this->localPath((int)($asset['storage'] ?? 0), $identifier);
                 if ($path === null) {
                     $missing++;
                     continue;
                 }
-                $tar->addFile($path, $localName);
+                $entries['files/' . ltrim($identifier, '/')] = $path;
                 $bundled++;
             }
         }
 
-        $tar->compress(\Phar::GZ);
-        // Handle freigeben, damit die unkomprimierte .tar entfernt werden kann.
-        unset($tar);
-        \Phar::unlinkArchive($tarPath);
+        // Primärpfad: natives `tar` (ein streamender O(n)-Durchlauf inkl. Kompression).
+        // PharData::addFile schreibt das Tar bei jedem Eintrag neu (O(n²)) und Phar::compress
+        // ist single-threaded – beides für große Asset-Mengen praxisuntauglich. PharData bleibt
+        // nur Fallback, wenn proc_open/tar nicht verfügbar sind (Hosting-Portabilität).
+        $compressor = (string)($config['compressor'] ?? 'gzip');
+        $mode = $this->packWithTar($entries, $gzPath, $compressor, dirname($base));
+        if ($mode === null) {
+            $this->packWithPharData($entries, $gzPath);
+            $mode = 'php-gz';
+        }
 
         $message = sprintf('Bundle geschrieben → %s', basename($gzPath));
         if ($includeAssets) {
@@ -82,11 +85,120 @@ class BundleTransport implements TransportInterface
         } else {
             $message .= ' (ohne Asset-Dateien).';
         }
+        $message .= sprintf(' [%s]', $mode);
         if ($missing > 0) {
             $this->logger->warning(sprintf('Bundle: %d Asset-Datei(en) nicht auffindbar und ausgelassen.', $missing));
         }
 
         return ['type' => 'bundle', 'artifact' => $gzPath, 'message' => $message];
+    }
+
+    /**
+     * Packt die Einträge via nativem `tar` über einen Symlink-Staging-Baum direkt nach
+     * $gzPath (`tar --use-compress-program=<compressor> -chf …`). `-h` folgt den Symlinks,
+     * sodass keine 391-MB-Kopie nötig ist. Gibt den Kompressor-Namen bei Erfolg zurück,
+     * null bei fehlendem proc_open/tar oder Fehler (→ Aufrufer nutzt PharData-Fallback).
+     *
+     * @param array<string, string> $entries archivinterner Pfad => lokaler Quellpfad
+     */
+    private function packWithTar(array $entries, string $gzPath, string $compressor, string $workBase): ?string
+    {
+        if ($compressor === '' || !\function_exists('proc_open')) {
+            return null;
+        }
+        $stage = $workBase . '/.impexpnl_bundle_' . bin2hex(random_bytes(6));
+        if (!@mkdir($stage, 0775, true)) {
+            return null;
+        }
+        try {
+            foreach ($entries as $archiveName => $src) {
+                $dest = $stage . '/' . $archiveName;
+                $dir = dirname($dest);
+                if (!is_dir($dir) && !@mkdir($dir, 0775, true)) {
+                    return null;
+                }
+                // Symlink (kein Kopieren); Fallback Hardlink/Copy, falls Symlinks gesperrt.
+                if (!@symlink($src, $dest) && !@link($src, $dest) && !@copy($src, $dest)) {
+                    return null;
+                }
+            }
+
+            // Top-Level-Einträge explizit übergeben (statt '.'), damit die Archiv-Pfade
+            // KEIN './'-Präfix bekommen – so bleibt das Layout identisch zum bisherigen
+            // PharData-Format (export.json, impexpnl_assets.json, files/…).
+            $topLevel = [];
+            foreach (array_keys($entries) as $archiveName) {
+                $topLevel[explode('/', $archiveName)[0]] = true;
+            }
+            $cmd = array_merge(
+                ['tar', '--use-compress-program=' . $compressor, '-chf', $gzPath, '-C', $stage],
+                array_keys($topLevel)
+            );
+            $process = @proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            if (!\is_resource($process)) {
+                return null;
+            }
+            fclose($pipes[1]);
+            $stderr = stream_get_contents($pipes[2]);
+            fclose($pipes[2]);
+            $exitCode = proc_close($process);
+
+            if ($exitCode !== 0 || !is_file($gzPath)) {
+                $this->logger->warning('Bundle: natives tar fehlgeschlagen – Fallback auf PharData.', [
+                    'compressor' => $compressor,
+                    'exitCode' => $exitCode,
+                    'stderr' => trim((string)$stderr),
+                ]);
+                @unlink($gzPath);
+                return null;
+            }
+            return $compressor;
+        } finally {
+            $this->removeDir($stage);
+        }
+    }
+
+    /**
+     * Fallback ohne CLI: baut das Tar mit PharData und komprimiert mit Phar::compress.
+     * Bewusst nur Notnagel (langsam bei vielen Dateien), damit restriktive Hosts ohne
+     * proc_open/tar trotzdem ein gültiges .tar.gz erhalten.
+     *
+     * @param array<string, string> $entries archivinterner Pfad => lokaler Quellpfad
+     */
+    private function packWithPharData(array $entries, string $gzPath): void
+    {
+        $tarPath = preg_replace('/\.gz$/', '', $gzPath) ?? $gzPath;
+        @unlink($tarPath);
+        $tar = new \PharData($tarPath);
+        foreach ($entries as $archiveName => $src) {
+            $tar->addFile($src, $archiveName);
+        }
+        $tar->compress(\Phar::GZ);
+        unset($tar);
+        \Phar::unlinkArchive($tarPath);
+    }
+
+    /**
+     * Entfernt den Staging-Baum. Es werden nur die Symlinks/Hilfsverzeichnisse gelöscht,
+     * niemals die Symlink-Ziele (die echten Asset-Dateien).
+     */
+    private function removeDir(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir() && !$item->isLink()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        @rmdir($dir);
     }
 
     private function localPath(int $storage, string $identifier): ?string

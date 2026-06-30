@@ -54,21 +54,10 @@ class BundleImportService
         $targetDir = Environment::getVarPath() . '/transient/impexpnl_bundle_' . bin2hex(random_bytes(6));
         GeneralUtility::mkdir_deep($targetDir);
 
-        // PharData cacht geöffnete Archive prozessweit pro Pfad. Wird im selben Prozess
-        // erst ein Bundle erzeugt (compress/unlinkArchive) und dann wieder geöffnet
-        // (Export→Import in einem Lauf, z. B. selbe Instanz oder Funktionaltest), liefert
-        // extractTo() für den bekannten Pfad inkonsistente (noch komprimierte) Bytes.
-        // Eine eindeutig benannte Arbeitskopie umgeht den Cache.
-        $workCopy = $targetDir . '.' . pathinfo($bundlePath, PATHINFO_BASENAME);
-        if (!copy($bundlePath, $workCopy)) {
-            throw new \RuntimeException("Bundle nicht lesbar: $bundlePath");
-        }
-        try {
-            $phar = new \PharData($workCopy);
-            $phar->extractTo($targetDir, null, true);
-        } finally {
-            unset($phar);
-            @unlink($workCopy);
+        // Primärpfad: natives `tar -xzf` (O(n) streamend, kein Phar-Prozess-Cache-Problem,
+        // flacher Speicher). Fallback auf PharData, wenn proc_open/tar nicht verfügbar sind.
+        if (!$this->extractWithTar($bundlePath, $targetDir)) {
+            $this->extractWithPharData($bundlePath, $targetDir);
         }
 
         $exportFile = $this->findExportFile($targetDir);
@@ -116,6 +105,87 @@ class BundleImportService
 
         $this->logger->warning('Bundle: kein Asset-Manifest gefunden, keine Dateien platziert.', ['export' => basename($exportFile)]);
         return [];
+    }
+
+    /**
+     * Entfernt das transiente Entpack-Verzeichnis nach dem Import (Erfolg wie Abbruch).
+     * Sicherheits-Guard: nur Pfade unterhalb von var/transient mit dem erwarteten
+     * Präfix werden gelöscht – niemals fileadmin o. Ä.
+     */
+    public function cleanupTransient(string $dir): void
+    {
+        $transientBase = Environment::getVarPath() . '/transient/';
+        $real = realpath($dir);
+        if ($real === false
+            || !str_starts_with($real, realpath($transientBase) ?: $transientBase)
+            || !str_contains(basename($real), 'impexpnl_bundle_')
+        ) {
+            return;
+        }
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($real, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isDir() && !$item->isLink()) {
+                @rmdir($item->getPathname());
+            } else {
+                @unlink($item->getPathname());
+            }
+        }
+        @rmdir($real);
+    }
+
+    /**
+     * Entpackt das Bundle mit nativem `tar -xzf`. true bei Erfolg, false wenn
+     * proc_open/tar nicht verfügbar sind oder tar fehlschlägt (→ PharData-Fallback).
+     */
+    private function extractWithTar(string $bundlePath, string $targetDir): bool
+    {
+        if (!\function_exists('proc_open')) {
+            return false;
+        }
+        $process = @proc_open(
+            ['tar', '-xzf', $bundlePath, '-C', $targetDir],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes
+        );
+        if (!\is_resource($process)) {
+            return false;
+        }
+        fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        if ($exitCode !== 0) {
+            $this->logger->warning('Bundle: natives tar (extract) fehlgeschlagen – Fallback auf PharData.', [
+                'exitCode' => $exitCode,
+                'stderr' => trim((string)$stderr),
+            ]);
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Fallback-Extraktion via PharData. PharData cacht Archive prozessweit pro Pfad;
+     * eine eindeutig benannte Arbeitskopie umgeht inkonsistente Bytes, wenn im selben
+     * Prozess erst gepackt und dann entpackt wird (Export→Import in einem Lauf).
+     */
+    private function extractWithPharData(string $bundlePath, string $targetDir): void
+    {
+        $workCopy = $targetDir . '.' . pathinfo($bundlePath, PATHINFO_BASENAME);
+        if (!copy($bundlePath, $workCopy)) {
+            throw new \RuntimeException("Bundle nicht lesbar: $bundlePath");
+        }
+        try {
+            $phar = new \PharData($workCopy);
+            $phar->extractTo($targetDir, null, true);
+        } finally {
+            unset($phar);
+            @unlink($workCopy);
+        }
     }
 
     private function findExportFile(string $dir): ?string

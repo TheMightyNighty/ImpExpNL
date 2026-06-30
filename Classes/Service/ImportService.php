@@ -129,32 +129,42 @@ class ImportService
         $this->bootstrapService->initializeBackendContext($workspaceId);
 
         // Bundle (.tar.gz) entpacken: Asset-Dateien ins Ziel legen (außer Dry-Run),
-        // dann mit der enthaltenen Export-Datei weiterarbeiten.
+        // dann mit der enthaltenen Export-Datei weiterarbeiten. Das transiente
+        // Entpack-Verzeichnis wird am Ende verlässlich aufgeräumt (sonst bleibt pro
+        // Import die volle entpackte Kopie liegen – auch bei Abbruch).
+        $bundleTempDir = null;
         if ($this->bundleImportService->isBundle($jsonPath)) {
             $jsonPath = $this->bundleImportService->extract($jsonPath, !$dryRun);
+            $bundleTempDir = dirname($jsonPath);
         }
 
-        $this->uidMap = new UidMap();
-        $this->createdMap = new UidMap();
-        $this->rollbackMap = [];
-        $this->dataHandlerErrors = 0;
-        $this->batchSize = $this->configurationService->getBatchSize();
-
-        if ($dryRun) {
-            $manifest = $this->loadAndValidateJson($jsonPath);
-            $diff = $this->runDiffAnalysis($manifest, (bool)($options['verbose'] ?? false));
-            $assets = $this->buildAssetPreflight($manifest->getAssets());
-            $this->logger->info('DRY-RUN BEENDET.');
-            return ['dryRun' => true, 'diff' => $diff, 'assets' => $assets];
-        }
-
-        $lockHandle = $this->importLock->acquire();
         try {
-            $result = $this->executeImport($jsonPath, $targetPid, $options);
+            $this->uidMap = new UidMap();
+            $this->createdMap = new UidMap();
+            $this->rollbackMap = [];
+            $this->dataHandlerErrors = 0;
+            $this->batchSize = $this->configurationService->getBatchSize();
+
+            if ($dryRun) {
+                $manifest = $this->loadAndValidateJson($jsonPath);
+                $diff = $this->runDiffAnalysis($manifest, (bool)($options['verbose'] ?? false));
+                $assets = $this->buildAssetPreflight($manifest->getAssets());
+                $this->logger->info('DRY-RUN BEENDET.');
+                return ['dryRun' => true, 'diff' => $diff, 'assets' => $assets];
+            }
+
+            $lockHandle = $this->importLock->acquire();
+            try {
+                $result = $this->executeImport($jsonPath, $targetPid, $options);
+            } finally {
+                $this->importLock->release($lockHandle);
+            }
+            return ['dryRun' => false] + $result;
         } finally {
-            $this->importLock->release($lockHandle);
+            if ($bundleTempDir !== null) {
+                $this->bundleImportService->cleanupTransient($bundleTempDir);
+            }
         }
-        return ['dryRun' => false] + $result;
     }
 
     /**
