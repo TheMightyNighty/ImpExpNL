@@ -177,7 +177,17 @@ class ImportService
                 $diff = $this->runDiffAnalysis($manifest, (bool)($options['verbose'] ?? false));
                 $assets = $this->buildAssetPreflight($manifest->getAssets());
                 $this->logger->info('DRY-RUN BEENDET.');
-                return ['dryRun' => true, 'diff' => $diff, 'assets' => $assets];
+                return [
+                    'dryRun' => true,
+                    'diff' => $diff,
+                    'assets' => $assets,
+                    'preview' => [
+                        'package' => basename($jsonPath),
+                        'checksum' => $manifest->getChecksum(),
+                        'delta' => (bool)($options['deltaMode'] ?? false),
+                        'lockFree' => $this->importLock->getActiveLock() === null,
+                    ],
+                ];
             }
 
             $lockHandle = $this->importLock->acquire();
@@ -1143,7 +1153,7 @@ class ImportService
     // =========================================================================
 
     /**
-     * @return array{pages:array{new:int,changed:int,identical:int}, tt_content:array{new:int,changed:int,identical:int}}
+     * @return array{pages:array{new:int,changed:int,identical:int}, tt_content:array{new:int,changed:int,identical:int}, samples:array<string,array<string,mixed>>}
      */
     protected function runDiffAnalysis(ExportManifest $manifest, bool $verbose): array
     {
@@ -1152,15 +1162,24 @@ class ImportService
         $ttContent = $manifest->getTtContent();
         $sourceId = $manifest->getSourceId();
 
+        // Erste neue/geänderte Records als Beispielzeilen für die Dry-Run-Vorschau merken.
+        $samples = [];
+
         $eP = $this->findExistingRecordsByMapping($sourceId, 'pages', $pages);
         $nP = $uP = $iP = 0;
         foreach ($pages as $p) {
             $id = (int)$p['uid'];
             if (!isset($eP[$id])) {
                 $nP++;
+                if (!isset($samples['new'])) {
+                    $samples['new'] = ['table' => 'pages', 'title' => (string)($p['title'] ?? ''), 'slug' => (string)($p['slug'] ?? '')];
+                }
                 $this->logger->info('<fg=green>+ NEU</>        | ' . ($p['title'] ?? ''));
             } elseif (!$this->conflictResolver->isRecordIdentical($p, $eP[$id])) {
                 $uP++;
+                if (!isset($samples['changed'])) {
+                    $samples['changed'] = ['table' => 'pages', 'uid' => $id, 'field' => $this->firstChangedField($p, $eP[$id])];
+                }
                 $this->logger->info('<fg=yellow>~ GEÄNDERT</>   | ' . ($p['title'] ?? ''));
                 if ($verbose) {
                     $this->conflictResolver->logFieldDiff($p, $eP[$id], 'pages');
@@ -1179,6 +1198,8 @@ class ImportService
                 $nC++;
             } elseif (!$this->conflictResolver->isRecordIdentical($c, $eC[$id])) {
                 $uC++;
+                // tt_content-Beispiel bevorzugen (zeigt Feld-Diff schöner als pages).
+                $samples['changed'] = ['table' => 'tt_content', 'uid' => $id, 'field' => $this->firstChangedField($c, $eC[$id])];
                 if ($verbose) {
                     $this->conflictResolver->logFieldDiff($c, $eC[$id], 'tt_content');
                 }
@@ -1196,7 +1217,28 @@ class ImportService
         return [
             'pages' => ['new' => $nP, 'changed' => $uP, 'identical' => $iP],
             'tt_content' => ['new' => $nC, 'changed' => $uC, 'identical' => $iC],
+            'samples' => $samples,
         ];
+    }
+
+    /**
+     * Erstes inhaltlich abweichende Feld zwischen Import- und Bestands-Record (für die
+     * Dry-Run-Vorschau, z. B. „bodytext changed"); Systemfelder bleiben außen vor.
+     *
+     * @param array<string, mixed> $new
+     * @param array<string, mixed> $existing
+     */
+    private function firstChangedField(array $new, array $existing): string
+    {
+        foreach ($new as $field => $value) {
+            if (in_array($field, $this->excludedFields, true) || is_array($value)) {
+                continue;
+            }
+            if ((string)$value !== (string)($existing[$field] ?? '')) {
+                return (string)$field;
+            }
+        }
+        return 'content';
     }
 
     private function writeTransactionLog(string $id, int $ws, string $file, array $stats, bool $delta): void
