@@ -240,7 +240,9 @@ class BundleImportService
                 ? $storageObject->getRootLevelFolder()
                 : ($storageObject->hasFolder($folderPath) ? $storageObject->getFolder($folderPath) : $storageObject->createFolder($folderPath));
 
-            $file = $storageObject->addFile($localFile, $folder, basename($identifier), DuplicationBehavior::REPLACE, false);
+            // Verschieben statt kopieren: die Quelle liegt im transienten Wegwerf-Verzeichnis
+            // (gleiches Dateisystem → rename statt 391-MB-Copy).
+            $file = $storageObject->addFile($localFile, $folder, basename($identifier), DuplicationBehavior::REPLACE, true);
             return (int)$file->getUid();
         } catch (\Throwable $e) {
             $this->logger->warning('Bundle: Asset konnte nicht platziert werden', [
