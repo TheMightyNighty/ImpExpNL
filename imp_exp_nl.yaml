@@ -62,6 +62,7 @@ impexpnl:
       match_tables:
         - pages
         - tt_content
+        - tx_news_domain_model_news
       category_match: path
 
     # --- Redirects (Record-Tabelle) ---
@@ -73,6 +74,16 @@ impexpnl:
       uid_remap: true
       rewrite_links:
         - target
+
+    # --- News (EXT:georgringer/news) — Ziel-Extension-Profil ---
+    # Wird still übersprungen, wenn EXT:news nicht installiert ist (Tabelle fehlt).
+    # Kategorien laufen über sys_category_record_mm (oben, match_tables enthält news).
+    tx_news_domain_model_news:
+      type: record
+      pid_field: pid
+      uid_remap: true
+      rewrite_links:
+        - bodytext
 
 # ============================================================================
 # Transfer- & Transport-Profile (optional)

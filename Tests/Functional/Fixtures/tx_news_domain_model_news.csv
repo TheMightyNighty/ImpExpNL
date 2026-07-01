@@ -1,0 +1,5 @@
+"tx_news_domain_model_news",,,,,,,,
+,"uid","pid","title","bodytext","datetime","sys_language_uid","l10n_parent","hidden","deleted"
+,1,2,"Pressemitteilung 1","<p>Erster Artikel mit <a href=""t3://page?uid=3"">Link</a>.</p>",1700000000,0,0,0,0
+,2,2,"Pressemitteilung 2","<p>Zweiter Artikel.</p>",1700000100,0,0,0,0
+,3,2,"Pressemitteilung 3","<p>Dritter Artikel.</p>",1700000200,0,0,0,0

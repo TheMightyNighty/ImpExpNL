@@ -44,11 +44,34 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  */
 class TableRegistryService
 {
+    /** @var array<string, bool> Existenz-Cache je Tabelle. */
+    private array $tableExistsCache = [];
+
     public function __construct(
         private readonly ConnectionPool $connectionPool,
         private readonly ConfigurationService $configurationService,
         private readonly LoggerInterface $logger
     ) {}
+
+    /**
+     * Existiert die Tabelle im DB-Schema? Erlaubt das Registrieren optionaler Tabellen
+     * (z. B. tx_news_*) in der Default-Config, ohne Installationen ohne die Extension
+     * mit Warnungen zu fluten – fehlende Tabellen werden still übersprungen.
+     */
+    private function tableExists(string $table): bool
+    {
+        if (isset($this->tableExistsCache[$table])) {
+            return $this->tableExistsCache[$table];
+        }
+        try {
+            $exists = $this->connectionPool->getConnectionForTable($table)
+                ->createSchemaManager()
+                ->tablesExist([$table]);
+        } catch (\Throwable) {
+            $exists = false;
+        }
+        return $this->tableExistsCache[$table] = $exists;
+    }
 
     /**
      * Gibt alle registrierten Tabellen-Definitionen zurück.
@@ -73,6 +96,11 @@ class TableRegistryService
     {
         $result = [];
         foreach ($this->getRegisteredTables() as $table => $config) {
+            // Registrierte, aber nicht installierte Tabelle (z. B. tx_news_* ohne EXT:news)
+            // still überspringen – kein Rauschen auf Installationen ohne die Extension.
+            if (!$this->tableExists($table)) {
+                continue;
+            }
             try {
                 $type = $config['type'] ?? 'record';
                 if ($type === 'mm') {
@@ -109,6 +137,9 @@ class TableRegistryService
     {
         $errors = 0;
         foreach ($this->getRegisteredTables() as $table => $config) {
+            if (!$this->tableExists($table)) {
+                continue;
+            }
             $type = $config['type'] ?? 'record';
 
             try {
@@ -152,6 +183,9 @@ class TableRegistryService
     {
         $total = 0;
         foreach ($this->getRegisteredTables() as $table => $config) {
+            if (!$this->tableExists($table)) {
+                continue;
+            }
             try {
                 $type = $config['type'] ?? 'record';
                 if ($type === 'mm') {
