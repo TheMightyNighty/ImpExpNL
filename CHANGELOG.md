@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.2.0 — Kategorie-Relationen & Recovery (2026-07-01)
+
+Backport realer Bugfixes aus der v14-Linie (`main`) plus v13-spezifische Robustheit.
+Abgesichert mit der Functional-Suite (32 grün) und einem 2-Instanzen-Real-World-Test
+(2000 Seiten / 2000 Assets, Export → Cross-Instance-Import → Abbruch/Wiederanlauf →
+Rollback). Keine Schema-Änderungen, keine API-Brüche.
+
+### Behoben
+- **FAL-Zählfeld beim Import:** Der Import legt `sys_file_reference` standalone an, pflegte
+  aber nicht den denormalisierten Zähler am Eltern-Feld (z. B. `tt_content.image`). Blieb er
+  0, verwarf ein späterer Backend-Save die FAL-Relation. Der Zähler wird jetzt verifizierend
+  nachgezogen – inkl. Drift nach unten über den Upsert-Delete-Pfad.
+- **Kategorie-Relationen registrierter Record-Tabellen:** `sys_category`-MM wurde für
+  registrierte Record-Tabellen (z. B. `tx_news_domain_model_news`) still NICHT exportiert
+  (`uid_foreign`-Matching lief nur gegen `pages`/`tt_content`). Export/Import jetzt zweiphasig
+  (Records vor MM); das Matching bezieht generisch alle registrierten Record-UIDs ein.
+- **Zählfelder beim Registry-Record-Import:** Relations-Container-Zählfelder
+  (category/inline/file) wurden an den DataHandler durchgereicht (`categories: 1` erzeugte
+  eine Falsch-Relation zu Kategorie-UID 1). Sie werden jetzt per TCA ausgeblendet.
+- **`impexpnl:unlock` nach hartem Crash:** unlock entfernte nur den DB-Lock; ein verwaister
+  Datei-Lock (`var/impexpnl_import.lock`) blockierte den Wiederanlauf. unlock räumt jetzt
+  DB- UND Datei-Lock ab (auch wenn nur der Datei-Lock existiert).
+
+### Robustheit
+- Die Table-Registry überspringt registrierte, aber nicht installierte Tabellen still –
+  optionale Tabellen (z. B. `tx_news_*`) können in der Config stehen, ohne Installationen
+  ohne die Extension mit Warnungen zu fluten.
+
+### CI
+- Dependabot (composer + github-actions); `actions/checkout` v4 → v7.
+
 ## 1.1.0 — Härtung (2026-06-21)
 
 Backport der v14-Härtung (`main`) auf die v13.4-Linie. Reale Bugs, breit mit
