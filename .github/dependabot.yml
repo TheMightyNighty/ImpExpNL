@@ -1,0 +1,32 @@
+# Dependabot-Konfiguration für ImpExpNL.
+# Library (kein composer.lock getrackt) → composer-Updates betreffen nur die
+# Constraints in composer.json und entstehen praktisch nur bei neuen Major-Versionen
+# außerhalb der `^`-Ranges. GitHub-Actions-Updates folgen neuen Action-Majors.
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      # Dev-Toolchain (CGL/Stan/Rector/Tests) gebündelt, damit es einen PR statt vieler gibt.
+      dev-dependencies:
+        dependency-type: development
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    labels:
+      - dependencies
+      - ci
