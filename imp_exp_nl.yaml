@@ -63,6 +63,7 @@ impexpnl:
         - pages
         - tt_content
         - tx_news_domain_model_news
+        - tt_address
       category_match: path
 
     # --- Redirects (Record-Tabelle) ---
@@ -84,6 +85,13 @@ impexpnl:
       uid_remap: true
       rewrite_links:
         - bodytext
+
+    # --- Adressen (EXT:friendsoftypo3/tt-address) — zweites Ziel-Extension-Profil ---
+    # Belegt, dass Record-Profil + Kategorie-MM generisch (nicht news-spezifisch) sind.
+    tt_address:
+      type: record
+      pid_field: pid
+      uid_remap: true
 
 # ============================================================================
 # Transfer- & Transport-Profile (optional)

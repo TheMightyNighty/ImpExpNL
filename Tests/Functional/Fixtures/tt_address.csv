@@ -1,0 +1,4 @@
+"tt_address",,,,,,,,
+,"uid","pid","name","email","categories","sys_language_uid","l10n_parent","hidden","deleted"
+,1,2,"Erika Musterfrau","erika@example.org",1,0,0,0,0
+,2,2,"Max Mustermann","max@example.org",0,0,0,0,0
