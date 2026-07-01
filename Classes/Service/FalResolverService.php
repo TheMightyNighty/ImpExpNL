@@ -45,6 +45,7 @@ class FalResolverService
         $dataMap = ['sys_file_reference' => []];
         $cmdMap = ['sys_file_reference' => []];
         $clearedContentUids = [];
+        $counterTargets = [];
         $uidMap['sys_file'] = [];
 
         foreach ($exportedReferences as $ref) {
@@ -70,7 +71,7 @@ class FalResolverService
 
             $clearKey = $tableName . '_' . $newForeignUid;
             if (!empty($options['upsert']) && !isset($clearedContentUids[$clearKey])) {
-                $this->deleteExistingReferences($newForeignUid, $tableName, $cmdMap);
+                $this->deleteExistingReferences($newForeignUid, $tableName, $cmdMap, $counterTargets);
                 $clearedContentUids[$clearKey] = true;
             }
 
@@ -117,6 +118,9 @@ class FalResolverService
                 }
             }
             $dataMap['sys_file_reference'][$tempRefId] = $newRef;
+
+            // Eltern-Record/-Feld merken, dessen denormalisierter Zähler nachzuziehen ist.
+            $counterTargets[$tableName][$newForeignUid][$ref['fieldname']] = true;
         }
 
         $errors = 0;
@@ -133,7 +137,48 @@ class FalResolverService
             $errors += $this->logErrors($dataHandler);
         }
 
+        // Der DataHandler legt die sys_file_reference-Records standalone an und pflegt dabei
+        // NICHT den denormalisierten Zähler am Eltern-Feld (z. B. tt_content.image). Den
+        // ziehen wir hier verifizierend nach: pro Eltern-Feld die echte Anzahl lebender
+        // Referenzen zählen und schreiben. Nur ein Cache-Wert – die Referenzen selbst hat
+        // der DataHandler bereits korrekt geschrieben. Erfasst auch die Drift nach unten über
+        // den Delete-Pfad (Upsert entfernt Referenzen, ohne dass neue entstehen), bis 0.
+        $this->updateReferenceCounters($counterTargets);
+
         return $errors;
+    }
+
+    /**
+     * Setzt den denormalisierten FAL-Zähler am Eltern-Feld auf die tatsächliche Anzahl
+     * lebender sys_file_reference-Einträge (idempotent, korrekt auch bei Delta/Upsert).
+     *
+     * @param array<string, array<int, array<string, true>>> $targets table => uid => field => true
+     */
+    private function updateReferenceCounters(array $targets): void
+    {
+        foreach ($targets as $tableName => $byUid) {
+            $connection = $this->connectionPool->getConnectionForTable($tableName);
+            foreach ($byUid as $foreignUid => $fields) {
+                foreach (array_keys($fields) as $fieldName) {
+                    $count = $this->countLiveReferences((int)$foreignUid, $tableName, (string)$fieldName);
+                    $connection->update($tableName, [$fieldName => $count], ['uid' => $foreignUid]);
+                }
+            }
+        }
+    }
+
+    private function countLiveReferences(int $foreignUid, string $tableName, string $fieldName): int
+    {
+        $qb = $this->connectionPool->getQueryBuilderForTable('sys_file_reference');
+        $qb->getRestrictions()->removeAll();
+        return (int)$qb->count('uid')->from('sys_file_reference')
+            ->where(
+                $qb->expr()->eq('uid_foreign', $qb->createNamedParameter($foreignUid, Connection::PARAM_INT)),
+                $qb->expr()->eq('tablenames', $qb->createNamedParameter($tableName)),
+                $qb->expr()->eq('fieldname', $qb->createNamedParameter($fieldName)),
+                $qb->expr()->eq('deleted', $qb->createNamedParameter(0, Connection::PARAM_INT))
+            )
+            ->executeQuery()->fetchOne();
     }
 
     private function logErrors(DataHandler $dataHandler): int
@@ -147,12 +192,16 @@ class FalResolverService
         return count($dataHandler->errorLog);
     }
 
-    private function deleteExistingReferences(int $foreignUid, string $tableName, array &$cmdMap): void
+    /**
+     * @param array<string, array<int, array<string, true>>> $counterTargets Delete-Pfad-Felder
+     *        werden mitregistriert, damit der Zähler-Nachpass auch eine Drift nach unten bis 0 korrigiert.
+     */
+    private function deleteExistingReferences(int $foreignUid, string $tableName, array &$cmdMap, array &$counterTargets): void
     {
         $queryBuilder = $this->connectionPool
             ->getQueryBuilderForTable('sys_file_reference');
 
-        $existingRefs = $queryBuilder->select('uid')
+        $existingRefs = $queryBuilder->select('uid', 'fieldname')
             ->from('sys_file_reference')
             ->where(
                 $queryBuilder->expr()->eq('uid_foreign', $queryBuilder->createNamedParameter($foreignUid, Connection::PARAM_INT)),
@@ -163,6 +212,7 @@ class FalResolverService
 
         foreach ($existingRefs as $existingRef) {
             $cmdMap['sys_file_reference'][$existingRef['uid']]['delete'] = 1;
+            $counterTargets[$tableName][$foreignUid][(string)$existingRef['fieldname']] = true;
         }
     }
 }
