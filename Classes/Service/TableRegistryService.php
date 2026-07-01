@@ -95,27 +95,41 @@ class TableRegistryService
     public function exportRegisteredTables(array $pageUids, array $contentUids): array
     {
         $result = [];
+        // UID-Sätze fürs MM-Matching: Seiten + Inhalte, ergänzt um die UIDs ALLER
+        // registrierten Record-Tabellen (Phase 1) – so werden MM-Relationen (z. B.
+        // sys_category) generisch auch für Extension-Record-Tabellen (news …) erfasst,
+        // nicht nur für pages/tt_content.
+        $uidSets = ['pages' => $pageUids, 'tt_content' => $contentUids];
+
+        // Phase 1: Record-Tabellen (ihre UIDs braucht Phase 2).
         foreach ($this->getRegisteredTables() as $table => $config) {
-            // Registrierte, aber nicht installierte Tabelle (z. B. tx_news_* ohne EXT:news)
-            // still überspringen – kein Rauschen auf Installationen ohne die Extension.
-            if (!$this->tableExists($table)) {
+            if (($config['type'] ?? 'record') !== 'record' || !$this->tableExists($table)) {
                 continue;
             }
             try {
-                $type = $config['type'] ?? 'record';
-                if ($type === 'mm') {
-                    $records = $this->exportMmTable($table, $config, $pageUids, $contentUids);
-                    // Bei Pfad-basiertem Kategorie-Matching: Pfade mit exportieren
-                    if (!empty($config['category_match']) && $config['category_match'] === 'path') {
-                        $result[$table . '_with_paths'] = $this->enrichMmWithCategoryPaths($records, $config);
-                    } else {
-                        $result[$table] = $records;
-                    }
-                } elseif ($type === 'record') {
-                    $result[$table] = $this->exportRecordTable($table, $config, $pageUids);
+                $records = $this->exportRecordTable($table, $config, $pageUids);
+                $result[$table] = $records;
+                $uidSets[$table] = array_column($records, 'uid');
+                if (!empty($records)) {
+                    $this->logger->info("Registry-Export: $table", ['count' => count($records)]);
                 }
-                if (!empty($result[$table] ?? $result[$table . '_with_paths'] ?? [])) {
-                    $this->logger->info("Registry-Export: $table", ['count' => count($result[$table] ?? $result[$table . '_with_paths'] ?? [])]);
+            } catch (\Exception $e) {
+                $this->logger->warning("Registry-Export fehlgeschlagen: $table", ['error' => $e->getMessage()]);
+            }
+        }
+
+        // Phase 2: MM-Tabellen (matchen gegen alle in Phase 1 gesammelten UIDs).
+        foreach ($this->getRegisteredTables() as $table => $config) {
+            if (($config['type'] ?? 'record') !== 'mm' || !$this->tableExists($table)) {
+                continue;
+            }
+            try {
+                $records = $this->exportMmTable($table, $config, $uidSets);
+                $isPath = !empty($config['category_match']) && $config['category_match'] === 'path';
+                $key = $isPath ? $table . '_with_paths' : $table;
+                $result[$key] = $isPath ? $this->enrichMmWithCategoryPaths($records, $config) : $records;
+                if (!empty($result[$key])) {
+                    $this->logger->info("Registry-Export: $table", ['count' => count($result[$key])]);
                 }
             } catch (\Exception $e) {
                 $this->logger->warning("Registry-Export fehlgeschlagen: $table", ['error' => $e->getMessage()]);
@@ -136,32 +150,35 @@ class TableRegistryService
     public function importRegisteredTables(array $exportedData, array &$uidMap): int
     {
         $errors = 0;
+
+        // Phase 1: Record-Tabellen zuerst – ihre neuen UIDs landen in $uidMap und werden
+        // von der MM-Phase gebraucht (uid_foreign → neue Record-UID über tablenames).
         foreach ($this->getRegisteredTables() as $table => $config) {
-            if (!$this->tableExists($table)) {
+            if (($config['type'] ?? 'record') !== 'record' || !$this->tableExists($table) || empty($exportedData[$table])) {
                 continue;
             }
-            $type = $config['type'] ?? 'record';
-
             try {
-                if ($type === 'mm') {
-                    $dataKey = (!empty($config['category_match']) && $config['category_match'] === 'path')
-                        ? $table . '_with_paths'
-                        : $table;
+                $errors += $this->importRecordTable($table, $config, $exportedData[$table], $uidMap);
+            } catch (\Exception $e) {
+                $this->logger->warning("Registry-Import fehlgeschlagen: $table", ['error' => $e->getMessage()]);
+            }
+        }
 
-                    if (empty($exportedData[$dataKey])) {
-                        continue;
-                    }
-
-                    if (!empty($config['category_match']) && $config['category_match'] === 'path') {
-                        $this->importMmTableWithPathMatching($table, $config, $exportedData[$dataKey], $uidMap);
-                    } else {
-                        $this->importMmTable($table, $config, $exportedData[$dataKey], $uidMap);
-                    }
-                } elseif ($type === 'record') {
-                    if (empty($exportedData[$table])) {
-                        continue;
-                    }
-                    $errors += $this->importRecordTable($table, $config, $exportedData[$table], $uidMap);
+        // Phase 2: MM-Tabellen (uid_foreign gegen die nun bekannten Record-UIDs auflösen).
+        foreach ($this->getRegisteredTables() as $table => $config) {
+            if (($config['type'] ?? 'record') !== 'mm' || !$this->tableExists($table)) {
+                continue;
+            }
+            $isPath = !empty($config['category_match']) && $config['category_match'] === 'path';
+            $dataKey = $isPath ? $table . '_with_paths' : $table;
+            if (empty($exportedData[$dataKey])) {
+                continue;
+            }
+            try {
+                if ($isPath) {
+                    $this->importMmTableWithPathMatching($table, $config, $exportedData[$dataKey], $uidMap);
+                } else {
+                    $this->importMmTable($table, $config, $exportedData[$dataKey], $uidMap);
                 }
             } catch (\Exception $e) {
                 $this->logger->warning("Registry-Import fehlgeschlagen: $table", ['error' => $e->getMessage()]);
@@ -204,12 +221,14 @@ class TableRegistryService
     // MM-TABELLEN
     // =========================================================================
 
-    private function exportMmTable(string $table, array $config, array $pageUids, array $contentUids): array
+    /**
+     * @param array<string, int[]> $uidSets tablenames => UIDs (pages/tt_content + registrierte Record-Tabellen)
+     */
+    private function exportMmTable(string $table, array $config, array $uidSets): array
     {
         $matchField = $config['match_field'] ?? 'uid_foreign';
         $tnField = $config['match_tablenames_field'] ?? 'tablenames';
         $matchTables = $config['match_tables'] ?? ['pages', 'tt_content'];
-        $uidSets = ['pages' => $pageUids, 'tt_content' => $contentUids];
         $records = [];
 
         foreach ($matchTables as $mt) {
