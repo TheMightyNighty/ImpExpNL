@@ -166,15 +166,34 @@ class ImportLockService
     }
 
     /**
-     * Löst den DB-Lock manuell (Ops-Eingriff bei hängendem Lock).
+     * Löst den Lock manuell (Ops-Eingriff bei hängendem Lock) – DB-Lock UND Datei-Lock.
      *
-     * @return bool true, wenn ein Lock vorhanden war
+     * Nach einem harten Crash (SIGKILL/OOM) bleibt die Datei var/impexpnl_import.lock liegen
+     * und blockiert den nächsten acquire, obwohl kein Import mehr läuft. Da unlock ein
+     * expliziter Operator-Eingriff ist, wird die Lock-Datei mit entfernt.
+     *
+     * @return bool true, wenn ein Lock (DB oder Datei) vorhanden war
      */
     public function forceReleaseDbLock(): bool
     {
         $existed = $this->getActiveLock() !== null;
         $this->releaseDbLock();
+
+        $lockFile = Environment::getVarPath() . '/impexpnl_import.lock';
+        if (is_file($lockFile)) {
+            $existed = true;
+            @unlink($lockFile);
+        }
         return $existed;
+    }
+
+    /**
+     * Existiert (noch) die Datei-Lock-Datei? Kann nach einem harten Crash verwaist
+     * zurückbleiben, während der DB-Lock bereits vom Stale-Reaper entfernt wurde.
+     */
+    public function hasFileLock(): bool
+    {
+        return is_file(Environment::getVarPath() . '/impexpnl_import.lock');
     }
 
     /**

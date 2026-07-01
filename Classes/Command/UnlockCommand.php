@@ -47,19 +47,27 @@ class UnlockCommand extends Command
         $io = new SymfonyStyle($input, $output);
 
         $lock = $this->importLock->getActiveLock();
-        if ($lock === null) {
+        $hasFileLock = $this->importLock->hasFileLock();
+
+        // Auch einen verwaisten Datei-Lock (ohne DB-Lock) berücksichtigen – der bleibt nach
+        // einem harten Crash liegen und blockiert sonst jeden Wiederanlauf.
+        if ($lock === null && !$hasFileLock) {
             $io->success('Kein aktiver Import-Lock vorhanden.');
             return Command::SUCCESS;
         }
 
-        $io->text(sprintf(
-            'Aktiver Lock: Host %s, PID %s, gestartet %s, Alter %ds%s.',
-            $lock['info']['host'] ?? '?',
-            $lock['info']['pid'] ?? '?',
-            $lock['info']['started'] ?? '?',
-            $lock['age'],
-            $lock['stale'] ? ' (veraltet)' : ''
-        ));
+        if ($lock !== null) {
+            $io->text(sprintf(
+                'Aktiver Lock: Host %s, PID %s, gestartet %s, Alter %ds%s.',
+                $lock['info']['host'] ?? '?',
+                $lock['info']['pid'] ?? '?',
+                $lock['info']['started'] ?? '?',
+                $lock['age'],
+                $lock['stale'] ? ' (veraltet)' : ''
+            ));
+        } else {
+            $io->text('Verwaister Datei-Lock (kein DB-Lock) – vermutlich nach hartem Crash.');
+        }
 
         if (!$input->getOption('force') && !$io->confirm('Lock jetzt lösen?', false)) {
             $io->note('Abgebrochen.');
@@ -67,7 +75,7 @@ class UnlockCommand extends Command
         }
 
         $this->importLock->forceReleaseDbLock();
-        $io->success('Import-Lock gelöst.');
+        $io->success('Import-Lock gelöst (DB- und Datei-Lock).');
         return Command::SUCCESS;
     }
 }
