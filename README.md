@@ -558,6 +558,48 @@ Damit werden auch Dateien **ohne** `_meta.checksum` abgewiesen (Exit-Code `4`) �
 
 **DataHandler-Fehlerprotokollierung.** Fehler des TYPO3 DataHandler werden einzeln über den PSR-3 Logger protokolliert.
 
+### Schlüssel-Rotation (Key-ID)
+
+Mit einer optionalen **Key-ID** wird die Signatur als `hmac-sha256:<key-id>:<hash>` geschrieben — der Schlüssel lässt sich damit wechseln, ohne dass Pakete aus der Übergangszeit ungültig werden:
+
+```php
+// Aktiver Schlüssel + Kennung (alternativ Env IMPEXPNL_SIGNING_KEY / IMPEXPNL_SIGNING_KEY_ID)
+$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] = 'neuer-schluessel';
+$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeyId'] = 'k2026';
+
+// Alt-Schlüssel für die Verifikation während der Übergangszeit
+$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys'] = [
+    'k2025' => 'alter-schluessel',
+];
+```
+
+Beim Import wird der Schlüssel über die Key-ID aufgelöst; Signaturen ohne Key-ID werden gegen den aktiven und alle hinterlegten Alt-Schlüssel geprüft. Nach Ablauf der Übergangszeit den Alt-Schlüssel aus `signingKeys` entfernen. Der Downgrade-Schutz gilt unverändert: Sobald irgendein Schlüssel konfiguriert ist, werden nur HMAC-Signaturen akzeptiert.
+
+> **Veraltet:** Das Legacy-Prüfsummenformat aus ImpExpNL 1.x (Export-Format 1, roher SHA256 nur über `pages`+`tt_content`) wird beim Import noch akzeptiert (mit Log-Warnung), aber **mit Version 3.0 entfernt**. Alte Exporte rechtzeitig neu erzeugen.
+
+---
+
+## Einsatz über ein Sicherheitsgefälle
+
+Für den Transfer aus einer niedriger in eine höher eingestufte Zone (Behördenbetrieb, Zonenmodell) ist ImpExpNL bewusst datei-basiert: Es gibt keine Netzwerkverbindung zwischen den Instanzen — der Transportweg (Schleuse, Datendiode, geprüfter Austauschbereich) bleibt vollständig unter Kontrolle des Betriebs. Empfohlene Mindest-Konfiguration und Ablauf:
+
+**Konfiguration (beide Seiten):**
+
+1. **Signing-Key setzen** — auf Quell- und Zielsystem identisch, als Secret bereitgestellt (Kubernetes-Secret als Env `IMPEXPNL_SIGNING_KEY` oder Mount). Den Schlüssel niemals ins Image oder Repository einbrennen; Key-ID (`IMPEXPNL_SIGNING_KEY_ID`) für spätere Rotation von Anfang an vergeben.
+2. **Signaturpflicht auf dem Zielsystem:** `import.require_signature: true` — unsignierte oder auf bloße Prüfsummen heruntergestufte Dateien werden abgewiesen (Exit-Code `4`).
+3. **Wirkbereich begrenzen:** Transfer-Profil mit `allowedContext` (nur die vorgesehene Umgebung), `allowedTables` (nur benötigte Registry-Tabellen) und ggf. `requireDryRun` für Prüf-Pipelines.
+4. **Limits:** `import.max_file_size_mb` an die getesteten Baumgrößen und das Pod-Memory anpassen.
+
+**Ablauf pro Transfer (High-Side):**
+
+1. `impexpnl:check --json` — Voraussetzungen inkl. Signatur-Modus prüfen.
+2. Paket durch die Schleuse übernehmen; bei `bundle` genügt eine Datei, die enthaltenen Assets sind über das signierte Manifest SHA256-geprüft.
+3. `impexpnl:import <paket> <pid> --transfer-profile=<profil> --dry-run --json` — Gate: Diff und Asset-Preflight reviewen (bei Bedarf Vier-Augen-Prinzip auf dem Dry-Run-Ergebnis).
+4. Import ausführen; Exit-Code auswerten (`4` = Integrität, `5` = Konflikt, `6` = zurückgerollter Teilimport).
+5. Nachweis: Import-ID, `impexpnl:list --json` und `var/log/impexpnl_transactions.log` als Protokoll für die Revision; Rücknahme jederzeit per `impexpnl:undo <import-id>`.
+
+**Rollen:** Der Export (Low-Side) signiert; die Schleuse transportiert nur; das Zielsystem verifiziert und entscheidet (Dry-Run-Gate, Konflikt-Policy). Für High→Low-Exporte (z. B. Prod→Dev) zusätzlich `export.sanitize` mit `hash_key` aktivieren, damit personenbezogene Daten die höhere Zone nicht verlassen.
+
 ---
 
 ## Praxis-Szenarien

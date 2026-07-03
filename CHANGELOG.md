@@ -50,10 +50,27 @@ ausführen.
   abgewiesen statt den Prozess in ein OOM (Pod-Kill, hängender Lock) zu laufen.
   Gilt auch für die aus einem Bundle entpackte Export-Datei.
 
+### Neu
+- **Schlüssel-Rotation:** Optionale Key-ID (`signingKeyId`/`IMPEXPNL_SIGNING_KEY_ID`)
+  erweitert die Signatur zu `hmac-sha256:<key-id>:<hash>`; Alt-Schlüssel bleiben über
+  `signingKeys` (Map key-id → Schlüssel) während der Übergangszeit verifizierbar.
+  Downgrade-Schutz greift, sobald irgendein Schlüssel (aktiv oder Alt) konfiguriert ist.
+- **README-Kapitel „Einsatz über ein Sicherheitsgefälle":** Konfigurations- und
+  Ablauf-Leitfaden (Key-Management, Signaturpflicht, Transfer-Profil, Schleusenprozess,
+  Rollen, Revisionsnachweis).
+
 ### Geändert
+- **ManifestLoaderService:** Laden/Validieren der Importdatei (Pfad-Containment,
+  Größenlimit, Parsing, Signaturprüfung) aus dem ImportService in einen eigenen
+  Service extrahiert (Beginn der Zerlegung, kein Verhaltensunterschied).
 - Fehlschlägt das Anlegen des lokalen Datei-Locks (z. B. read-only Filesystem),
   wird das jetzt als Warnung geloggt statt still übergangen (DB-Lock trägt die
   Concurrency-Garantie weiter).
+
+### Veraltet
+- **Legacy-Prüfsummenformat (Export-Format 1** aus ImpExpNL 1.x, roher SHA256 nur
+  über `pages`+`tt_content`): wird beim Import noch akzeptiert, löst aber eine
+  Log-Warnung aus und **wird mit Version 3.0 entfernt**.
 
 ## 2.1.0 — Härtung (2026-06-21)
 

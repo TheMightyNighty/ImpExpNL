@@ -20,8 +20,25 @@ class IntegrityServiceTest extends TestCase
         parent::setUp();
         // Sicherstellen, dass kein Signing-Key aus der Umgebung übernommen wird.
         putenv('IMPEXPNL_SIGNING_KEY');
-        unset($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey']);
+        putenv('IMPEXPNL_SIGNING_KEY_ID');
+        unset(
+            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'],
+            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeyId'],
+            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys']
+        );
         $this->subject = new IntegrityService();
+    }
+
+    protected function tearDown(): void
+    {
+        putenv('IMPEXPNL_SIGNING_KEY');
+        putenv('IMPEXPNL_SIGNING_KEY_ID');
+        unset(
+            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'],
+            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeyId'],
+            $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys']
+        );
+        parent::tearDown();
     }
 
     #[Test]
@@ -131,6 +148,75 @@ class IntegrityServiceTest extends TestCase
         } finally {
             putenv('IMPEXPNL_SIGNING_KEY');
         }
+    }
+
+    #[Test]
+    public function signWithKeyIdEmbedsTheKeyId(): void
+    {
+        putenv('IMPEXPNL_SIGNING_KEY=schluessel-2026');
+        putenv('IMPEXPNL_SIGNING_KEY_ID=k2026');
+        $subject = new IntegrityService();
+        $data = $this->sampleData();
+
+        $checksum = $subject->sign($data);
+        self::assertStringStartsWith('hmac-sha256:k2026:', $checksum);
+        self::assertTrue($subject->verify($data, $checksum));
+    }
+
+    #[Test]
+    public function rotatedKeyIsResolvedViaKeyIdFromSigningKeys(): void
+    {
+        // Datei wurde mit dem alten Schlüssel (k2025) signiert ...
+        putenv('IMPEXPNL_SIGNING_KEY=alter-schluessel');
+        putenv('IMPEXPNL_SIGNING_KEY_ID=k2025');
+        $checksum = (new IntegrityService())->sign($this->sampleData());
+
+        // ... nach der Rotation ist k2026 aktiv, k2025 als Alt-Schlüssel hinterlegt.
+        putenv('IMPEXPNL_SIGNING_KEY=neuer-schluessel');
+        putenv('IMPEXPNL_SIGNING_KEY_ID=k2026');
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys'] = ['k2025' => 'alter-schluessel'];
+
+        self::assertTrue((new IntegrityService())->verify($this->sampleData(), $checksum));
+    }
+
+    #[Test]
+    public function unknownKeyIdIsRejected(): void
+    {
+        putenv('IMPEXPNL_SIGNING_KEY=geheim');
+        putenv('IMPEXPNL_SIGNING_KEY_ID=k2026');
+        $subject = new IntegrityService();
+        $checksum = $subject->sign($this->sampleData());
+
+        // Zielsystem kennt die Key-ID nicht (anderer aktiver Key, keine signingKeys).
+        putenv('IMPEXPNL_SIGNING_KEY_ID=anderes-system');
+        self::assertFalse((new IntegrityService())->verify($this->sampleData(), $checksum));
+    }
+
+    #[Test]
+    public function signatureWithoutKeyIdIsVerifiedAgainstLegacyKeysDuringRotation(): void
+    {
+        // Alte Signatur ohne Key-ID (2-teiliges Format) ...
+        putenv('IMPEXPNL_SIGNING_KEY=alter-schluessel');
+        $checksum = (new IntegrityService())->sign($this->sampleData());
+        self::assertStringStartsWith('hmac-sha256:', $checksum);
+
+        // ... bleibt nach der Rotation gültig, solange der Alt-Schlüssel hinterlegt ist.
+        putenv('IMPEXPNL_SIGNING_KEY=neuer-schluessel');
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys'] = ['k2025' => 'alter-schluessel'];
+        self::assertTrue((new IntegrityService())->verify($this->sampleData(), $checksum));
+
+        // Ohne hinterlegten Alt-Schlüssel ist sie ungültig.
+        unset($GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys']);
+        self::assertFalse((new IntegrityService())->verify($this->sampleData(), $checksum));
+    }
+
+    #[Test]
+    public function plainChecksumIsRejectedWhenOnlyLegacyKeysAreConfigured(): void
+    {
+        $plain = $this->subject->sign($this->sampleData());
+        $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys'] = ['k2025' => 'alter-schluessel'];
+
+        self::assertFalse((new IntegrityService())->verify($this->sampleData(), $plain));
     }
 
     #[Test]
