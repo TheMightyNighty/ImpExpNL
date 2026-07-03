@@ -910,6 +910,20 @@ class ImportService
             throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
         }
 
+        // Fail fast VOR dem Parsen: JSON/JSONL wird derzeit vollständig in den
+        // Speicher geladen – ohne Limit killt eine übergroße Datei den Prozess
+        // (OOM/SIGKILL) statt sauber mit Fehlermeldung abzubrechen.
+        $maxBytes = $this->configurationService->getImportMaxFileSizeBytes();
+        $fileSize = (int)filesize($realPath);
+        if ($maxBytes > 0 && $fileSize > $maxBytes) {
+            throw new ImpExpException(sprintf(
+                'Importdatei zu groß: %d MB (Limit: %d MB, konfigurierbar über import.max_file_size_mb; 0 = unbegrenzt). '
+                . 'Datei prüfen, Limit erhöhen oder den Export aufteilen (--pages/--since).',
+                (int)round($fileSize / 1048576),
+                (int)round($maxBytes / 1048576)
+            ));
+        }
+
         $data = $isJsonl ? $this->parseJsonlFile($realPath) : $this->parseJsonFile($realPath);
 
         $manifest = ExportManifest::fromArray($data);

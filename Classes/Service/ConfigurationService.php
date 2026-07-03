@@ -97,6 +97,22 @@ class ConfigurationService
     }
 
     /**
+     * Maximale Größe der Import-Datei in Bytes (import.max_file_size_mb).
+     * Der Import parst JSON/JSONL derzeit vollständig in den Speicher; ohne
+     * Limit ist eine übergroße (oder böswillige) Datei ein einfacher
+     * OOM-/DoS-Vektor (Pod-Kill → Lock bleibt bis Stale-Timeout stehen).
+     * 0 in der Config = Limit deaktiviert (Rückgabe 0).
+     */
+    public function getImportMaxFileSizeBytes(int $defaultMb = 512): int
+    {
+        $config = $this->getConfig();
+        $mb = array_key_exists('max_file_size_mb', $config['import'] ?? [])
+            ? (int)$config['import']['max_file_size_mb']
+            : $defaultMb;
+        return $mb > 0 ? $mb * 1024 * 1024 : 0;
+    }
+
+    /**
      * Records pro DataHandler-Batch.
      */
     public function getBatchSize(int $default = 500): int

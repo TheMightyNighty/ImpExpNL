@@ -264,7 +264,7 @@ Bei großen Seitenbäumen (mehrere tausend Records) werden die Daten automatisch
 
 Die Prüfsummenberechnung erfolgt inkrementell pro Record. Beim **Export** schreibt das JSONL-Format (`--jsonl`) zeilenweise und vermeidet so ein einzelnes, sehr großes `json_encode` über den gesamten Datenblock.
 
-Beim **Import** werden derzeit beide Formate (JSON wie JSONL) zunächst vollständig in den Speicher geparst; erst die anschließende DataHandler-Verarbeitung läuft gechunkt (Batches à 500 Records). JSONL ist hier kompakter und zeilenweise lesbar, senkt den Spitzenbedarf des Datei-Parsens aber nur begrenzt. Ein **vollständig streamender Import** (konstanter Speicher unabhängig von der Dateigröße, für Bäume deutlich über 50.000 Records) ist als künftige Ausbaustufe vorgesehen — siehe [ROADMAP.md](ROADMAP.md).
+Beim **Import** begrenzt `import.max_file_size_mb` (Standard: 512, `0` = unbegrenzt) die Dateigröße: Übergroße Dateien werden **vor** dem Parsen mit klarer Fehlermeldung abgewiesen, statt den Prozess in ein OOM zu laufen (im Container: Pod-Kill, hängender Lock bis zum Stale-Timeout). Beim **Import** werden derzeit beide Formate (JSON wie JSONL) zunächst vollständig in den Speicher geparst; erst die anschließende DataHandler-Verarbeitung läuft gechunkt (Batches à 500 Records). JSONL ist hier kompakter und zeilenweise lesbar, senkt den Spitzenbedarf des Datei-Parsens aber nur begrenzt. Ein **vollständig streamender Import** (konstanter Speicher unabhängig von der Dateigröße, für Bäume deutlich über 50.000 Records) ist als künftige Ausbaustufe vorgesehen — siehe [ROADMAP.md](ROADMAP.md).
 
 ### Slug-Regenerierung
 

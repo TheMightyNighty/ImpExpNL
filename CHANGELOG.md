@@ -45,6 +45,10 @@ ausführen.
 - **Tabellen-Allowlist (`allowedTables`) pro Transfer-Profil:** begrenzt, welche
   Registry-Tabellen ein Import anfassen darf (nicht gesetzt = alle, leere Liste =
   keine; `pages`/`tt_content`/FAL unberührt). Übersprungene Tabellen werden geloggt.
+- **Dateigrößen-Limit (`import.max_file_size_mb`, Standard 512, 0 = aus):**
+  Übergroße Importdateien werden vor dem In-Memory-Parsen mit klarer Fehlermeldung
+  abgewiesen statt den Prozess in ein OOM (Pod-Kill, hängender Lock) zu laufen.
+  Gilt auch für die aus einem Bundle entpackte Export-Datei.
 
 ### Geändert
 - Fehlschlägt das Anlegen des lokalen Datei-Locks (z. B. read-only Filesystem),
