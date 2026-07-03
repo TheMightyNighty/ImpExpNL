@@ -77,7 +77,6 @@ class ProfileService
             throw new ConfigException("Profil '$name' ist kein gültiges YAML.");
         }
 
-        // Defaults setzen
         $profile = [
             'source_file' => $content['source_file'] ?? '',
             'target_pid' => (int)($content['target_pid'] ?? 0),

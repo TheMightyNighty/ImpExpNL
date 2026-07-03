@@ -60,9 +60,9 @@ class ManifestLoaderService
             throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
         }
 
-        // Fail fast VOR dem Parsen: JSON/JSONL wird derzeit vollständig in den
-        // Speicher geladen – ohne Limit killt eine übergroße Datei den Prozess
-        // (OOM/SIGKILL) statt sauber mit Fehlermeldung abzubrechen.
+        // Prüfung vor dem Parsen: JSON/JSONL wird derzeit vollständig in den
+        // Speicher geladen; das Limit bricht übergroße Dateien mit Fehlermeldung
+        // ab, bevor der Prozess in ein OOM läuft.
         $maxBytes = $this->configurationService->getImportMaxFileSizeBytes();
         $fileSize = (int)filesize($realPath);
         if ($maxBytes > 0 && $fileSize > $maxBytes) {
@@ -75,9 +75,8 @@ class ManifestLoaderService
         }
 
         // Plausibilitätsprüfung gegen das PHP memory_limit: Das dekodierte Array
-        // braucht ein Vielfaches der Dateigröße. Ohne diese Prüfung stirbt der
-        // Prozess beim Parsen still mit einem OOM-Fatal (Exit 255, keine Meldung) –
-        // real beobachtet bei 21 MB Datei und memory_limit=128M.
+        // benötigt ein Vielfaches der Dateigröße; ohne Prüfung endet das Parsen
+        // in einem OOM-Fatal ohne verwertbare Fehlermeldung.
         $this->assertMemoryHeadroom($fileSize);
 
         $data = $isJsonl ? $this->parseJsonlFile($realPath) : $this->parseJsonFile($realPath);

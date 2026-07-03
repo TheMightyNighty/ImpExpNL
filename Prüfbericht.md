@@ -180,7 +180,7 @@ Nach Umsetzung aller Maßnahmen wurde die Extension in einem Zwei-Instanzen-Setu
 
 **Erfolgreich verifiziert:** Schema-Migration (`owner`-Spalte) auf Bestandsinstanz; signierter Bundle-Export mit Key-ID (`hmac-sha256:k2026:…`, 21 s, alle Artefakte `0600`); Abweisung bei falschem Schlüssel/unbekannter Key-ID/fehlendem Schlüssel (Exit 4); Dry-Run-Gate mit Diff und Asset-Preflight; Voll-Import 8.002 Records inkl. Asset-Platzierung aus dem signierten Manifest in 3:36 min (Datei-Hashes Quelle↔Ziel identisch, FAL korrekt verdrahtet); Delta-Re-Import als No-Op (8.002 skipped, 2 min); SIGKILL-Test mit undo-then-retry (Checkpoint-Protokoll, Teilimport per Undo restlos entfernt); Auto-Rollback nach Abbruch inkl. Asset-GC (1.840 platzierte Dateien exakt zurückgenommen); Rollback des Voll-Imports auf die exakte Baseline.
 
-**Der Test fand sechs zusätzliche Fehler, die in der SQLite-basierten CI unsichtbar waren** (alle am 2026-07-03 behoben, Details im CHANGELOG „Unveröffentlicht"):
+**Der Test fand acht zusätzliche Fehler, die in der SQLite-basierten CI unsichtbar waren** (alle am 2026-07-03 behoben, Details im CHANGELOG „Unveröffentlicht"):
 
 | Nr. | Schwere | Fund |
 |---|---|---|
@@ -190,8 +190,17 @@ Nach Umsetzung aller Maßnahmen wurde die Extension in einem Zwei-Instanzen-Setu
 | E-04 | Mittel | `impexpnl:undo` lief ohne Lock-Koordination — Rollback parallel zu laufendem Import war möglich |
 | E-05 | Niedrig | `impexpnl:unlock --json` fehlte (README versprach es); Fehlschlag in Pipelines blieb dadurch unbemerkt |
 | E-06 | Niedrig | `impexpnl:check` brach auf schlanken Installationen mit Fehler ab, weil optionale Profil-Tabellen (sys_redirect/tt_address) fehlen — jetzt Warnung |
+| E-07 | Hoch | SIGKILL zwischen Batch-Commit und Checkpoint hinterließ committete Records ohne Undo-Eintrag (32 Waisen im Kill-Test) — Batch + Checkpoint committen jetzt atomar in einer Transaktion |
+| E-08 | **Hoch** | TYPO3s Rootline-Cache-Flush (`TRUNCATE cache_rootline` pro Record, DB-Backend) ist in MySQL/MariaDB ein implizites COMMIT — die Batch-Transaktionen von Import **und** Rollback waren wirkungslos (keine Atomarität, kein fsync-Bündel). Behoben durch `RootlineCacheGuard` (prozesslokales Memory-Backend während des Laufs, einmalige Invalidierung danach) |
 
-**Empfehlung an den Betrieb:** Die Functional-Suite läuft in CI gegen SQLite; E-01/E-02 zeigen, dass MariaDB-spezifisches Verhalten dort nicht sichtbar wird. Vor Releases zusätzlich die Functional-Suite gegen MariaDB ausführen (Testcontainer existieren) und den hier dokumentierten E2E-Durchlauf als Release-Ritual etablieren.
+**Release-Ritual (eingerichtet am 2026-07-03):** Die Standard-CI läuft gegen SQLite; E-01, E-02 und E-08 belegen, dass MariaDB-spezifisches Verhalten dort unsichtbar bleibt. Vor jedem Release sind daher zusätzlich auszuführen:
+
+```bash
+Build/test-functional-mariadb.sh   # Functional-Suite gegen echtes MariaDB 11.4
+Build/e2e/run.sh                   # kompletter Transfer-Lebenszyklus über zwei Instanzen
+```
+
+Das E2E-Skript prüft automatisiert: signierter Bundle-Export (Key-ID), Schleusen-Transfer, Abweisung bei falschem Schlüssel, Dry-Run-Gate, Voll-Import mit Asset-Hash-Verifikation, Delta-No-Op, SIGKILL mit undo-then-retry und Rollback auf die exakte Baseline.
 
 ---
 

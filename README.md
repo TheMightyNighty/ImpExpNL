@@ -628,7 +628,7 @@ Alle Services loggen über den PSR-3 Logger unter dem Namespace `Robbi\ImpExpNL`
 
 | Ziel | Inhalt |
 |---|---|
-| `var/log/typo3_impexpnl_<hash>.log` | Alle Robbi-Copy-Meldungen (eigener Logger-Channel) |
+| `var/log/typo3_impexpnl_<hash>.log` | Alle ImpExpNL-Meldungen (eigener Logger-Channel) |
 | `var/log/impexpnl_transactions.log` | Menschenlesbare Import-/Rollback-Historie mit UID-Mappings |
 | `tx_impexpnl_import_log` (Datenbanktabelle) | UID-Map für den Rollback, persistent über Container-Neustarts |
 
@@ -673,7 +673,7 @@ $GLOBALS['TYPO3_CONF_VARS']['LOG']['Robbi']['ImpExpNL']['writerConfiguration'] =
 
 ### Log-Filterung
 
-Der Namespace `Robbi\ImpExpNL` wird vom TYPO3-Logging-Framework automatisch in den Pfad `Robbi.ImpExpNL` übersetzt. In ELK/Graylog kann nach diesem Pfad gefiltert werden, um ausschließlich Robbi-Copy-Meldungen anzuzeigen.
+Der Namespace `Robbi\ImpExpNL` wird vom TYPO3-Logging-Framework automatisch in den Pfad `Robbi.ImpExpNL` übersetzt. In ELK/Graylog kann nach diesem Pfad gefiltert werden, um ausschließlich ImpExpNL-Meldungen anzuzeigen.
 
 ---
 
@@ -874,6 +874,21 @@ ddev exec vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.functional.xml
 ddev exec vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.unit.xml --filter testDryRunDoesNotWriteToDatabase
 ```
 
+### Release-Pflichtläufe: MariaDB & Real-World-E2E
+
+Die Functional-Suite läuft in der Standard-CI häufig gegen SQLite. Der Real-World-Test (siehe `Prüfbericht.md`, Abschnitt 7) hat gezeigt, dass MySQL/MariaDB-spezifisches Verhalten dort unsichtbar bleibt (affected-rows-Semantik, implizite Commits durch `TRUNCATE`, Wert-Repräsentationen). **Vor jedem Release** sind deshalb zwei zusätzliche Läufe verpflichtend:
+
+```bash
+# 1) Functional-Suite gegen echtes MariaDB 11.4 (Docker; erstellt den DB-Container selbst)
+Build/test-functional-mariadb.sh
+
+# 2) Kompletter Transfer-Lebenszyklus über zwei echte TYPO3-Instanzen
+Build/e2e/run.sh
+# skalierbar: PAGES=2000 ASSETS=2000 FILESIZE=204800 Build/e2e/run.sh
+```
+
+Das E2E-Skript (`Build/e2e/run.sh`) erwartet die Instanz-Container `impexpnl-src`/`impexpnl-tgt` (TYPO3 mit Extension als Path-Repository auf das Arbeitsverzeichnis) samt MariaDB-Sidecars `impexpnl-db-src`/`impexpnl-db-tgt` und prüft automatisiert: signierten Bundle-Export mit Key-ID, Schleusen-Transfer, Abweisung bei falschem Schlüssel (Exit 4), Dry-Run-Gate, Voll-Import mit Asset-Hash-Verifikation, Delta-No-Op-Idempotenz, SIGKILL mitten im Import mit undo-then-retry sowie Rollback auf die exakte Baseline. Exit-Code 0 = alle Prüfungen bestanden. Der Seed-Generator (`Build/e2e/seed_generate.php`) erzeugt dafür echte Bilddateien in konfigurierbarer Menge/Größe.
+
 ### Testdaten generieren
 
 Für Last- und Entwicklungstests ohne große Quell-Instanz erzeugt ein Dev-Werkzeug synthetische Importdateien beliebiger Größe (mit gültiger Prüfsumme):
@@ -895,24 +910,33 @@ Der Functional-Test `LargeTreeImportTest` nutzt denselben Generator und ist übe
 
 ### Unit-Tests
 
-Die Unit-Tests prüfen die interne Logik der Service-Klassen:
+Die Unit-Tests prüfen die interne Logik der Service- und Domain-Klassen (Auswahl):
 
-| Klasse | Geprüfte Methoden |
+| Klasse | Schwerpunkt |
 |---|---|
-| `ImportServiceTest` | `isRecordIdentical`, `buildRecordData`, `checkSingleConflict` — Feld-Vergleich, excludedFields, Typkonvertierung, Konflikt-Zeitstempel |
-| `ExportServiceTest` | `parseSince`, Checksum-Berechnung, Asset-Extraktion, Broken-Link-Erkennung, Metadaten-Struktur |
-| `TableRegistryServiceTest` | Link-Rewriting (`t3://page?uid=`), Kategorie-Pfad-Splitting |
-| `ProfileServiceTest` | Profil-Validierung, Default-Werte, fehlende Pflichtfelder |
+| `IntegrityServiceTest` | Prüfsumme/HMAC, Downgrade-Sperre, Key-Rotation (Key-ID, `signingKeys`), Legacy-Format |
+| `BundleImportServiceTest` | Bundle-Härtung: Path-Traversal-Schutz, signierte Asset-Prüfsummen |
+| `ConflictResolverTest` / `ImportServiceTest` | Feld-Vergleich (inkl. Leer-Äquivalenz), Konflikt-Zeitstempel, `buildRecordData` |
+| `ConfigurationServiceTest` | Defaults & Grenzen (Lock-Timeout, Dateigrößen-Limit, Signaturpflicht) |
+| `ExportServiceTest` | `parseSince`, Checksum, Asset-Extraktion, Broken-Link-Erkennung, Metadaten |
+| `TableRegistryServiceTest` / `ProfileServiceTest` | Link-Rewriting, Kategorie-Pfade; Profil-Validierung |
+| `Domain/*` | `ConflictStrategy`, `ExportManifest`, `PageLinkRewriter`, `UidMap` |
 
 ### Functional-Tests
 
-Die Functional-Tests arbeiten mit einer echten Datenbank und prüfen den Gesamtablauf:
+Die Functional-Tests arbeiten mit einer echten Datenbank und prüfen den Gesamtablauf (Auswahl der ~40 Klassen):
 
-| Klasse | Szenarien |
+| Bereich | Szenarien |
 |---|---|
-| `ExportImportTest` | Export erzeugt valides JSON; Hidden-Filter; Tiefenbegrenzung; Import legt Records an; Links werden umgeschrieben; Sortierung wird erhalten |
-| `DeltaImportTest` | Delta überspringt identische Records; Delta aktualisiert geänderte Records; Conflict-Skip bewahrt lokale Daten; Dry-Run schreibt nichts |
-| `RollbackTest` | Rollback entfernt alle importierten Records; Import-Log wird bereinigt; Bei mehreren Imports wird nur der angegebene zurückgerollt |
+| `ExportImportTest`, `JsonlRoundtripTest` | Export/Import-Roundtrips (JSON + JSONL), Hidden-Filter, Tiefenbegrenzung, Link-Rewriting, Sortierung |
+| `DeltaImportTest`, `DryRunMatchesImportTest` | Delta-Idempotenz, Konflikt-Strategien, Dry-Run schreibt nichts und stimmt mit echtem Import überein |
+| `RollbackTest`, `RollbackSafetyTest`, `FullRoundtripAbortTest` | Rollback vollständig & gezielt, Schutz lokal geänderter Records, Auto-Rollback nach Abbruch |
+| `ImportLockTest`, `ExitCodeTest` | Cluster-Lock inkl. Owner-Token/Stale-Reaping, differenzierte Exit-Codes |
+| `Profile/*ContractTest` | Contract je Registry-Profil: Export → Import → Rollback (Core, FAL, Redirects, Kategorien, News, tt_address) |
+| `Transport/Bundle*` | Bundle-Roundtrip inkl. Asset-Platzierung und Rollback-GC |
+| `RegistryContainmentTest`, `TransferProfileTest`, `SanitizeTest` | PID-Containment, `allowedTables`/Kontext-Bindung, PII-Scrubbing (HMAC) |
+| `Workspace*`, `Language*`, `Fal*` | Workspace-Import/-Publish, Übersetzungen, FAL-Randfälle |
+| `LargeTreeImportTest`, `PerformanceBaselineTest` | Skalierung und Performance-Regressionsschutz |
 
 ### Fixture-Daten
 
@@ -971,24 +995,28 @@ public function gsbAccordionContentIsExported(): void
 ```
 Tests/
 ├── Unit/
-│   └── Service/
-│       ├── ImportServiceTest.php
-│       ├── ExportServiceTest.php
-│       ├── ProfileServiceTest.php
-│       └── TableRegistryServiceTest.php
+│   ├── ConfigurationSchemaTest.php        # YAML-Config gegen JSON-Schema
+│   ├── Domain/                            # ConflictStrategy, ExportManifest,
+│   │                                      # PageLinkRewriter, UidMap
+│   └── Service/                           # BundleImport (Härtung), Configuration,
+│                                          # ConflictResolver, Export, Import,
+│                                          # Integrity (inkl. Key-Rotation),
+│                                          # Profile, TableRegistry
 ├── Functional/
-│   ├── Service/
-│   │   ├── ExportImportTest.php
-│   │   ├── DeltaImportTest.php
-│   │   └── RollbackTest.php
-│   └── Fixtures/
-│       ├── pages.csv
-│       ├── tt_content.csv
-│       ├── sys_category.csv
-│       └── sys_category_record_mm.csv
-└── Build/
-    └── UnitTestsBootstrap.php
+│   ├── Command/                           # CLI-Smoke- und Status-Tests
+│   ├── Profile/                           # Contract-Tests der Registry-Profile
+│   │                                      # (Core, FAL, Redirects, Kategorien,
+│   │                                      # News, tt_address, deklarativ)
+│   ├── Service/                           # Export/Import/Delta/Rollback, Locks,
+│   │                                      # Workspaces, Sprachen, FAL, Assets,
+│   │                                      # Sanitize, Transfer-Profile,
+│   │                                      # Registry-Containment, Performance
+│   ├── Transport/                         # Bundle: Roundtrip, Transport, Asset-GC
+│   └── Fixtures/                          # CSV-Fixtures je Tabelle
+└── Build/                                 # Test-Bootstraps
 ```
+
+Ergänzend unter `Build/`: `test-functional-mariadb.sh` (Functional-Suite gegen MariaDB), `e2e/run.sh` + `e2e/seed_generate.php` (Real-World-E2E über zwei Instanzen), `generate-testdata.php` (synthetische Importdateien).
 
 ---
 
@@ -997,34 +1025,27 @@ Tests/
 ```
 imp_exp_nl/
 ├── Classes/
-│   ├── Command/
-│   │   ├── CheckCommand.php
-│   │   ├── ExportCommand.php
-│   │   ├── ImportCommand.php
-│   │   ├── ListCommand.php
-│   │   ├── StatusCommand.php
-│   │   └── UndoCommand.php
-│   ├── Event/
-│   │   ├── ModifyExportDataEvent.php
-│   │   └── ModifyImportDataEvent.php
-│   └── Service/
-│       ├── BootstrapService.php
-│       ├── ExportService.php
-│       ├── FalResolverService.php
-│       ├── ImportService.php
-│       ├── LinkRewriterService.php
-│       ├── ProfileService.php
-│       ├── RollbackService.php
-│       └── TableRegistryService.php
+│   ├── Command/          # check, export, import, list, migrate-legacy-schema,
+│   │                     # status, undo, unlock, validate-config
+│   ├── Domain/           # ConflictStrategy, ExitCode, ExportManifest,
+│   │                     # PageLinkRewriter, SystemFields, TransferProfile, UidMap
+│   ├── Event/            # ModifyExportDataEvent, ModifyImportDataEvent (PSR-14)
+│   ├── Exception/        # typisierte Fehler mit Exit-Codes (Lock, Integrity, …)
+│   ├── Service/          # Export/Import/Rollback, ManifestLoader (Eingangs-
+│   │                     # Validierung), Integrity (HMAC/Key-Rotation), Locks,
+│   │                     # TableRegistry, AssetManifest, Sanitize, Configuration,
+│   │                     # RootlineCacheGuard, Repositories (ImportLog, UidMap)
+│   └── Transport/        # external/bundle-Transport + Factory
 ├── Configuration/
 │   ├── Services.yaml
-│   └── TCA/Overrides/
-│       ├── pages.php
-│       └── tt_content.php
-├── Tests/
-│   ├── Unit/
-│   ├── Functional/
-│   └── Build/
+│   └── Schema/ImpExpNL.schema.json    # JSON-Schema für YAML-Autocomplete/CI
+├── Build/
+│   ├── test-functional-mariadb.sh     # Release-Pflichtlauf gegen MariaDB
+│   ├── e2e/                           # Real-World-E2E (run.sh, seed_generate.php)
+│   ├── generate-testdata.php
+│   └── demo/                          # DDEV-Demo-Projekt
+├── Documentation/PERFORMANCE.md
+├── Tests/                             # siehe Teststruktur oben
 ├── composer.json
 ├── ext_emconf.php
 ├── ext_localconf.php
@@ -1032,6 +1053,8 @@ imp_exp_nl/
 ├── phpunit.unit.xml
 ├── phpunit.functional.xml
 ├── imp_exp_nl.yaml
+├── Prüfbericht.md                     # Sicherheits-Review + Real-World-Verifikation
+├── CHANGELOG.md
 ├── LICENSE
 └── README.md
 ```

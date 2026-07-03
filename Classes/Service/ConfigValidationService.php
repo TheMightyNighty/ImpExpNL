@@ -57,10 +57,8 @@ class ConfigValidationService
             $source = $sources[$table] ?? null;
 
             if (!$this->tableExists($table)) {
-                // Nur Warnung: Die mitgelieferten Profile registrieren optionale
-                // Ziel-Extensions (sys_redirect, tt_address, news …); Export/Import
-                // überspringen fehlende Tabellen bewusst. Ein Fehler würde das
-                // check-Preflight-Gate auf schlanken Installationen grundlos brechen.
+                // Warnung statt Fehler: Die mitgelieferten Profile registrieren optionale
+                // Ziel-Extensions; Export/Import überspringen fehlende Tabellen.
                 $issues[] = $this->warning("Tabelle \"$table\" ist registriert, existiert aber nicht in der Datenbank – wird beim Export/Import übersprungen (Extension nicht installiert?).", $source);
                 continue;
             }
@@ -202,8 +200,7 @@ class ConfigValidationService
         }
         foreach ($matchTables as $matchTable) {
             if (!$this->tcaSchemaFactory->has((string)$matchTable)) {
-                // Warnung statt Fehler: match_tables der mitgelieferten Profile
-                // nennen optionale Extension-Tabellen (news, tt_address).
+                // Warnung statt Fehler: match_tables kann optionale Extension-Tabellen nennen.
                 $issues[] = $this->warning("Tabelle \"$table\" (mm): match_tables-Eintrag \"$matchTable\" ist keine bekannte TCA-Tabelle – wird beim Matching ignoriert (Extension nicht installiert?).", $source);
             }
         }

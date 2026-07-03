@@ -86,6 +86,19 @@ ausführen.
 - **`impexpnl:check`:** Fehlende Tabellen optionaler Profile (z. B. `sys_redirect`,
   `tt_address` nicht installiert) sind jetzt Warnungen statt Fehler – das
   Preflight-Gate bricht auf schlanken Installationen nicht mehr grundlos.
+- **Checkpoint-Atomarität:** Batch-Daten und Protokoll-Fortschreibung committen
+  jetzt in EINER Transaktion. Vorher konnte ein SIGKILL zwischen Batch-Commit und
+  Checkpoint committete Records ohne Undo-Eintrag hinterlassen (im Kill-Test real
+  aufgetreten: 32 verwaiste Seiten).
+- **Rootline-Cache-TRUNCATE zerstörte Transaktionen (`RootlineCacheGuard`):**
+  Der TYPO3-Kern flusht beim Anlegen/Löschen von Seiten den Rootline-Cache; mit dem
+  DB-Cache-Backend ist das ein `TRUNCATE cache_rootline` **pro Record** – und
+  TRUNCATE ist in MySQL/MariaDB ein implizites COMMIT. Die Batch-Transaktionen von
+  Import UND Rollback waren dadurch auf MySQL/MariaDB wirkungslos (Atomarität und
+  fsync-Bündelung). Während Import/Rollback wird der Rootline-Cache jetzt
+  prozesslokal auf ein Memory-Backend umgelenkt und die DB-Cache-Tabellen werden
+  nach Abschluss einmalig geleert. Nebeneffekt: Tausende TRUNCATE-Statements pro
+  Lauf entfallen.
 
 ### Veraltet
 - **Legacy-Prüfsummenformat (Export-Format 1** aus ImpExpNL 1.x, roher SHA256 nur

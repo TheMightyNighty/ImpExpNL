@@ -60,10 +60,10 @@ class ConflictResolver
 
     /**
      * Wertvergleich mit Leer-Äquivalenz: '' und '0' gelten als gleich. TYPO3
-     * liefert für leere Spalten je nach Weg (DB-Default int 0 vs. leerer
-     * Export-/Formularwert '') unterschiedliche Repräsentationen – ohne diese
-     * Normalisierung meldet der Delta-Vergleich JEDEN Record als geändert
-     * (real beobachtet über fe_group auf pages und tt_content).
+     * liefert für leere Spalten je nach Weg unterschiedliche Repräsentationen
+     * (DB-Default int 0 vs. leerer Export-/Formularwert '', z. B. fe_group);
+     * ohne Normalisierung meldet der Delta-Vergleich solche Records dauerhaft
+     * als geändert.
      */
     private function differs(mixed $import, mixed $existing): bool
     {

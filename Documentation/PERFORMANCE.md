@@ -51,6 +51,10 @@ Stand: 2026-06 (TYPO3 v14, PHP 8.4, SQLite, In-Memory-Import)
   Baseline in einer DB-Transaktion. Davor lief jede Anweisung im Autocommit; der Rollback
   der medium-Klasse dauerte **~135 s statt ~29 s** (small: ~13 s → ~2,6 s). Geht dieses
   Verhältnis (~1:1 zum Import) wieder auseinander, ist das ein Regressionssignal.
+  Hinweis: Auf MySQL/MariaDB wird die Transaktions-Bündelung (für Import wie Rollback)
+  erst durch den `RootlineCacheGuard` wirksam — die Rootline-Cache-Flushes des Kerns
+  (`TRUNCATE` = implizites COMMIT) hätten sie sonst aufgehoben. SQLite-Messungen waren
+  davon nicht betroffen.
 - **Export ist günstig** (lesend, eine Query-Kaskade) und spielt zeitlich keine Rolle.
 - **Speicher wächst linear mit der Recordzahl** (In-Memory-Parsing/Datamap). Die
   large-Klasse benötigt mehr als die im Test gesetzten 512 MB (Peak ~687 MB). Für sehr

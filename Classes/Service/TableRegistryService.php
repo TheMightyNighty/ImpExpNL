@@ -375,7 +375,6 @@ class TableRegistryService
             if ($existing) {
                 $parentUid = (int)$existing['uid'];
             } else {
-                // Kategorie automatisch anlegen
                 $dh = GeneralUtility::makeInstance(DataHandler::class);
                 $tempId = 'NEW_CAT_' . md5($path . $segment . $parentUid);
                 $dh->start(['sys_category' => [$tempId => [
@@ -568,10 +567,9 @@ class TableRegistryService
         foreach ($records as $rec) {
             $oldUid = (int)($rec['uid'] ?? 0);
             $oldPid = (int)($rec[$pidField] ?? 0);
-            // PID-Containment: Nur auf Seiten schreiben, die dieser Import angelegt/
-            // gemappt hat. Ein Fallback auf die unveränderte Quell-PID würde einem
-            // manipulierten Export erlauben, Records (z. B. Redirects) an beliebige
-            // Stellen des Zielsystems zu schreiben.
+            // PID-Containment: nur auf Seiten schreiben, die dieser Import angelegt/
+            // gemappt hat. Ein Fallback auf die Quell-PID würde Schreibzugriffe an
+            // beliebigen Stellen des Zielsystems ermöglichen.
             $newPid = $uidMap['pages'][$oldPid] ?? null;
             if ($newPid === null) {
                 $unmappable++;

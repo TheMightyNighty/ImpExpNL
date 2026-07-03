@@ -99,6 +99,7 @@ class ImportService
         private readonly UrlRewriteService $urlRewriteService,
         private readonly BundleImportService $bundleImportService,
         private readonly ManifestLoaderService $manifestLoader,
+        private readonly RootlineCacheGuard $rootlineCacheGuard,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -137,6 +138,12 @@ class ImportService
                 'conflict' => $profile->conflictStrategy->value,
                 'allowedTables' => $profile->allowedTables ?? '(alle)',
             ]);
+        }
+
+        // Vor dem Backend-Bootstrap registrieren: sobald der Kern den Rootline-Cache
+        // instanziert hat, lässt er sich nicht mehr umlenken (siehe RootlineCacheGuard).
+        if (!$dryRun) {
+            $this->rootlineCacheGuard->defer();
         }
 
         $this->bootstrapService->initializeBackendContext($workspaceId);
@@ -205,6 +212,7 @@ class ImportService
             try {
                 $result = $this->executeImport($jsonPath, $targetPid, $options);
             } finally {
+                $this->rootlineCacheGuard->flush();
                 $this->importLock->release($lockHandle);
             }
             return ['dryRun' => false] + $result;
@@ -779,21 +787,23 @@ class ImportService
 
             $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
             $dataHandler->start([$table => $batch], []);
-            $this->processInTransaction($table, $dataHandler->process_datamap(...));
+
+            // Batch und Checkpoint committen in einer Transaktion: Ein Abbruch
+            // zwischen Batch-Commit und Protokoll-Fortschreibung würde sonst
+            // committete Records ohne Undo-Eintrag hinterlassen.
+            $this->processInTransaction($table, function () use ($dataHandler, $table, $prefix): void {
+                $dataHandler->process_datamap();
+                foreach ($dataHandler->substNEWwithIDs as $placeholder => $newUid) {
+                    if (str_starts_with($placeholder, $prefix)) {
+                        $oldUid = (int)str_replace($prefix, '', $placeholder);
+                        $this->uidMap->set($table, $oldUid, (int)$newUid);
+                        $this->createdMap->set($table, $oldUid, (int)$newUid);
+                    }
+                }
+                $this->checkpointImportLog();
+            });
 
             $this->recordDataHandlerErrors($dataHandler, $table);
-
-            foreach ($dataHandler->substNEWwithIDs as $placeholder => $newUid) {
-                if (str_starts_with($placeholder, $prefix)) {
-                    $oldUid = (int)str_replace($prefix, '', $placeholder);
-                    $this->uidMap->set($table, $oldUid, (int)$newUid);
-                    $this->createdMap->set($table, $oldUid, (int)$newUid);
-                }
-            }
-
-            // Checkpoint: dieser Batch ist committet → ins Protokoll fortschreiben, damit
-            // ein Crash danach einen rückrollbaren Stand hinterlässt.
-            $this->checkpointImportLog();
 
             $batchIndex++;
             if ($onProgress) {

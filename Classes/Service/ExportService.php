@@ -180,7 +180,6 @@ class ExportService
             $onProgress('Seiten gesammelt', count($pageUids), 0);
         }
 
-        // Inhalte laden
         foreach (array_chunk($pageUids, 1000) as $chunk) {
             $qb = $this->connectionPool->getQueryBuilderForTable('tt_content');
             $this->applyRestrictions($qb, $includeHidden);

@@ -98,9 +98,8 @@ class ConfigurationService
 
     /**
      * Maximale Größe der Import-Datei in Bytes (import.max_file_size_mb).
-     * Der Import parst JSON/JSONL derzeit vollständig in den Speicher; ohne
-     * Limit ist eine übergroße (oder böswillige) Datei ein einfacher
-     * OOM-/DoS-Vektor (Pod-Kill → Lock bleibt bis Stale-Timeout stehen).
+     * Der Import parst JSON/JSONL derzeit vollständig in den Speicher; das
+     * Limit begrenzt damit den OOM-/DoS-Vektor übergroßer Dateien.
      * 0 in der Config = Limit deaktiviert (Rückgabe 0).
      */
     public function getImportMaxFileSizeBytes(int $defaultMb = 512): int
