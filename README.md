@@ -301,6 +301,31 @@ ddev exec vendor/bin/typo3 impexpnl:import --profile=dev_to_referenz --dry-run
 
 ---
 
+## Transfer-Profile (Policy-Guardrails)
+
+Neben den Import-Profilen (Argument-Vorbelegung) gibt es **Transfer-Profile** in der YAML-Config (`transferProfiles`), die eine Umgebungs-Bindung und Policy-Leitplanken durchsetzen. Auswahl beim Import über `--transfer-profile=<name>`.
+
+| Feld | Wirkung |
+|---|---|
+| `transport` | Referenz auf einen `assetTransports`-Eintrag (`external`/`bundle`) |
+| `conflictStrategy` | Erzwungene Konflikt-Strategie (`overwrite`/`skip`/`ask`/`abort`) |
+| `allowedContext` | Erlaubte TYPO3-Application-Contexts — verhindert die Ausführung in der falschen Umgebung (z. B. Prod-Paket auf Dev) |
+| `requireDryRun` | `true` = Profil erlaubt nur Dry-Run-Läufe |
+| `allowedTables` | **Wirkbereichs-Allowlist** für den Registry-Import: nicht gesetzt = alle registrierten Tabellen, gesetzt = nur die genannten (leere Liste = keine). `pages`/`tt_content`/FAL sind davon unberührt. |
+
+```yaml
+transferProfiles:
+  stage_to_prod_release:
+    transport: bundle_full
+    conflictStrategy: abort
+    allowedContext: [Production]
+    allowedTables: [sys_redirect, sys_category_record_mm]
+```
+
+**PID-Containment.** Unabhängig vom Profil schreibt der Import Registry-Records und IRRE-Relationen nur noch auf Seiten, die dieser Import selbst angelegt bzw. gemappt hat. Records, deren Ziel-Seite nicht auflösbar ist, werden mit Warnung übersprungen — ein (manipulierter) Export kann damit keine Records an beliebige Stellen des Zielsystems schreiben.
+
+---
+
 ## Rollback
 
 Jeder Import wird in der Datenbanktabelle `tx_impexpnl_import_log` protokolliert. Das Protokoll enthält die vollständige UID-Zuordnung zwischen Quell- und Ziel-UIDs.

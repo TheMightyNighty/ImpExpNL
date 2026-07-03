@@ -55,6 +55,21 @@ class TransferProfileTest extends FunctionalTestCase
     }
 
     #[Test]
+    public function allowedTablesIsNullWhenNotConfigured(): void
+    {
+        // prod_to_dev setzt keine allowedTables -> null = alle registrierten Tabellen.
+        $profile = $this->get(TransferProfileService::class)->resolve('prod_to_dev');
+        self::assertNull($profile->allowedTables);
+    }
+
+    #[Test]
+    public function allowedTablesIsParsedAsStrictAllowlist(): void
+    {
+        $profile = $this->get(TransferProfileService::class)->resolve('stage_to_prod_release');
+        self::assertSame(['sys_redirect', 'sys_category_record_mm'], $profile->allowedTables);
+    }
+
+    #[Test]
     public function unknownProfileThrowsConfigException(): void
     {
         $this->expectException(ConfigException::class);

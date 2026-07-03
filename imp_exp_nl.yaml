@@ -122,11 +122,17 @@ transferProfiles:
       - Development
       - Testing
   # Freigabe-Paket für Produktion: bei Konflikt abbrechen, nur auf Production erlaubt.
+  # allowedTables begrenzt den Wirkbereich des Registry-Imports (Wirkbereichs-
+  # Allowlist): nicht gesetzt = alle registrierten Tabellen, gesetzt = nur die
+  # genannten (leere Liste = keine Registry-Tabellen, nur pages/tt_content/FAL).
   stage_to_prod_release:
     transport: bundle_full
     conflictStrategy: abort
     allowedContext:
       - Production
+    allowedTables:
+      - sys_redirect
+      - sys_category_record_mm
 
 # ============================================================================
 # Optionale Content-Transformationen (Default aus) – Vorlagen zum Einkommentieren.

@@ -26,6 +26,9 @@ final class TransferProfile
     /**
      * @param array{type:string} $transport Aufgelöste assetTransport-Config (mind. `type`)
      * @param list<string> $allowedContext Erlaubte TYPO3-Application-Contexts (leer = überall)
+     * @param list<string>|null $allowedTables Registry-Tabellen, die dieses Profil importieren
+     *        darf (null = alle registrierten; leere Liste = keine). Begrenzt den Wirkbereich
+     *        eines Imports über pages/tt_content/FAL hinaus.
      */
     public function __construct(
         public readonly string $name,
@@ -33,5 +36,6 @@ final class TransferProfile
         public readonly ConflictStrategy $conflictStrategy,
         public readonly array $allowedContext,
         public readonly bool $requireDryRun,
+        public readonly ?array $allowedTables = null,
     ) {}
 }

@@ -132,7 +132,12 @@ class ImportService
                 ));
             }
             $options['conflict'] = $profile->conflictStrategy;
-            $this->logger->info('Transfer-Profil aktiv', ['profile' => $profile->name, 'conflict' => $profile->conflictStrategy->value]);
+            $options['allowedTables'] = $profile->allowedTables;
+            $this->logger->info('Transfer-Profil aktiv', [
+                'profile' => $profile->name,
+                'conflict' => $profile->conflictStrategy->value,
+                'allowedTables' => $profile->allowedTables ?? '(alle)',
+            ]);
         }
 
         $this->bootstrapService->initializeBackendContext($workspaceId);
@@ -453,7 +458,12 @@ class ImportService
         }
 
         $rawData = $manifest->toArray();
-        $this->dataHandlerErrors += $this->tableRegistry->importRegisteredTables($rawData, $uidArray);
+        $allowedTables = $options['allowedTables'] ?? null;
+        $this->dataHandlerErrors += $this->tableRegistry->importRegisteredTables(
+            $rawData,
+            $uidArray,
+            is_array($allowedTables) ? $allowedTables : null
+        );
         $this->linkRewriterService->rewriteLinks($uidArray, $workspaceId);
         $this->rewriteAbsoluteUrls($uidArray, $config, $workspaceId);
 
@@ -1165,7 +1175,17 @@ class ImportService
                 }
             }
             $child[$ff] = $newParent;
-            $child['pid'] = $uidMap['pages'][$rec['pid'] ?? 0] ?? ($rec['pid'] ?? 0);
+            // PID-Containment: kein Fallback auf die unveränderte Quell-PID –
+            // IRRE-Kinder ohne gemappte Ziel-Seite werden übersprungen.
+            $newPid = $uidMap['pages'][$rec['pid'] ?? 0] ?? null;
+            if ($newPid === null) {
+                $this->logger->warning('IRRE-Relation übersprungen: Ziel-Seite nicht auflösbar (PID-Containment).', [
+                    'table' => $table,
+                    'source_uid' => $rec['uid'] ?? null,
+                ]);
+                continue;
+            }
+            $child['pid'] = $newPid;
             $datamap[$table]['NEW_IRRE_' . $table . '_' . ($rec['uid'] ?? $count)] = $child;
             $count++;
         }

@@ -72,12 +72,20 @@ class TransferProfileService
             throw new ConfigException(sprintf("Transfer-Profil '%s': %s", $name, $e->getMessage()));
         }
 
+        // allowedTables: nicht gesetzt = alle registrierten Tabellen (null);
+        // gesetzt (auch leer) = strikte Allowlist für den Registry-Import.
+        $allowedTables = null;
+        if (array_key_exists('allowedTables', $profile)) {
+            $allowedTables = array_values(array_map('strval', (array)($profile['allowedTables'] ?? [])));
+        }
+
         return new TransferProfile(
             $name,
             $transport,
             $conflictStrategy,
             array_values(array_map('strval', (array)($profile['allowedContext'] ?? []))),
             (bool)($profile['requireDryRun'] ?? false),
+            $allowedTables,
         );
     }
 

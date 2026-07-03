@@ -183,9 +183,12 @@ class TableRegistryService
     /**
      * Importiert Daten aller registrierten Tabellen mit UID-Remapping.
      *
+     * @param list<string>|null $allowedTables Allowlist aus dem Transfer-Profil:
+     *        null = alle registrierten Tabellen, sonst werden nur die genannten
+     *        importiert (Wirkbereichs-Begrenzung; übersprungene werden geloggt).
      * @return int Anzahl der DataHandler-Fehler
      */
-    public function importRegisteredTables(array $exportedData, array &$uidMap): int
+    public function importRegisteredTables(array $exportedData, array &$uidMap, ?array $allowedTables = null): int
     {
         $errors = 0;
 
@@ -193,6 +196,9 @@ class TableRegistryService
         // von der MM-Phase gebraucht (uid_foreign → neue Record-UID über tablenames).
         foreach ($this->getRegisteredTables() as $table => $config) {
             if (($config['type'] ?? 'record') !== 'record' || !$this->tableExists($table) || empty($exportedData[$table])) {
+                continue;
+            }
+            if (!$this->isTableAllowed($table, $allowedTables)) {
                 continue;
             }
             try {
@@ -205,6 +211,9 @@ class TableRegistryService
         // Phase 2: MM-Tabellen (uid_foreign gegen die nun bekannten Record-UIDs auflösen).
         foreach ($this->getRegisteredTables() as $table => $config) {
             if (($config['type'] ?? 'record') !== 'mm' || !$this->tableExists($table)) {
+                continue;
+            }
+            if (!$this->isTableAllowed($table, $allowedTables)) {
                 continue;
             }
             $isPath = !empty($config['category_match']) && $config['category_match'] === 'path';
@@ -223,6 +232,21 @@ class TableRegistryService
             }
         }
         return $errors;
+    }
+
+    /**
+     * Wirkbereichs-Begrenzung aus dem Transfer-Profil: null = alles erlaubt.
+     */
+    private function isTableAllowed(string $table, ?array $allowedTables): bool
+    {
+        if ($allowedTables === null) {
+            return true;
+        }
+        if (in_array($table, $allowedTables, true)) {
+            return true;
+        }
+        $this->logger->warning("Registry-Import übersprungen: '$table' ist im Transfer-Profil nicht freigegeben (allowedTables).");
+        return false;
     }
 
     // =========================================================================
@@ -540,10 +564,19 @@ class TableRegistryService
         $datamap = [];
         $relationFields = $this->getRelationContainerFields($table);
 
+        $unmappable = 0;
         foreach ($records as $rec) {
             $oldUid = (int)($rec['uid'] ?? 0);
             $oldPid = (int)($rec[$pidField] ?? 0);
-            $newPid = $uidMap['pages'][$oldPid] ?? $oldPid;
+            // PID-Containment: Nur auf Seiten schreiben, die dieser Import angelegt/
+            // gemappt hat. Ein Fallback auf die unveränderte Quell-PID würde einem
+            // manipulierten Export erlauben, Records (z. B. Redirects) an beliebige
+            // Stellen des Zielsystems zu schreiben.
+            $newPid = $uidMap['pages'][$oldPid] ?? null;
+            if ($newPid === null) {
+                $unmappable++;
+                continue;
+            }
 
             $data = [];
             foreach ($rec as $f => $v) {
@@ -583,7 +616,12 @@ class TableRegistryService
                 }
             }
         }
-        $this->logger->info("Record-Import: $table", ['count' => count($records)]);
+        if ($unmappable > 0) {
+            $this->logger->warning("Record-Import: $table – Records ohne auflösbare Ziel-Seite übersprungen (PID-Containment).", [
+                'skipped' => $unmappable,
+            ]);
+        }
+        $this->logger->info("Record-Import: $table", ['count' => count($records) - $unmappable]);
         return $errors;
     }
 

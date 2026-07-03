@@ -37,6 +37,14 @@ ausführen.
   Nachbarpfade mit gleichem Präfix gelten nicht mehr als „innerhalb".
 - **Dateirechte:** Export-Artefakte (JSON/JSONL, Asset-Listen, CSV, Bundle-Archiv)
   werden auf `0600` beschränkt.
+- **PID-Containment:** Registry-Records und IRRE-Relationen werden nur noch auf
+  Seiten geschrieben, die dieser Import selbst angelegt/gemappt hat. Der bisherige
+  Fallback auf die unveränderte Quell-PID entfällt — Records ohne auflösbare
+  Ziel-Seite werden mit Warnung übersprungen. Ein manipulierter Export kann damit
+  keine Records (z. B. Redirects) an beliebige Stellen des Zielsystems schreiben.
+- **Tabellen-Allowlist (`allowedTables`) pro Transfer-Profil:** begrenzt, welche
+  Registry-Tabellen ein Import anfassen darf (nicht gesetzt = alle, leere Liste =
+  keine; `pages`/`tt_content`/FAL unberührt). Übersprungene Tabellen werden geloggt.
 
 ### Geändert
 - Fehlschlägt das Anlegen des lokalen Datei-Locks (z. B. read-only Filesystem),
