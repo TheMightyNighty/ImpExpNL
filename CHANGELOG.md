@@ -1,5 +1,63 @@
 # Changelog
 
+## 1.3.0 — Sicherheit & Betriebsstabilität (Backport aus 2.2.0) (2026-07-03)
+
+Backport der sicherheits- und stabilitätskritischen Fixes aus der v14-Linie
+(v2.2.0, dortiger Sicherheits-Maßnahmenplan F-01–F-14 und Real-World-Funde
+E-01–E-08; siehe `Prüfbericht.md` auf `main`). **Schema-Änderung:** neue Spalte
+`tx_impexpnl_lock.owner` → nach dem Update `vendor/bin/typo3 extension:setup`
+bzw. Datenbank-Schema-Update ausführen.
+
+### Sicherheit
+- **Signaturpflicht (`import.require_signature`):** Importdateien ohne
+  `hmac-sha256:`-Signatur werden abgewiesen — auch Dateien ganz ohne
+  `_meta.checksum` (das Weglassen der Prüfsumme ist kein Umgehungsweg mehr).
+- **Downgrade-Sperre:** Ist ein Signing-Key konfiguriert, sind bloße `sha256:`-
+  und Legacy-Prüfsummen bei der Verifikation ungültig.
+- **PID-Containment:** Registry-Records und IRRE-Relationen werden nur noch auf
+  Seiten geschrieben, die dieser Import selbst angelegt/gemappt hat; der Fallback
+  auf die unveränderte Quell-PID entfällt (Records ohne auflösbare Ziel-Seite
+  werden mit Warnung übersprungen).
+- **Import-Lock mit Inhaber-Token** (`tx_impexpnl_lock.owner`): Heartbeat und
+  Freigabe wirken nur auf den eigenen Lock; eine verlorene Lock-Zeile bricht den
+  Import ab, statt parallel zu einem fremden Import zu schreiben (inkl. Schutz
+  gegen die MariaDB-affected-rows-Semantik bei Heartbeats in derselben Sekunde).
+  `impexpnl:unlock` löst weiterhin jeden Lock.
+- **Pfad-Containment mit Verzeichnistrenner** (Import-Quelldatei, Export-Zielpfad,
+  Profile) — Nachbarpfade mit gleichem Präfix gelten nicht mehr als „innerhalb".
+- **Dateirechte:** Export-Artefakte werden auf `0600` beschränkt.
+
+### Behoben
+- **Delta-Idempotenz unter Realbedingungen:** Der Feldvergleich meldete Records
+  wegen `''`/`'0'`-Repräsentation (z. B. `fe_group`) und des beim Import
+  regenerierten `slug` dauerhaft als geändert. Vergleich normalisiert jetzt
+  Leerwerte und ignoriert `slug` — wiederholte Delta-Läufe sind wieder ein No-Op
+  (real verifiziert: 8 001 skipped auf dem 2-Instanzen-Setup).
+- **`RootlineCacheGuard`:** Der TYPO3-Kern flusht beim Anlegen/Löschen von Seiten
+  den Rootline-Cache per `TRUNCATE` pro Record — in MySQL/MariaDB ein implizites
+  COMMIT, das die gebündelten Import-/Rollback-Transaktionen aufbricht (der
+  Rollback-Speedup aus 1.2.0 war auf MariaDB wirkungslos). Der Cache wird während
+  Import/Rollback prozesslokal auf ein Memory-Backend umgelenkt und die
+  DB-Cache-Tabellen werden am Ende einmalig geleert.
+- **Speicher-/Größen-Guard:** `import.max_file_size_mb` (Default 512, 0 = aus)
+  plus Plausibilitätsprüfung gegen das PHP `memory_limit` VOR dem Parsen — statt
+  stillem OOM-Tod ohne Fehlermeldung.
+- **`impexpnl:undo` läuft unter dem Import-Lock** (Rollback parallel zu einem
+  laufenden Import wird abgewiesen).
+- Fehlschlägt das Anlegen des lokalen Datei-Locks (z. B. read-only Filesystem),
+  wird das als Warnung geloggt statt still übergangen.
+
+### Neu
+- **`impexpnl:unlock --json`** (war in der README dokumentiert, fehlte aber).
+- **`Build/test-functional-mariadb.sh`:** Functional-Suite gegen echtes MariaDB
+  (Release-Pflichtlauf; die SQLite-CI zeigt MariaDB-Fehlerklassen nicht).
+
+Nicht übernommen (Features der 2.x-Linie ohne Gegenstück in 1.x): Bundle-Transport-
+Härtung, Transfer-Profile/`allowedTables`, Sanitize-HMAC, Key-Rotation,
+Batch-Checkpoint-System. Hinweis: Ohne Checkpoint-System hinterlässt ein harter
+Crash (SIGKILL/OOM) in der 1.x einen nicht per `undo` rückrollbaren Teilimport —
+dokumentierte Einschränkung dieser Linie.
+
 ## 1.2.0 — Kategorie-Relationen & Recovery (2026-07-01)
 
 Backport realer Bugfixes aus der v14-Linie (`main`) plus v13-spezifische Robustheit.

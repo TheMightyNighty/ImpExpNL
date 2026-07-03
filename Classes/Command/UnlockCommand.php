@@ -39,12 +39,15 @@ class UnlockCommand extends Command
 
     protected function configure(): void
     {
-        $this->addOption('force', 'f', InputOption::VALUE_NONE, 'Ohne Rückfrage lösen');
+        $this
+            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Ohne Rückfrage lösen')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $jsonOutput = (bool)$input->getOption('json');
 
         $lock = $this->importLock->getActiveLock();
         $hasFileLock = $this->importLock->hasFileLock();
@@ -52,7 +55,23 @@ class UnlockCommand extends Command
         // Auch einen verwaisten Datei-Lock (ohne DB-Lock) berücksichtigen – der bleibt nach
         // einem harten Crash liegen und blockiert sonst jeden Wiederanlauf.
         if ($lock === null && !$hasFileLock) {
+            if ($jsonOutput) {
+                $output->writeln((string)json_encode(['success' => true, 'released' => false, 'lock' => null], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                return Command::SUCCESS;
+            }
             $io->success('Kein aktiver Import-Lock vorhanden.');
+            return Command::SUCCESS;
+        }
+
+        if ($jsonOutput) {
+            // --json impliziert einen unbeaufsichtigten Lauf: ohne --force wird
+            // nicht gelöst, sondern nur der Lock gemeldet (kein Interaktiv-Prompt).
+            $released = false;
+            if ($input->getOption('force')) {
+                $this->importLock->forceReleaseDbLock();
+                $released = true;
+            }
+            $output->writeln((string)json_encode(['success' => true, 'released' => $released, 'lock' => $lock, 'fileLock' => $hasFileLock], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             return Command::SUCCESS;
         }
 

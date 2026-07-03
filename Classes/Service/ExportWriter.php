@@ -51,6 +51,17 @@ class ExportWriter
             $this->writeCsv($data, $baseDir);
         }
 
+        // Exporte können sensible Inhalte tragen (Redaktionsdaten, ggf. PII):
+        // Artefakte nicht mit der Prozess-umask liegen lassen, sondern auf
+        // Besitzer-Rechte beschränken.
+        $this->restrictPermissions(
+            $filePath,
+            $baseDir . '/impexpnl_assets.txt',
+            $baseDir . '/impexpnl_broken_links.txt',
+            $baseDir . '/impexpnl_pages.csv',
+            $baseDir . '/impexpnl_tt_content.csv'
+        );
+
         $this->logger->info('Export abgeschlossen', [
             'pages' => count($data['pages'] ?? []),
             'tt_content' => count($data['tt_content'] ?? []),
@@ -143,6 +154,15 @@ class ExportWriter
             fclose($fp);
         }
         $this->logger->info('CSV-Export geschrieben', ['dir' => $baseDir]);
+    }
+
+    private function restrictPermissions(string ...$files): void
+    {
+        foreach ($files as $file) {
+            if (is_file($file) && !@chmod($file, 0600)) {
+                $this->logger->warning('Dateirechte konnten nicht beschränkt werden: ' . $file);
+            }
+        }
     }
 
     /**

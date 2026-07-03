@@ -66,4 +66,31 @@ class ConfigurationServiceTest extends TestCase
         $subject = $this->createSubject(['impexpnl' => ['tables' => ['sys_redirect' => ['type' => 'record']]]]);
         self::assertArrayHasKey('sys_redirect', $subject->getRegisteredTables());
     }
+
+    #[Test]
+    public function signatureRequirementDefaultsToFalse(): void
+    {
+        self::assertFalse($this->createSubject([])->isSignatureRequired());
+        self::assertTrue($this->createSubject(['import' => ['require_signature' => true]])->isSignatureRequired());
+    }
+
+    #[Test]
+    public function importMaxFileSizeDefaultsTo512Mb(): void
+    {
+        self::assertSame(512 * 1024 * 1024, $this->createSubject([])->getImportMaxFileSizeBytes());
+    }
+
+    #[Test]
+    public function importMaxFileSizeIsReadFromConfig(): void
+    {
+        $subject = $this->createSubject(['import' => ['max_file_size_mb' => 64]]);
+        self::assertSame(64 * 1024 * 1024, $subject->getImportMaxFileSizeBytes());
+    }
+
+    #[Test]
+    public function importMaxFileSizeZeroDisablesTheLimit(): void
+    {
+        $subject = $this->createSubject(['import' => ['max_file_size_mb' => 0]]);
+        self::assertSame(0, $subject->getImportMaxFileSizeBytes());
+    }
 }

@@ -36,7 +36,10 @@ class ConflictResolver
     public function __construct(
         private readonly LoggerInterface $logger
     ) {
-        $this->ignoredFields = array_merge(SystemFields::EXCLUDED, ['tx_impexpnl_remote_uid', 'sorting']);
+        // 'slug' wird beim Import grundsätzlich für die Ziel-Site regeneriert und
+        // ist damit ein Ziel-Artefakt – im Identitätsvergleich würde er die
+        // Delta-Idempotenz dauerhaft brechen (jeder Record „geändert").
+        $this->ignoredFields = array_merge(SystemFields::EXCLUDED, ['tx_impexpnl_remote_uid', 'sorting', 'slug']);
     }
 
     public function isRecordIdentical(array $import, array $existing): bool
@@ -48,7 +51,7 @@ class ConflictResolver
             if (!array_key_exists($field, $existing)) {
                 continue;
             }
-            if ((string)$value !== (string)$existing[$field]) {
+            if ($this->differs($value, $existing[$field])) {
                 return false;
             }
         }
@@ -76,6 +79,23 @@ class ConflictResolver
         return null;
     }
 
+    /**
+     * Wertvergleich mit Leer-Äquivalenz: '' und '0' gelten als gleich. TYPO3
+     * liefert für leere Spalten je nach Weg unterschiedliche Repräsentationen
+     * (DB-Default int 0 vs. leerer Export-/Formularwert '', z. B. fe_group);
+     * ohne Normalisierung meldet der Delta-Vergleich solche Records dauerhaft
+     * als geändert.
+     */
+    private function differs(mixed $import, mixed $existing): bool
+    {
+        $a = (string)$import;
+        $b = (string)$existing;
+        if ($a === $b) {
+            return false;
+        }
+        return !($a === '' || $a === '0') || !($b === '' || $b === '0');
+    }
+
     public function logFieldDiff(array $import, array $existing, string $table): void
     {
         $diffs = [];
@@ -86,7 +106,7 @@ class ConflictResolver
             if (!array_key_exists($field, $existing)) {
                 continue;
             }
-            if ((string)$value !== (string)$existing[$field]) {
+            if ($this->differs($value, $existing[$field])) {
                 $oldVal = mb_substr((string)$existing[$field], 0, 80);
                 $newVal = mb_substr((string)$value, 0, 80);
                 $diffs[] = "    $field: \"$oldVal\" → \"$newVal\"";

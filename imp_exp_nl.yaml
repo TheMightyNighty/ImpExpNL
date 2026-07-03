@@ -13,6 +13,15 @@ import:
     file_references: true     # FAL-Referenzen über Dateipfad auflösen
   container_support: true     # b13/container: tx_container_parent remappen
   batch_size: 500             # Records pro DataHandler-Batch
+  # Signaturpflicht: Nur Importdateien mit gültiger HMAC-Signatur (hmac-sha256:)
+  # akzeptieren. Dateien ohne Prüfsumme oder mit bloßer sha256-Prüfsumme werden
+  # abgewiesen. Setzt einen konfigurierten Signing-Key voraus (IMPEXPNL_SIGNING_KEY).
+  # Empfohlen: true bei Importen über ein Sicherheitsgefälle.
+  require_signature: false
+  # Maximale Größe der Import-Datei (MB). Der Import parst JSON/JSONL vollständig
+  # in den Speicher – das Limit bricht übergroße Dateien VOR dem Parsen sauber ab
+  # (statt OOM/Pod-Kill). 0 = unbegrenzt.
+  max_file_size_mb: 512
   lock_stale_seconds: 3600    # nach dieser Zeit gilt ein hängender Lock als veraltet
   auto_rollback_on_failure: true  # abgebrochenen Teilimport automatisch zurückrollen
   fal:

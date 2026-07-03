@@ -62,13 +62,21 @@ class IntegrityService
      */
     public function verify(array $data, string $expected): bool
     {
+        $key = $this->getSigningKey();
+
         if (str_starts_with($expected, 'hmac-sha256:')) {
-            $key = $this->getSigningKey();
             if ($key === null) {
                 // Signierte Datei, aber kein Schlüssel vorhanden → kann nicht verifiziert werden.
                 return false;
             }
             return hash_equals($expected, 'hmac-sha256:' . $this->computeHash($data, $key));
+        }
+
+        // Downgrade-Schutz: Ist ein Signing-Key konfiguriert, sind ausschließlich
+        // HMAC-Signaturen gültig. Eine bloße Prüfsumme (sha256:/Legacy) könnte sonst
+        // von jedem, der die Datei manipuliert, einfach neu berechnet werden.
+        if ($key !== null) {
+            return false;
         }
 
         if (str_starts_with($expected, 'sha256:')) {
@@ -78,6 +86,22 @@ class IntegrityService
         // Legacy (Format 1): roher SHA256 nur über pages + tt_content
         $legacy = hash('sha256', json_encode($data['pages'] ?? []) . json_encode($data['tt_content'] ?? []));
         return hash_equals($expected, $legacy);
+    }
+
+    /**
+     * Trägt der Prüfsummen-String eine HMAC-Signatur (kein Downgrade auf bloße Prüfsumme)?
+     */
+    public function isHmacSignature(?string $checksum): bool
+    {
+        return is_string($checksum) && str_starts_with($checksum, 'hmac-sha256:');
+    }
+
+    /**
+     * Ist ein Signing-Key konfiguriert (HMAC-Signaturschutz aktiv)?
+     */
+    public function hasSigningKey(): bool
+    {
+        return $this->getSigningKey() !== null;
     }
 
     /**

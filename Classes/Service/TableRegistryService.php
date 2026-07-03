@@ -539,10 +539,18 @@ class TableRegistryService
         $datamap = [];
         $relationFields = $this->getRelationContainerFields($table);
 
+        $unmappable = 0;
         foreach ($records as $rec) {
             $oldUid = (int)($rec['uid'] ?? 0);
             $oldPid = (int)($rec[$pidField] ?? 0);
-            $newPid = $uidMap['pages'][$oldPid] ?? $oldPid;
+            // PID-Containment: nur auf Seiten schreiben, die dieser Import angelegt/
+            // gemappt hat. Ein Fallback auf die Quell-PID würde Schreibzugriffe an
+            // beliebigen Stellen des Zielsystems ermöglichen.
+            $newPid = $uidMap['pages'][$oldPid] ?? null;
+            if ($newPid === null) {
+                $unmappable++;
+                continue;
+            }
 
             $data = [];
             foreach ($rec as $f => $v) {
@@ -582,7 +590,12 @@ class TableRegistryService
                 }
             }
         }
-        $this->logger->info("Record-Import: $table", ['count' => count($records)]);
+        if ($unmappable > 0) {
+            $this->logger->warning("Record-Import: $table – Records ohne auflösbare Ziel-Seite übersprungen (PID-Containment).", [
+                'skipped' => $unmappable,
+            ]);
+        }
+        $this->logger->info("Record-Import: $table", ['count' => count($records) - $unmappable]);
         return $errors;
     }
 

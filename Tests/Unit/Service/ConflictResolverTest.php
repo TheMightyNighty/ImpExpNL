@@ -114,4 +114,39 @@ class ConflictResolverTest extends TestCase
         self::assertNotNull($result);
         self::assertStringContainsString('Neu', $result);
     }
+
+    #[Test]
+    public function emptyStringAndZeroAreEquivalent(): void
+    {
+        // DB-Default int 0 vs. leerer Export-Wert '' (z. B. fe_group) darf die
+        // Delta-Idempotenz nicht brechen.
+        self::assertTrue($this->subject->isRecordIdentical(
+            ['title' => 'Kontakt', 'fe_group' => ''],
+            ['title' => 'Kontakt', 'fe_group' => '0']
+        ));
+        self::assertTrue($this->subject->isRecordIdentical(
+            ['title' => 'Kontakt', 'fe_group' => 0],
+            ['title' => 'Kontakt', 'fe_group' => '']
+        ));
+    }
+
+    #[Test]
+    public function realEmptyVsContentIsStillDifferent(): void
+    {
+        self::assertFalse($this->subject->isRecordIdentical(
+            ['title' => 'Kontakt', 'subtitle' => ''],
+            ['title' => 'Kontakt', 'subtitle' => 'Text']
+        ));
+    }
+
+    #[Test]
+    public function slugIsIgnoredInComparison(): void
+    {
+        // Slugs werden beim Import für die Ziel-Site regeneriert und sind daher
+        // kein Identitätsmerkmal.
+        self::assertTrue($this->subject->isRecordIdentical(
+            ['title' => 'Kontakt', 'slug' => '/kontakt'],
+            ['title' => 'Kontakt', 'slug' => '/unternehmen/kontakt']
+        ));
+    }
 }

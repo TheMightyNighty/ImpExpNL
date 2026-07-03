@@ -81,6 +81,7 @@ class ImportService
         private readonly ConflictResolver $conflictResolver,
         private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly RollbackService $rollbackService,
+        private readonly RootlineCacheGuard $rootlineCacheGuard,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -102,6 +103,12 @@ class ImportService
         $dryRun = (bool)($options['dryRun'] ?? false);
         $workspaceId = (int)($options['workspaceId'] ?? 0);
 
+        // Vor dem Backend-Bootstrap registrieren: sobald der Kern den Rootline-Cache
+        // instanziert hat, lässt er sich nicht mehr umlenken (siehe RootlineCacheGuard).
+        if (!$dryRun) {
+            $this->rootlineCacheGuard->defer();
+        }
+
         $this->bootstrapService->initializeBackendContext($workspaceId);
         $this->uidMap = new UidMap();
         $this->createdMap = new UidMap();
@@ -120,6 +127,7 @@ class ImportService
         try {
             $result = $this->executeImport($jsonPath, $targetPid, $options);
         } finally {
+            $this->rootlineCacheGuard->flush();
             $this->importLock->release($lockHandle);
         }
         return ['dryRun' => false] + $result;
@@ -641,10 +649,27 @@ class ImportService
             throw new \RuntimeException("Ungültiger Dateipfad oder keine JSON/JSONL-Datei: $jsonPath");
         }
 
+        // Mit Verzeichnistrenner vergleichen, damit Nachbarpfade mit gleichem
+        // Präfix (/var/www/html-anderes) nicht als "innerhalb" durchgehen.
         $projectPath = Environment::getProjectPath();
-        if ($projectPath !== '' && !str_starts_with($realPath, $projectPath)) {
+        if ($projectPath !== '' && !str_starts_with($realPath, rtrim($projectPath, '/') . '/')) {
             throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
         }
+
+        // Prüfung vor dem Parsen: JSON/JSONL wird vollständig in den Speicher
+        // geladen; das Limit bricht übergroße Dateien mit Fehlermeldung ab,
+        // bevor der Prozess in ein OOM läuft.
+        $maxBytes = $this->configurationService->getImportMaxFileSizeBytes();
+        $fileSize = (int)filesize($realPath);
+        if ($maxBytes > 0 && $fileSize > $maxBytes) {
+            throw new \RuntimeException(sprintf(
+                'Importdatei zu groß: %d MB (Limit: %d MB, konfigurierbar über import.max_file_size_mb; 0 = unbegrenzt). '
+                . 'Datei prüfen, Limit erhöhen oder den Export aufteilen (--pages/--since).',
+                (int)round($fileSize / 1048576),
+                (int)round($maxBytes / 1048576)
+            ));
+        }
+        $this->assertMemoryHeadroom($fileSize);
 
         $data = $isJsonl ? $this->parseJsonlFile($realPath) : $this->parseJsonFile($realPath);
 
@@ -654,6 +679,26 @@ class ImportService
         }
 
         $checksum = $manifest->getChecksum();
+
+        // Signaturpflicht (import.require_signature): ohne gültige HMAC-Signatur wird
+        // gar nicht erst verifiziert, sondern sofort abgewiesen. Verhindert sowohl das
+        // Weglassen der Prüfsumme als auch den Downgrade auf eine bloße sha256-Prüfsumme.
+        if ($this->configurationService->isSignatureRequired()) {
+            if (!$this->integrityService->hasSigningKey()) {
+                throw new \RuntimeException(
+                    'import.require_signature ist aktiv, aber es ist kein Signing-Key konfiguriert '
+                    . '(IMPEXPNL_SIGNING_KEY bzw. EXTENSIONS/imp_exp_nl/signingKey). Import nicht möglich.'
+                );
+            }
+            if (!$this->integrityService->isHmacSignature($checksum)) {
+                throw new \RuntimeException(
+                    'Signaturpflicht aktiv (import.require_signature): Die Importdatei trägt keine '
+                    . 'HMAC-Signatur (hmac-sha256:). Datei auf dem Quellsystem mit identischem '
+                    . 'Signing-Key neu exportieren.'
+                );
+            }
+        }
+
         if ($checksum !== null && !$this->integrityService->verify($manifest->toArray(), $checksum)) {
             throw new \RuntimeException(
                 'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '
@@ -661,6 +706,51 @@ class ImportService
             );
         }
         return $manifest;
+    }
+
+    /**
+     * Geschätzter Speicherfaktor: dekodiertes PHP-Array vs. JSON-Dateigröße.
+     */
+    private const MEMORY_FACTOR = 8;
+
+    /**
+     * Plausibilitätsprüfung gegen das PHP memory_limit: Das dekodierte Array
+     * benötigt ein Vielfaches der Dateigröße; ohne Prüfung endet das Parsen
+     * in einem OOM-Fatal ohne verwertbare Fehlermeldung.
+     */
+    private function assertMemoryHeadroom(int $fileSize): void
+    {
+        $limit = $this->parseMemoryLimit((string)ini_get('memory_limit'));
+        if ($limit <= 0) {
+            return; // -1 = unbegrenzt
+        }
+        $estimated = memory_get_usage(true) + $fileSize * self::MEMORY_FACTOR;
+        if ($estimated > $limit) {
+            throw new \RuntimeException(sprintf(
+                'PHP memory_limit (%s) reicht voraussichtlich nicht für das Parsen der %d-MB-Importdatei '
+                . '(geschätzter Bedarf ~%d MB). memory_limit erhöhen (z. B. php -d memory_limit=1G vendor/bin/typo3 …) '
+                . 'oder den Export aufteilen (--pages/--since).',
+                (string)ini_get('memory_limit'),
+                (int)round($fileSize / 1048576),
+                (int)round($estimated / 1048576)
+            ));
+        }
+    }
+
+    private function parseMemoryLimit(string $limit): int
+    {
+        $limit = trim($limit);
+        if ($limit === '' || $limit === '-1') {
+            return -1;
+        }
+        $unit = strtolower(substr($limit, -1));
+        $value = (int)$limit;
+        return match ($unit) {
+            'g' => $value * 1024 ** 3,
+            'm' => $value * 1024 ** 2,
+            'k' => $value * 1024,
+            default => $value,
+        };
     }
 
     /**
@@ -868,7 +958,17 @@ class ImportService
                 }
             }
             $child[$ff] = $newParent;
-            $child['pid'] = $uidMap['pages'][$rec['pid'] ?? 0] ?? ($rec['pid'] ?? 0);
+            // PID-Containment: kein Fallback auf die unveränderte Quell-PID –
+            // IRRE-Kinder ohne gemappte Ziel-Seite werden übersprungen.
+            $newPid = $uidMap['pages'][$rec['pid'] ?? 0] ?? null;
+            if ($newPid === null) {
+                $this->logger->warning('IRRE-Relation übersprungen: Ziel-Seite nicht auflösbar (PID-Containment).', [
+                    'table' => $table,
+                    'source_uid' => $rec['uid'] ?? null,
+                ]);
+                continue;
+            }
+            $child['pid'] = $newPid;
             $datamap[$table]['NEW_IRRE_' . $table . '_' . ($rec['uid'] ?? $count)] = $child;
             $count++;
         }

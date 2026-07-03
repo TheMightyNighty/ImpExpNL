@@ -36,6 +36,14 @@ class ImportLockService
     private bool $dbLockHeld = false;
     private bool $shutdownRegistered = false;
 
+    /**
+     * Zufälliges Inhaber-Token dieses Prozesses. Refresh/Release wirken nur auf
+     * die eigene Lock-Zeile (WHERE owner = token) – hat der Stale-Reaper eines
+     * anderen Knotens unseren Lock entfernt und ein Dritter neu erworben, wird
+     * dessen Lock weder aufgefrischt noch gelöscht.
+     */
+    private string $ownerToken = '';
+
     public function __construct(
         private readonly ConnectionPool $connectionPool,
         private readonly ConfigurationService $configurationService,
@@ -54,7 +62,13 @@ class ImportLockService
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
-        $handle = fopen($lockFile, 'c+');
+        $handle = @fopen($lockFile, 'c+');
+        if ($handle === false) {
+            // Der DB-Lock trägt die Concurrency-Garantie allein weiter – aber ein
+            // nicht anlegbarer Datei-Lock (z. B. read-only Filesystem im Container)
+            // darf nicht unbemerkt bleiben.
+            $this->logger->warning('Datei-Lock konnte nicht angelegt werden – nur DB-Lock aktiv: ' . $lockFile);
+        }
         if ($handle && !flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
             $this->releaseDbLock();
@@ -87,6 +101,10 @@ class ImportLockService
     /**
      * Hält den DB-Lock bei lang laufenden Importen frisch, damit er nicht vom
      * Stale-Reaper eines anderen Prozesses entfernt wird.
+     *
+     * @throws \RuntimeException wenn die eigene Lock-Zeile nicht mehr existiert
+     *         (Stale-Timeout oder manuelles unlock) – der laufende Import muss
+     *         dann abbrechen, statt parallel zu einem fremden Import zu schreiben.
      */
     public function refresh(): void
     {
@@ -94,11 +112,39 @@ class ImportLockService
             return;
         }
         try {
-            $this->connectionPool->getConnectionForTable(self::TABLE)
-                ->update(self::TABLE, ['created' => time()], ['lock_id' => self::LOCK_ID]);
+            $affected = $this->connectionPool->getConnectionForTable(self::TABLE)
+                ->update(self::TABLE, ['created' => time()], ['lock_id' => self::LOCK_ID, 'owner' => $this->ownerToken]);
+
+            // MySQL/MariaDB melden 0 "affected rows", wenn die Zeile zwar matcht,
+            // sich aber kein Wert ändert (zwei Heartbeats in derselben Sekunde).
+            // Lock-Verlust daher nur nach explizitem Nachweis annehmen, dass die
+            // eigene Zeile wirklich fehlt.
+            if ((int)$affected === 0 && $this->ownLockRowExists()) {
+                return;
+            }
         } catch (\Throwable $e) {
+            // Transienter DB-Fehler: nicht abbrechen, nächster Heartbeat versucht es erneut.
             $this->logger->warning('DB-Lock-Heartbeat fehlgeschlagen: ' . $e->getMessage());
+            return;
         }
+        if ((int)$affected === 0) {
+            $this->dbLockHeld = false;
+            throw new \RuntimeException(
+                'Import-Lock verloren: Die eigene Lock-Zeile existiert nicht mehr (Stale-Timeout oder '
+                . 'manuelles unlock). Import wird abgebrochen, um nicht parallel zu einem anderen Import zu schreiben.'
+            );
+        }
+    }
+
+    private function ownLockRowExists(): bool
+    {
+        $qb = $this->connectionPool->getQueryBuilderForTable(self::TABLE);
+        return (bool)$qb->count('lock_id')->from(self::TABLE)
+            ->where(
+                $qb->expr()->eq('lock_id', $qb->createNamedParameter(self::LOCK_ID)),
+                $qb->expr()->eq('owner', $qb->createNamedParameter($this->ownerToken))
+            )
+            ->executeQuery()->fetchOne();
     }
 
     private function acquireDbLock(): void
@@ -114,9 +160,11 @@ class ImportLockService
             )
             ->executeStatement();
 
+        $this->ownerToken = bin2hex(random_bytes(16));
         try {
             $conn->insert(self::TABLE, [
                 'lock_id' => self::LOCK_ID,
+                'owner' => $this->ownerToken,
                 'info' => substr((string)json_encode(['pid' => getmypid(), 'host' => gethostname() ?: '?', 'started' => date('c')]), 0, 255),
                 'created' => time(),
             ]);
@@ -132,8 +180,10 @@ class ImportLockService
     {
         $this->dbLockHeld = false;
         try {
+            // Nur die EIGENE Lock-Zeile löschen – niemals den Lock eines anderen
+            // Prozesses, der nach einem Stale-Reap neu erworben wurde.
             $this->connectionPool->getConnectionForTable(self::TABLE)
-                ->delete(self::TABLE, ['lock_id' => self::LOCK_ID]);
+                ->delete(self::TABLE, ['lock_id' => self::LOCK_ID, 'owner' => $this->ownerToken]);
         } catch (\Throwable $e) {
             $this->logger->warning('DB-Lock konnte nicht freigegeben werden: ' . $e->getMessage());
         }
@@ -177,7 +227,14 @@ class ImportLockService
     public function forceReleaseDbLock(): bool
     {
         $existed = $this->getActiveLock() !== null;
-        $this->releaseDbLock();
+        $this->dbLockHeld = false;
+        try {
+            // Ops-Eingriff: löscht ohne Owner-Bedingung (auch fremde/hängende Locks).
+            $this->connectionPool->getConnectionForTable(self::TABLE)
+                ->delete(self::TABLE, ['lock_id' => self::LOCK_ID]);
+        } catch (\Throwable $e) {
+            $this->logger->warning('DB-Lock konnte nicht freigegeben werden: ' . $e->getMessage());
+        }
 
         $lockFile = Environment::getVarPath() . '/impexpnl_import.lock';
         if (is_file($lockFile)) {

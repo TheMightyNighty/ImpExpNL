@@ -31,6 +31,7 @@ class RollbackService
         private readonly ConnectionPool $connectionPool,
         private readonly TableRegistryService $tableRegistry,
         private readonly ImportLogRepository $importLogRepository,
+        private readonly RootlineCacheGuard $rootlineCacheGuard,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -122,6 +123,10 @@ class RollbackService
         }
         $importId = $record['import_id'];
 
+        // Vor dem Backend-Bootstrap registrieren: sobald der Kern den Rootline-Cache
+        // instanziert hat, lässt er sich nicht mehr umlenken (siehe RootlineCacheGuard).
+        $this->rootlineCacheGuard->defer();
+
         // Rollback im selben Workspace wie der Import durchführen, sonst sind
         // Workspace-Versionen für den DataHandler unsichtbar und bleiben liegen.
         $this->bootstrapService->initializeBackendContext((int)($record['workspace_id'] ?? 0));
@@ -198,7 +203,9 @@ class RollbackService
             $dataHandler->start([], $cmd);
             // Die vielen Einzel-Deletes in einer DB-Transaktion bündeln – ohne sie
             // läuft jede Anweisung im Autocommit (pro Statement ein fsync) und der
-            // Rollback dauert ein Vielfaches des Imports.
+            // Rollback dauert ein Vielfaches des Imports. Der RootlineCacheGuard
+            // (oben registriert) verhindert, dass Rootline-Cache-TRUNCATEs die
+            // Transaktion per implizitem COMMIT aufbrechen (MySQL/MariaDB).
             $connection = $this->connectionPool->getConnectionForTable('pages');
             $connection->beginTransaction();
             try {
@@ -207,8 +214,11 @@ class RollbackService
             } catch (\Throwable $e) {
                 $connection->rollBack();
                 throw $e;
+            } finally {
+                $this->rootlineCacheGuard->flush();
             }
         }
+        $this->rootlineCacheGuard->flush();
 
         $this->importLogRepository->delete($importId);
         $this->writeRollbackLog($importId, $stats);

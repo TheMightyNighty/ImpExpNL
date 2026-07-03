@@ -106,7 +106,8 @@ class ExportCommand extends Command
                 mkdir($dir, 0775, true);
             }
             $resolvedDir = realpath($dir);
-            if ($resolvedDir === false || !str_starts_with($resolvedDir, $projectPath)) {
+            $projectBase = rtrim($projectPath, '/');
+            if ($resolvedDir === false || ($resolvedDir !== $projectBase && !str_starts_with($resolvedDir, $projectBase . '/'))) {
                 if ($jsonOutput) {
                     $output->writeln((string)json_encode(['success' => false, 'error' => "Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile"], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                 } else {
