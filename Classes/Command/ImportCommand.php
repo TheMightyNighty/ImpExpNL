@@ -99,8 +99,10 @@ class ImportCommand extends Command
         }
 
         // Pfad symmetrisch zum Export auflösen: relative Pfade gehen über
-        // getFileAbsFileName (= relativ zum Public-Verzeichnis, wie beim Export),
-        // absolute Pfade außerhalb bleiben unverändert nutzbar.
+        // getFileAbsFileName (= relativ zum Public-Verzeichnis, wie beim Export).
+        // Absolute Pfade werden hier nur durchgereicht – die verbindliche Prüfung
+        // (realpath + Projektverzeichnis-Containment) macht ImportService::loadAndValidateJson;
+        // Dateien außerhalb des Projektverzeichnisses werden dort abgewiesen.
         $file = GeneralUtility::getFileAbsFileName((string)$file) ?: (string)$file;
 
         $options['dryRun'] = (bool)$input->getOption('dry-run');

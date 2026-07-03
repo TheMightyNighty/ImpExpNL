@@ -72,9 +72,7 @@ abstract class AbstractProfileContract extends FunctionalTestCase
      * muss und sich nicht als CSV-Fixture abbilden lässt (z. B. ein echter FAL-Storage
      * mit Datei). Default: nichts.
      */
-    protected function prepareProfileState(): void
-    {
-    }
+    protected function prepareProfileState(): void {}
 
     protected function profileName(): string
     {

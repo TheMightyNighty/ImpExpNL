@@ -94,6 +94,11 @@ class BundleTransport implements TransportInterface
             $mode = 'php-gz';
         }
 
+        // Wie die übrigen Export-Artefakte: Besitzer-Rechte statt Prozess-umask.
+        if (is_file($gzPath) && !@chmod($gzPath, 0600)) {
+            $this->logger->warning('Dateirechte konnten nicht beschränkt werden: ' . $gzPath);
+        }
+
         $message = sprintf('Bundle geschrieben → %s', basename($gzPath));
         if ($includeAssets) {
             $message .= sprintf(' (%d Asset-Datei(en) enthalten%s).', $bundled, $missing > 0 ? ", $missing fehlend übersprungen" : '');

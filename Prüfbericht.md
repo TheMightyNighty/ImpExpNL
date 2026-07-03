@@ -30,9 +30,9 @@ Die Extension ist handwerklich überdurchschnittlich: klare Service-Schichtung m
 | F-07 | Mittel | Sicherheit | Pfad-Präfix-Prüfungen ohne abschließenden `/` — Nachbarverzeichnisse mit gleichem Präfix passieren — **behoben am 2026-07-03** |
 | F-08 | Mittel | Betrieb | Import-/Export-Prozess läuft vollständig als `_cli_`-Admin; keine Mandanten-/Rechte-Eingrenzung |
 | F-09 | Mittel | Betrieb | Import parst Datei komplett in den Speicher — OOM-/DoS-Risiko bei großen oder böswilligen Dateien |
-| F-10 | Niedrig | Sicherheit | Export-/Log-Dateien mit Standard-umask; Exporte können sensible Inhalte tragen |
-| F-11 | Niedrig | Betrieb | Datei-Lock degradiert stillschweigend, wenn `fopen` fehlschlägt |
-| F-12 | Niedrig | Doku | README („Import-Quelldatei muss im Projektverzeichnis liegen") vs. Code-Kommentar in `ImportCommand` widersprechen sich |
+| F-10 | Niedrig | Sicherheit | Export-/Log-Dateien mit Standard-umask; Exporte können sensible Inhalte tragen — **behoben am 2026-07-03** (Artefakte `0600`) |
+| F-11 | Niedrig | Betrieb | Datei-Lock degradiert stillschweigend, wenn `fopen` fehlschlägt — **behoben am 2026-07-03** (Warnung im Log) |
+| F-12 | Niedrig | Doku | README („Import-Quelldatei muss im Projektverzeichnis liegen") vs. Code-Kommentar in `ImportCommand` widersprechen sich — **behoben am 2026-07-03** (Kommentar korrigiert) |
 | F-13 | Niedrig | Architektur | `ImportService` als God-Class (1 272 Zeilen); Legacy-Prüfsummenformat ohne Auslauffrist |
 | F-14 | Niedrig | Sicherheit | Signing-Key ohne Key-ID/Rotation; Profil-Konfiguration inkl. Pfaden landet im INFO-Log |
 
@@ -169,7 +169,7 @@ Das Grundmodell — Export als Datei, Transfer durch den Operator (rsync/Schleus
 
 1. **Vor Produktivsetzung über Sicherheitsgefälle:** F-01, F-02, F-03 (erzwingbare HMAC-Pflicht, kein Downgrade, Bundle-/Manifest-Härtung inkl. signierter Asset-Prüfsummen). — **Umgesetzt am 2026-07-03:** `import.require_signature` (Ablehnung ohne HMAC, Exit-Code 4, `check`-Warnung), Downgrade-Sperre in `IntegrityService::verify()`, Bundle-Härtung (Platzierung nur aus dem signierten `assets`-Block nach Verifikation, sha256-Prüfung jeder Datei, Identifier-/Containment-Validierung, Symlink-Ablehnung, `tar --no-same-owner --no-same-permissions`).
 2. **Kurzfristig (nächstes Minor-Release):** F-04 (Lock-Owner-Token), F-05 (HMAC-Pseudonymisierung), F-06 (Kompressor-Allowlist), F-07 (Präfix-Checks). — **Umgesetzt am 2026-07-03:** Lock-Zeile trägt ein zufälliges Owner-Token (`tx_impexpnl_lock.owner`, Schema-Update nötig); Heartbeat/Release wirken nur auf den eigenen Lock, verlorener Lock bricht den Import mit `LockException` (Exit-Code 3) ab, `unlock` löscht weiterhin erzwungen. Sanitize-`hash`-Strategie nutzt HMAC-SHA256 mit `export.sanitize.hash_key`/`IMPEXPNL_SANITIZE_KEY` (ohne Schlüssel SHA256 + Log-Warnung). Kompressor-Allowlist (`gzip`, `pigz`) in `BundleTransport`. Alle vier Containment-Checks vergleichen jetzt mit Verzeichnistrenner.
-3. **Mittelfristig:** F-08 (PID-Containment/Tabellen-Allowlist), F-09 (Größenlimit, Streaming-Import), F-10–F-12.
+3. **Mittelfristig:** F-08 (PID-Containment/Tabellen-Allowlist), F-09 (Größenlimit, Streaming-Import), F-10–F-12. — **F-10–F-12 umgesetzt am 2026-07-03:** Export-Artefakte inkl. Bundle-Archiv auf `0600` beschränkt, Datei-Lock-Degradierung wird als Warnung geloggt, irreführender Pfad-Kommentar in `ImportCommand` korrigiert. F-08/F-09 offen.
 4. **Begleitend:** Betriebs-/Sicherheitskonzept-Kapitel „Einsatz über Sicherheitsgefälle" (Key-Management, Schleusenprozess, Rollen), Key-Rotation (F-14).
 
 ---

@@ -1,5 +1,48 @@
 # Changelog
 
+## Unveröffentlicht
+
+Sicherheits-Härtung nach interner Code-Review (`Prüfbericht.md`), Fokus:
+Import über ein Sicherheitsgefälle. **Schema-Änderung:** neue Spalte
+`tx_impexpnl_lock.owner` → nach dem Update `vendor/bin/typo3 database:updateschema`
+ausführen.
+
+### Sicherheit
+- **Signaturpflicht (`import.require_signature`):** Importdateien ohne
+  `hmac-sha256:`-Signatur werden abgewiesen (Exit-Code `4`) — auch Dateien ganz ohne
+  `_meta.checksum`. `impexpnl:check` warnt bei Signing-Key ohne Signaturpflicht und
+  meldet einen Fehler bei Signaturpflicht ohne Key.
+- **Downgrade-Sperre:** Ist ein Signing-Key konfiguriert, sind bloße `sha256:`- und
+  Legacy-Prüfsummen bei der Verifikation ungültig — eine manipulierte Datei kann die
+  HMAC-Prüfung nicht mehr per neu berechneter Prüfsumme umgehen.
+- **Bundle-Härtung:** Asset-Dateien aus einem `.tar.gz`-Bundle werden erst NACH
+  erfolgreicher Prüfsummen-/Signaturprüfung platziert; Quelle ist ausschließlich das
+  signierte Asset-Manifest (`assets`-Block), jede Datei wird gegen ihre signierte
+  SHA256 verifiziert. Identifier werden gegen Path-Traversal geprüft
+  (`..`/Backslash/NUL + realpath-Containment), Bundles mit Symlink-Einträgen werden
+  abgelehnt, Entpacken mit `--no-same-owner --no-same-permissions`.
+- **Import-Lock mit Inhaber-Token** (`tx_impexpnl_lock.owner`): Heartbeat und
+  Freigabe wirken nur noch auf den eigenen Lock. Wurde die eigene Lock-Zeile
+  zwischenzeitlich entfernt (Stale-Reap/unlock), bricht der Import mit Exit-Code `3`
+  ab, statt parallel zu einem fremden Import zu schreiben. `impexpnl:unlock` löst
+  weiterhin jeden Lock.
+- **PII-Pseudonymisierung:** Die Sanitize-Strategie `hash` nutzt HMAC-SHA256 mit
+  `export.sanitize.hash_key` bzw. `IMPEXPNL_SANITIZE_KEY` (Schlüssel wird nicht
+  mitexportiert). Ohne Schlüssel ungesalzenes SHA256 (statt bisher SHA1) plus
+  Log-Warnung.
+- **Kompressor-Allowlist:** `tar --use-compress-program` akzeptiert nur noch
+  `gzip`/`pigz`; andere Werte fallen mit Warnung auf `gzip` zurück.
+- **Pfad-Containment:** Alle Verzeichnis-Prüfungen (Import-Quelldatei,
+  Export-Zielpfad, Bundle-Cleanup, Profile) vergleichen mit Verzeichnistrenner —
+  Nachbarpfade mit gleichem Präfix gelten nicht mehr als „innerhalb".
+- **Dateirechte:** Export-Artefakte (JSON/JSONL, Asset-Listen, CSV, Bundle-Archiv)
+  werden auf `0600` beschränkt.
+
+### Geändert
+- Fehlschlägt das Anlegen des lokalen Datei-Locks (z. B. read-only Filesystem),
+  wird das jetzt als Warnung geloggt statt still übergangen (DB-Lock trägt die
+  Concurrency-Garantie weiter).
+
 ## 2.1.0 — Härtung (2026-06-21)
 
 Stabilitäts- und Korrektheits-Härtung des Bestands, breit mit Functional-Tests

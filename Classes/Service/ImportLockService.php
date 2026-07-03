@@ -63,7 +63,13 @@ class ImportLockService
         if (!is_dir($dir)) {
             mkdir($dir, 0775, true);
         }
-        $handle = fopen($lockFile, 'c+');
+        $handle = @fopen($lockFile, 'c+');
+        if ($handle === false) {
+            // Der DB-Lock trägt die Concurrency-Garantie allein weiter – aber ein
+            // nicht anlegbarer Datei-Lock (z. B. read-only Filesystem im Container)
+            // darf nicht unbemerkt bleiben.
+            $this->logger->warning('Datei-Lock konnte nicht angelegt werden – nur DB-Lock aktiv: ' . $lockFile);
+        }
         if ($handle && !flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
             $this->releaseDbLock();
