@@ -52,7 +52,7 @@ class SanitizeTest extends FunctionalTestCase
 
         $out = $this->get(SanitizeService::class)->sanitize($data, $rules)['fe_users'][0];
 
-        self::assertSame(sha1('alice@prod.example.com'), $out['email']);
+        self::assertSame(hash('sha256', 'alice@prod.example.com'), $out['email']);
         self::assertSame('', $out['password']);
         self::assertSame('Anonym', $out['first_name']);
         self::assertSame('alice', $out['username'], 'Nicht konfigurierte Felder bleiben unverändert');
@@ -66,6 +66,19 @@ class SanitizeTest extends FunctionalTestCase
         $a = $service->sanitize(['t' => [['v' => 'x@y.z']]], $rules)['t'][0]['v'];
         $b = $service->sanitize(['t' => [['v' => 'x@y.z']]], $rules)['t'][0]['v'];
         self::assertSame($a, $b);
+    }
+
+    #[Test]
+    public function hashUsesHmacWhenKeyIsProvided(): void
+    {
+        $service = $this->get(SanitizeService::class);
+        $rules = ['t' => [['field' => 'v', 'strategy' => 'hash']]];
+
+        $out = $service->sanitize(['t' => [['v' => 'alice@prod.example.com']]], $rules, 'geheimes-salt')['t'][0]['v'];
+
+        self::assertSame(hash_hmac('sha256', 'alice@prod.example.com', 'geheimes-salt'), $out);
+        // Ohne Kenntnis des Schlüssels nicht aus dem Klartext ableitbar.
+        self::assertNotSame(hash('sha256', 'alice@prod.example.com'), $out);
     }
 
     #[Test]

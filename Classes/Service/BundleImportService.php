@@ -18,6 +18,7 @@ declare(strict_types=1);
 namespace Robbi\ImpExpNL\Service;
 
 use Psr\Log\LoggerInterface;
+use Robbi\ImpExpNL\Exception\IntegrityException;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Resource\Enum\DuplicationBehavior;
 use TYPO3\CMS\Core\Resource\StorageRepository;
@@ -31,7 +32,7 @@ use TYPO3\CMS\Core\Utility\GeneralUtility;
  */
 class BundleImportService
 {
-    /** @var list<int> sys_file-UIDs, die der letzte extract()-Lauf NEU platziert hat. */
+    /** @var list<int> sys_file-UIDs, die der letzte placeAssets()-Lauf NEU platziert hat. */
     private array $placedFileUids = [];
 
     public function __construct(
@@ -45,7 +46,7 @@ class BundleImportService
     }
 
     /**
-     * sys_file-UIDs, die beim letzten extract() neu in den Ziel-Storage platziert wurden.
+     * sys_file-UIDs, die beim letzten placeAssets() neu in den Ziel-Storage platziert wurden.
      * Basis für den referenz-geprüften Asset-GC beim Rollback/Abbruch.
      *
      * @return list<int>
@@ -56,14 +57,12 @@ class BundleImportService
     }
 
     /**
-     * Entpackt das Bundle, platziert (außer im Dry-Run) die Asset-Dateien im Ziel
-     * und gibt den Pfad zur enthaltenen Export-Datei (JSON/JSONL) zurück.
-     *
-     * @param callable|null $onAssetsPlaced Wird während der Platzierung periodisch (und am
-     *        Ende) mit der bisherigen Liste platzierter sys_file-UIDs aufgerufen – ermöglicht
-     *        ein Checkpointing, sodass auch ein Crash WÄHREND der Platzierung rückrollbar bleibt.
+     * Entpackt das Bundle und gibt den Pfad zur enthaltenen Export-Datei (JSON/JSONL)
+     * zurück. Es werden dabei KEINE Asset-Dateien platziert – das geschieht erst nach
+     * erfolgreicher Integritäts-/Signaturprüfung der Export-Datei über
+     * {@see placeAssets()} mit dem signierten Asset-Manifest als einziger Quelle.
      */
-    public function extract(string $bundlePath, bool $placeAssets = true, ?callable $onAssetsPlaced = null): string
+    public function extract(string $bundlePath): string
     {
         if (!is_file($bundlePath)) {
             throw new \RuntimeException("Bundle nicht gefunden: $bundlePath");
@@ -78,61 +77,61 @@ class BundleImportService
             $this->extractWithPharData($bundlePath, $targetDir);
         }
 
+        // Symlink-Member wären ein Angriffsvektor (Lesen/Schreiben außerhalb des
+        // Entpack-Verzeichnisses); legitime Bundles enthalten nur reguläre Dateien.
+        $this->assertNoSymlinks($targetDir, $bundlePath);
+
         $exportFile = $this->findExportFile($targetDir);
         if ($exportFile === null) {
             throw new \RuntimeException('Bundle enthält keine Export-Datei (JSON/JSONL).');
         }
 
         $this->placedFileUids = [];
-        if ($placeAssets) {
-            $since = 0;
-            foreach ($this->readAssetList($targetDir, $exportFile) as $asset) {
-                $uid = $this->placeAsset($targetDir, (int)($asset['storage'] ?? 0), (string)($asset['identifier'] ?? ''));
-                if ($uid !== null) {
-                    $this->placedFileUids[] = $uid;
-                }
-                // Periodischer Checkpoint (alle 200 Dateien), damit ein Crash mitten in der
-                // Platzierung die bis dahin platzierten Dateien rückrollbar lässt.
-                if ($onAssetsPlaced !== null && (++$since) % 200 === 0) {
-                    $onAssetsPlaced($this->placedFileUids);
-                }
-            }
-            if ($onAssetsPlaced !== null && $this->placedFileUids !== []) {
-                $onAssetsPlaced($this->placedFileUids);
-            }
-        }
-        $this->logger->info('Bundle entpackt', ['export' => basename($exportFile), 'assetsPlaced' => count($this->placedFileUids)]);
+        $this->logger->info('Bundle entpackt', ['export' => basename($exportFile)]);
 
         return $exportFile;
     }
 
     /**
-     * Liefert die zu platzierenden Assets. Bevorzugt das mitgepackte Manifest
-     * `impexpnl_assets.json` (format-unabhängig); nur als Fallback wird die
-     * Export-Datei gelesen – und das ausschließlich für JSON (bei JSONL würde
-     * ein json_decode der Gesamtdatei fehlschlagen und still 0 Assets liefern).
+     * Platziert Asset-Dateien aus dem entpackten Bundle in die Ziel-Storages.
+     * Quelle ist ausschließlich das durch die Export-Signatur abgedeckte Asset-Manifest
+     * (`assets`-Block der verifizierten Export-Datei) – nicht die unsignierte
+     * `impexpnl_assets.json`. Jede Datei wird vor der Übernahme gegen ihre
+     * signierte sha256-Prüfsumme verifiziert.
      *
-     * @return list<array<string, mixed>>
+     * @param array<int, mixed> $assets Einträge aus dem verifizierten Manifest
+     * @param callable|null $onAssetsPlaced Wird während der Platzierung periodisch (und am
+     *        Ende) mit der bisherigen Liste platzierter sys_file-UIDs aufgerufen – ermöglicht
+     *        ein Checkpointing, sodass auch ein Crash WÄHREND der Platzierung rückrollbar bleibt.
      */
-    private function readAssetList(string $dir, string $exportFile): array
+    public function placeAssets(string $bundleDir, array $assets, ?callable $onAssetsPlaced = null): void
     {
-        $manifestFile = $dir . '/impexpnl_assets.json';
-        if (is_file($manifestFile)) {
-            $assets = json_decode((string)file_get_contents($manifestFile), true);
-            if (is_array($assets)) {
-                return $assets;
+        $this->placedFileUids = [];
+        $since = 0;
+        foreach ($assets as $asset) {
+            if (!is_array($asset)) {
+                continue;
+            }
+            $sha256 = $asset['sha256'] ?? null;
+            $uid = $this->placeAsset(
+                $bundleDir,
+                (int)($asset['storage'] ?? 0),
+                (string)($asset['identifier'] ?? ''),
+                is_string($sha256) && $sha256 !== '' ? $sha256 : null
+            );
+            if ($uid !== null) {
+                $this->placedFileUids[] = $uid;
+            }
+            // Periodischer Checkpoint (alle 200 Dateien), damit ein Crash mitten in der
+            // Platzierung die bis dahin platzierten Dateien rückrollbar lässt.
+            if ($onAssetsPlaced !== null && (++$since) % 200 === 0) {
+                $onAssetsPlaced($this->placedFileUids);
             }
         }
-
-        if (str_ends_with(strtolower($exportFile), '.json')) {
-            $manifest = json_decode((string)file_get_contents($exportFile), true);
-            if (is_array($manifest) && is_array($manifest['assets'] ?? null)) {
-                return $manifest['assets'];
-            }
+        if ($onAssetsPlaced !== null && $this->placedFileUids !== []) {
+            $onAssetsPlaced($this->placedFileUids);
         }
-
-        $this->logger->warning('Bundle: kein Asset-Manifest gefunden, keine Dateien platziert.', ['export' => basename($exportFile)]);
-        return [];
+        $this->logger->info('Bundle-Assets platziert', ['assetsPlaced' => count($this->placedFileUids)]);
     }
 
     /**
@@ -142,10 +141,11 @@ class BundleImportService
      */
     public function cleanupTransient(string $dir): void
     {
-        $transientBase = Environment::getVarPath() . '/transient/';
+        $transientBase = Environment::getVarPath() . '/transient';
+        $resolvedBase = rtrim(realpath($transientBase) ?: $transientBase, '/') . '/';
         $real = realpath($dir);
         if ($real === false
-            || !str_starts_with($real, realpath($transientBase) ?: $transientBase)
+            || !str_starts_with($real, $resolvedBase)
             || !str_contains(basename($real), 'impexpnl_bundle_')
         ) {
             return;
@@ -174,7 +174,9 @@ class BundleImportService
             return false;
         }
         $process = @proc_open(
-            ['tar', '-xzf', $bundlePath, '-C', $targetDir],
+            // --no-same-owner/--no-same-permissions: keine Owner-/Modus-Übernahme aus
+            // dem (potenziell fremden) Archiv; Symlink-Member fängt assertNoSymlinks() ab.
+            ['tar', '-xzf', $bundlePath, '-C', $targetDir, '--no-same-owner', '--no-same-permissions'],
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes
         );
@@ -216,6 +218,46 @@ class BundleImportService
         }
     }
 
+    /**
+     * Lehnt Bundles mit Symlink-Membern ab. Ein Symlink im Archiv könnte beim
+     * Platzieren der Assets Dateien außerhalb des Entpack-Verzeichnisses lesen
+     * (Exfiltration in den FAL-Storage) oder – je nach tar-Implementierung –
+     * beim Entpacken außerhalb schreiben.
+     */
+    private function assertNoSymlinks(string $dir, string $bundlePath): void
+    {
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::CURRENT_AS_FILEINFO),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $item) {
+            if ($item->isLink()) {
+                throw new IntegrityException(sprintf(
+                    'Bundle enthält einen Symlink (%s) – Archiv wird abgelehnt: %s',
+                    $item->getPathname(),
+                    basename($bundlePath)
+                ));
+            }
+        }
+    }
+
+    /**
+     * Erlaubt nur harmlose, relative Identifier ohne `..`-Segmente, Backslashes
+     * oder NUL-Bytes (Path-Traversal-Schutz für das Asset-Manifest).
+     */
+    private function isSafeIdentifier(string $identifier): bool
+    {
+        if ($identifier === '' || str_contains($identifier, '\\') || str_contains($identifier, "\0")) {
+            return false;
+        }
+        foreach (explode('/', $identifier) as $segment) {
+            if ($segment === '..') {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private function findExportFile(string $dir): ?string
     {
         foreach ((array)glob($dir . '/*.{json,jsonl}', GLOB_BRACE) as $file) {
@@ -227,22 +269,46 @@ class BundleImportService
     }
 
     /**
-     * Legt eine extrahierte Asset-Datei in den Ziel-Storage, falls dort noch nicht vorhanden.
-     */
-    /**
      * Legt eine extrahierte Asset-Datei in den Ziel-Storage. Liefert die UID des NEU
      * angelegten sys_file zurück (Basis für den Rollback-GC) bzw. null, wenn die Datei
      * bereits vorhanden war oder nicht platziert werden konnte.
+     *
+     * Sicherheits-Invarianten: Der Identifier darf keine `..`-Segmente enthalten, die
+     * Quelldatei muss nach realpath-Auflösung unterhalb von `<bundle>/files/` liegen,
+     * und ihr Inhalt muss der signierten sha256-Prüfsumme aus dem Manifest entsprechen.
+     *
+     * @throws IntegrityException wenn der Dateiinhalt von der signierten Prüfsumme abweicht
      */
-    private function placeAsset(string $bundleDir, int $storage, string $identifier): ?int
+    private function placeAsset(string $bundleDir, int $storage, string $identifier, ?string $expectedSha256): ?int
     {
-        if ($identifier === '') {
+        if (!$this->isSafeIdentifier($identifier)) {
+            $this->logger->warning('Bundle: unsicherer Asset-Identifier übersprungen', ['identifier' => $identifier]);
             return null;
         }
-        $localFile = $bundleDir . '/files/' . ltrim($identifier, '/');
+        $filesBase = $bundleDir . '/files';
+        $localFile = $filesBase . '/' . ltrim($identifier, '/');
         if (!is_file($localFile)) {
             return null;
         }
+        // Containment nach Auflösung: Quelldatei muss unterhalb von <bundle>/files/ liegen.
+        $real = realpath($localFile);
+        $realBase = realpath($filesBase);
+        if ($real === false || $realBase === false || !str_starts_with($real, $realBase . '/')) {
+            $this->logger->warning('Bundle: Asset-Pfad außerhalb des Bundles übersprungen', ['identifier' => $identifier]);
+            return null;
+        }
+        if ($expectedSha256 === null) {
+            $this->logger->warning('Bundle: Asset ohne signierte Prüfsumme übersprungen', ['identifier' => $identifier]);
+            return null;
+        }
+        $actual = hash_file('sha256', $real);
+        if ($actual === false || !hash_equals($expectedSha256, $actual)) {
+            throw new IntegrityException(sprintf(
+                'Bundle-Asset weicht von der signierten Prüfsumme ab: %s (Bundle manipuliert oder beschädigt).',
+                $identifier
+            ));
+        }
+        $localFile = $real;
         try {
             $storageObject = $this->storageRepository->getStorageObject($storage);
             if ($storageObject->hasFile($identifier)) {

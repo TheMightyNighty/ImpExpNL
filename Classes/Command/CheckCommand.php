@@ -256,8 +256,14 @@ class CheckCommand extends Command
             $this->record($section, 'warning', 'Lock-Status nicht ermittelbar: ' . $e->getMessage());
         }
 
-        if ($this->integrityService->hasSigningKey()) {
-            $this->record($section, 'ok', 'Signing-Key konfiguriert – HMAC-Signaturschutz aktiv.');
+        $hasKey = $this->integrityService->hasSigningKey();
+        $requireSignature = $this->configurationService->isSignatureRequired();
+        if ($hasKey && $requireSignature) {
+            $this->record($section, 'ok', 'Signing-Key + import.require_signature aktiv – nur HMAC-signierte Importdateien werden akzeptiert.');
+        } elseif ($hasKey) {
+            $this->record($section, 'warning', 'Signing-Key konfiguriert, aber import.require_signature ist nicht aktiv – Dateien OHNE Prüfsumme würden ungeprüft importiert. Empfehlung: import.require_signature: true.');
+        } elseif ($requireSignature) {
+            $this->record($section, 'error', 'import.require_signature ist aktiv, aber kein Signing-Key konfiguriert – jeder Import schlägt fehl. IMPEXPNL_SIGNING_KEY setzen.');
         } else {
             $this->record($section, 'info', 'Kein Signing-Key – Integrität nur per Prüfsumme (ohne Signatur).');
         }

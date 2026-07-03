@@ -35,6 +35,7 @@
                     }
                 },
                 "container_support": { "type": "boolean" },
+                "require_signature": { "type": "boolean" },
                 "batch_size": { "type": "integer", "minimum": 1 },
                 "lock_stale_seconds": { "type": "integer", "minimum": 1 },
                 "auto_rollback_on_failure": { "type": "boolean" },

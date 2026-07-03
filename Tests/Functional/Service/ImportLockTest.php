@@ -94,6 +94,39 @@ class ImportLockTest extends FunctionalTestCase
     }
 
     #[Test]
+    public function releaseDoesNotRemoveForeignLock(): void
+    {
+        // Eigener Lock, dessen Zeile aber zwischenzeitlich von einem ANDEREN
+        // Prozess übernommen wurde (Stale-Reap + Neu-Erwerb): release() darf
+        // den fremden Lock nicht löschen.
+        $lock = $this->lock()->acquire();
+        $this->get(ConnectionPool::class)->getConnectionForTable(self::TABLE)
+            ->update(self::TABLE, ['owner' => 'fremdes-token'], ['lock_id' => 'import']);
+
+        $this->lock()->release($lock);
+
+        self::assertSame(1, $this->rowCount(), 'Fremde Lock-Zeile muss nach release erhalten bleiben');
+        $this->get(ConnectionPool::class)->getConnectionForTable(self::TABLE)
+            ->delete(self::TABLE, ['lock_id' => 'import']);
+    }
+
+    #[Test]
+    public function refreshThrowsWhenOwnLockRowIsGone(): void
+    {
+        $lock = $this->lock()->acquire();
+        // Simulierter Stale-Reap durch einen anderen Knoten.
+        $this->get(ConnectionPool::class)->getConnectionForTable(self::TABLE)
+            ->delete(self::TABLE, ['lock_id' => 'import']);
+
+        try {
+            $this->expectException(\Robbi\ImpExpNL\Exception\LockException::class);
+            $this->lock()->refresh();
+        } finally {
+            $this->lock()->release($lock);
+        }
+    }
+
+    #[Test]
     public function getActiveLockReturnsNullWithoutLock(): void
     {
         self::assertNull($this->lock()->getActiveLock());

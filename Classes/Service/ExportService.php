@@ -70,7 +70,25 @@ class ExportService
             return $data;
         }
         $this->logger->info('PII-Sanitizing aktiv', ['tables' => array_keys($cfg['rules'])]);
-        return $this->sanitizeService->sanitize($data, $cfg['rules']);
+        return $this->sanitizeService->sanitize($data, $cfg['rules'], $this->resolveSanitizeHashKey($cfg));
+    }
+
+    /**
+     * Schlüssel für die hash-Strategie (HMAC-Pseudonymisierung):
+     * `export.sanitize.hash_key` vor Umgebungsvariable IMPEXPNL_SANITIZE_KEY.
+     * Der Schlüssel wird bewusst NICHT mitexportiert.
+     *
+     * @param array<string, mixed> $cfg
+     */
+    private function resolveSanitizeHashKey(array $cfg): ?string
+    {
+        $key = $cfg['hash_key'] ?? null;
+        if (!is_string($key) || trim($key) === '') {
+            $env = getenv('IMPEXPNL_SANITIZE_KEY');
+            $key = is_string($env) ? $env : '';
+        }
+        $key = trim((string)$key);
+        return $key !== '' ? $key : null;
     }
 
     /**

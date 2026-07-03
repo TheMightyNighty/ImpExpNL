@@ -37,6 +37,14 @@ class ImportLockService
     private bool $dbLockHeld = false;
     private bool $shutdownRegistered = false;
 
+    /**
+     * Zufälliges Inhaber-Token dieses Prozesses. Refresh/Release wirken nur auf
+     * die eigene Lock-Zeile (WHERE owner = token) – hat der Stale-Reaper eines
+     * anderen Knotens unseren Lock entfernt und ein Dritter neu erworben, wird
+     * dessen Lock weder aufgefrischt noch gelöscht.
+     */
+    private string $ownerToken = '';
+
     public function __construct(
         private readonly ConnectionPool $connectionPool,
         private readonly ConfigurationService $configurationService,
@@ -88,6 +96,11 @@ class ImportLockService
     /**
      * Hält den DB-Lock bei lang laufenden Importen frisch, damit er nicht vom
      * Stale-Reaper eines anderen Prozesses entfernt wird.
+     *
+     * @throws LockException wenn die eigene Lock-Zeile nicht mehr existiert
+     *         (Stale-Reaper/unlock hat sie entfernt, ggf. läuft bereits ein
+     *         anderer Import) – der laufende Import muss dann abbrechen, statt
+     *         parallel zu einem fremden Import weiterzuschreiben.
      */
     public function refresh(): void
     {
@@ -95,10 +108,19 @@ class ImportLockService
             return;
         }
         try {
-            $this->connectionPool->getConnectionForTable(self::TABLE)
-                ->update(self::TABLE, ['created' => time()], ['lock_id' => self::LOCK_ID]);
+            $affected = $this->connectionPool->getConnectionForTable(self::TABLE)
+                ->update(self::TABLE, ['created' => time()], ['lock_id' => self::LOCK_ID, 'owner' => $this->ownerToken]);
         } catch (\Throwable $e) {
+            // Transienter DB-Fehler: nicht abbrechen, nächster Heartbeat versucht es erneut.
             $this->logger->warning('DB-Lock-Heartbeat fehlgeschlagen: ' . $e->getMessage());
+            return;
+        }
+        if ((int)$affected === 0) {
+            $this->dbLockHeld = false;
+            throw new LockException(
+                'Import-Lock verloren: Die eigene Lock-Zeile existiert nicht mehr (Stale-Timeout oder '
+                . 'manuelles unlock). Import wird abgebrochen, um nicht parallel zu einem anderen Import zu schreiben.'
+            );
         }
     }
 
@@ -115,9 +137,11 @@ class ImportLockService
             )
             ->executeStatement();
 
+        $this->ownerToken = bin2hex(random_bytes(16));
         try {
             $conn->insert(self::TABLE, [
                 'lock_id' => self::LOCK_ID,
+                'owner' => $this->ownerToken,
                 'info' => substr((string)json_encode(['pid' => getmypid(), 'host' => gethostname() ?: '?', 'started' => date('c')]), 0, 255),
                 'created' => time(),
             ]);
@@ -133,8 +157,10 @@ class ImportLockService
     {
         $this->dbLockHeld = false;
         try {
+            // Nur die EIGENE Lock-Zeile löschen – niemals den Lock eines anderen
+            // Prozesses, der nach einem Stale-Reap neu erworben wurde.
             $this->connectionPool->getConnectionForTable(self::TABLE)
-                ->delete(self::TABLE, ['lock_id' => self::LOCK_ID]);
+                ->delete(self::TABLE, ['lock_id' => self::LOCK_ID, 'owner' => $this->ownerToken]);
         } catch (\Throwable $e) {
             $this->logger->warning('DB-Lock konnte nicht freigegeben werden: ' . $e->getMessage());
         }
@@ -174,7 +200,14 @@ class ImportLockService
     public function forceReleaseDbLock(): bool
     {
         $existed = $this->getActiveLock() !== null;
-        $this->releaseDbLock();
+        $this->dbLockHeld = false;
+        try {
+            // Bewusster Ops-Eingriff: löscht OHNE Owner-Bedingung (auch fremde/hängende Locks).
+            $this->connectionPool->getConnectionForTable(self::TABLE)
+                ->delete(self::TABLE, ['lock_id' => self::LOCK_ID]);
+        } catch (\Throwable $e) {
+            $this->logger->warning('DB-Lock konnte nicht freigegeben werden: ' . $e->getMessage());
+        }
         return $existed;
     }
 

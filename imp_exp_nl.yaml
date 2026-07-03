@@ -21,6 +21,11 @@ import:
   include:
     file_references: true     # FAL-Referenzen über Dateipfad auflösen
   container_support: true     # b13/container: tx_container_parent remappen
+  # Signaturpflicht: Nur Importdateien mit gültiger HMAC-Signatur (hmac-sha256:)
+  # akzeptieren. Dateien ohne Prüfsumme oder mit bloßer sha256-Prüfsumme werden
+  # abgewiesen (Exit-Code 4). Setzt einen konfigurierten Signing-Key voraus
+  # (IMPEXPNL_SIGNING_KEY). Empfohlen: true bei Importen über ein Sicherheitsgefälle.
+  require_signature: false
   batch_size: 500             # Records pro DataHandler-Batch
   lock_stale_seconds: 3600    # nach dieser Zeit gilt ein hängender Lock als veraltet
   auto_rollback_on_failure: true  # abgebrochenen Teilimport automatisch zurückrollen
@@ -141,6 +146,9 @@ transferProfiles:
 # export:
 #   sanitize:
 #     enabled: true
+#     hash_key: 'geheimes-salt'   # Schlüssel für strategy: hash (HMAC-SHA256);
+#                                 # alternativ Env IMPEXPNL_SANITIZE_KEY. Ohne Schlüssel
+#                                 # nur ungesalzenes SHA256 (wörterbuch-angreifbar, Warnung im Log).
 #     rules:
 #       fe_users:
 #         - { field: email,    strategy: hash }

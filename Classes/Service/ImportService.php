@@ -114,7 +114,7 @@ class ImportService
      *  onConflictAsk: callable(array $conflict): bool  - Für 'ask'-Modus
      */
     /**
-     * @return array{dryRun:bool, importId?:string, stats?:array<string,int>, diff?:array<string,array<string,int>>, assets?:array{total:int, missing:list<string>, mismatch:list<string>}}
+     * @return array{dryRun:bool, importId?:string, stats?:array<string,int>, diff?:array<string,mixed>, assets?:array{total:int, missing:list<string>, mismatch:list<string>}}
      */
     public function runImport(string $jsonPath, int $targetPid, array $options = []): array
     {
@@ -145,24 +145,8 @@ class ImportService
         $this->placedFileUids = [];
         $this->currentImportId = '';
         if ($this->bundleImportService->isBundle($jsonPath)) {
-            // Beim echten Import das Protokoll schon VOR der Platzierung scharf schalten und
-            // die platzierten UIDs inkrementell fortschreiben – so ist auch ein Crash WÄHREND
-            // der Asset-Platzierung (vor dem ersten Record) per undo rückrollbar.
-            $onAssetsPlaced = null;
-            if (!$dryRun) {
-                $this->currentImportId = $this->generateImportId();
-                $this->currentWorkspaceId = $workspaceId;
-                $this->currentSourceFile = $jsonPath;
-                $this->currentDelta = (bool)($options['deltaMode'] ?? false);
-                $this->createdMap = new UidMap();
-                $onAssetsPlaced = function (array $uids): void {
-                    $this->placedFileUids = $uids;
-                    $this->checkpointImportLog();
-                };
-            }
-            $jsonPath = $this->bundleImportService->extract($jsonPath, !$dryRun, $onAssetsPlaced);
+            $jsonPath = $this->bundleImportService->extract($jsonPath);
             $bundleTempDir = dirname($jsonPath);
-            $this->placedFileUids = $this->bundleImportService->getPlacedFileUids();
         }
 
         try {
@@ -171,6 +155,29 @@ class ImportService
             $this->rollbackMap = [];
             $this->dataHandlerErrors = 0;
             $this->batchSize = $this->configurationService->getBatchSize();
+
+            // Bundle-Assets erst NACH erfolgreicher Integritäts-/Signaturprüfung der
+            // Export-Datei platzieren. Quelle ist ausschließlich der signierte
+            // `assets`-Block; jede Datei wird gegen ihre signierte sha256 verifiziert.
+            // Das Protokoll wird schon VOR der Platzierung scharf geschaltet und die
+            // platzierten UIDs inkrementell fortgeschrieben – so ist auch ein Crash
+            // WÄHREND der Asset-Platzierung per undo rückrollbar.
+            if ($bundleTempDir !== null && !$dryRun) {
+                $verifiedManifest = $this->loadAndValidateJson($jsonPath);
+                $this->currentImportId = $this->generateImportId();
+                $this->currentWorkspaceId = $workspaceId;
+                $this->currentSourceFile = $jsonPath;
+                $this->currentDelta = (bool)($options['deltaMode'] ?? false);
+                $this->bundleImportService->placeAssets(
+                    $bundleTempDir,
+                    $verifiedManifest->getAssets(),
+                    function (array $uids): void {
+                        $this->placedFileUids = $uids;
+                        $this->checkpointImportLog();
+                    }
+                );
+                $this->placedFileUids = $this->bundleImportService->getPlacedFileUids();
+            }
 
             if ($dryRun) {
                 $manifest = $this->loadAndValidateJson($jsonPath);
@@ -886,8 +893,10 @@ class ImportService
             throw new \RuntimeException("Ungültiger Dateipfad oder keine JSON/JSONL-Datei: $jsonPath");
         }
 
+        // Mit Verzeichnistrenner vergleichen, damit Nachbarpfade mit gleichem
+        // Präfix (/var/www/html-anderes) nicht als "innerhalb" durchgehen.
         $projectPath = Environment::getProjectPath();
-        if ($projectPath !== '' && !str_starts_with($realPath, $projectPath)) {
+        if ($projectPath !== '' && !str_starts_with($realPath, rtrim($projectPath, '/') . '/')) {
             throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
         }
 
@@ -899,6 +908,26 @@ class ImportService
         }
 
         $checksum = $manifest->getChecksum();
+
+        // Signaturpflicht (import.require_signature): ohne gültige HMAC-Signatur wird
+        // gar nicht erst verifiziert, sondern sofort abgewiesen. Verhindert sowohl das
+        // Weglassen der Prüfsumme als auch den Downgrade auf eine bloße sha256-Prüfsumme.
+        if ($this->configurationService->isSignatureRequired()) {
+            if (!$this->integrityService->hasSigningKey()) {
+                throw new IntegrityException(
+                    'import.require_signature ist aktiv, aber es ist kein Signing-Key konfiguriert '
+                    . '(IMPEXPNL_SIGNING_KEY bzw. EXTENSIONS/imp_exp_nl/signingKey). Import nicht möglich.'
+                );
+            }
+            if (!$this->integrityService->isHmacSignature($checksum)) {
+                throw new IntegrityException(
+                    'Signaturpflicht aktiv (import.require_signature): Die Importdatei trägt keine '
+                    . 'HMAC-Signatur (hmac-sha256:). Datei auf dem Quellsystem mit identischem '
+                    . 'Signing-Key neu exportieren.'
+                );
+            }
+        }
+
         if ($checksum !== null && !$this->integrityService->verify($manifest->toArray(), $checksum)) {
             throw new IntegrityException(
                 'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '

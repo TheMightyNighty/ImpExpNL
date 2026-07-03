@@ -59,7 +59,7 @@ class ProfileService
 
         // Zusätzlicher realpath-Check nach Auflösung (robust gegen nicht existierendes Verzeichnis)
         $realDir = realpath($dir);
-        if (file_exists($file) && ($realDir === false || !str_starts_with((string)realpath($file), $realDir))) {
+        if (file_exists($file) && ($realDir === false || !str_starts_with((string)realpath($file), rtrim($realDir, '/') . '/'))) {
             throw new \InvalidArgumentException(
                 'Ungültiger Profilpfad: Auflösung führt außerhalb des Profilverzeichnisses.'
             );

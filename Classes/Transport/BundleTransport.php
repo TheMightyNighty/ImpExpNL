@@ -28,6 +28,14 @@ use TYPO3\CMS\Core\Resource\StorageRepository;
  */
 class BundleTransport implements TransportInterface
 {
+    /**
+     * Erlaubte Kompressor-Programme für `tar --use-compress-program`. Der Wert
+     * kommt aus der (auch von Dritt-Extensions beisteuerbaren) YAML-Config und
+     * bestimmt das auszuführende Programm – daher strikte Allowlist statt
+     * freier Programmname. ('' = tar-Pfad überspringen → PharData-Fallback.)
+     */
+    private const COMPRESSOR_ALLOWLIST = ['gzip', 'pigz'];
+
     public function __construct(
         private readonly StorageRepository $storageRepository,
         private readonly LoggerInterface $logger
@@ -73,6 +81,13 @@ class BundleTransport implements TransportInterface
         // ist single-threaded – beides für große Asset-Mengen praxisuntauglich. PharData bleibt
         // nur Fallback, wenn proc_open/tar nicht verfügbar sind (Hosting-Portabilität).
         $compressor = (string)($config['compressor'] ?? 'gzip');
+        if ($compressor !== '' && !in_array($compressor, self::COMPRESSOR_ALLOWLIST, true)) {
+            $this->logger->warning('Bundle: Kompressor nicht in der Allowlist – nutze gzip.', [
+                'requested' => $compressor,
+                'allowed' => self::COMPRESSOR_ALLOWLIST,
+            ]);
+            $compressor = 'gzip';
+        }
         $mode = $this->packWithTar($entries, $gzPath, $compressor, dirname($base));
         if ($mode === null) {
             $this->packWithPharData($entries, $gzPath);

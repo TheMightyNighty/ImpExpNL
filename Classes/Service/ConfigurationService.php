@@ -86,6 +86,17 @@ class ConfigurationService
     }
 
     /**
+     * Müssen Importdateien eine HMAC-Signatur tragen (import.require_signature)?
+     * Erzwingt beim Import eine `hmac-sha256:`-Signatur; Dateien ohne Prüfsumme
+     * oder mit bloßer sha256-Prüfsumme werden abgewiesen (Exit-Code 4).
+     * Empfohlen für Importe über ein Sicherheitsgefälle.
+     */
+    public function isSignatureRequired(): bool
+    {
+        return (bool)($this->getConfig()['import']['require_signature'] ?? false);
+    }
+
+    /**
      * Records pro DataHandler-Batch.
      */
     public function getBatchSize(int $default = 500): int

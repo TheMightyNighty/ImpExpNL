@@ -507,9 +507,21 @@ impexpnl:
 $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] = 'ein-langes-geheimnis';
 ```
 
-Wird eine signierte Datei auf einem System ohne (passenden) Schlüssel importiert, wird der Import abgewiesen.
+Wird eine signierte Datei auf einem System ohne (passenden) Schlüssel importiert, wird der Import abgewiesen. Ist auf dem Zielsystem ein Schlüssel konfiguriert, werden **nur noch HMAC-Signaturen akzeptiert** – ein Downgrade auf eine bloße `sha256:`-Prüfsumme (die jeder neu berechnen kann) wird abgelehnt.
 
-**Cluster-weiter Concurrency-Lock.** Während eines Imports wird ein Lock in der Datenbanktabelle `tx_impexpnl_lock` gesetzt (wirkt über alle Pods/Knoten hinweg) und zusätzlich ein lokaler Datei-Lock. Ein paralleler Import-Versuch wird abgewiesen. Lang laufende Importe halten den Lock per Heartbeat frisch; bei einem Crash oder fataler Fehler wird der Lock über einen Shutdown-Handler bzw. nach einem konfigurierbaren Timeout automatisch freigegeben (Standard: 3600 s, einstellbar über `import.lock_stale_seconds` in der `imp_exp_nl.yaml`). Der Dry-Run setzt keinen Lock.
+**Signaturpflicht (`import.require_signature`).** Für Importe über ein Sicherheitsgefälle (z. B. aus einer niedriger eingestuften Zone) kann die Signatur verpflichtend gemacht werden:
+
+```yaml
+# imp_exp_nl.yaml
+import:
+  require_signature: true
+```
+
+Damit werden auch Dateien **ohne** `_meta.checksum` abgewiesen (Exit-Code `4`) – das Weglassen der Prüfsumme ist dann kein Umgehungsweg mehr. `impexpnl:check` warnt, wenn ein Signing-Key gesetzt ist, die Signaturpflicht aber fehlt.
+
+**Bundle-Härtung.** Beim Import eines `.tar.gz`-Bundles werden die Asset-Dateien erst **nach** erfolgreicher Prüfsummen-/Signaturprüfung der Export-Datei platziert. Quelle ist ausschließlich das von der Signatur abgedeckte Asset-Manifest (`assets`-Block der Export-Datei); jede Datei wird vor der Übernahme gegen ihre signierte SHA256-Prüfsumme verifiziert, Identifier werden gegen Path-Traversal geprüft, und Bundles mit Symlink-Einträgen werden abgelehnt.
+
+**Cluster-weiter Concurrency-Lock.** Während eines Imports wird ein Lock in der Datenbanktabelle `tx_impexpnl_lock` gesetzt (wirkt über alle Pods/Knoten hinweg) und zusätzlich ein lokaler Datei-Lock. Ein paralleler Import-Versuch wird abgewiesen. Lang laufende Importe halten den Lock per Heartbeat frisch; bei einem Crash oder fataler Fehler wird der Lock über einen Shutdown-Handler bzw. nach einem konfigurierbaren Timeout automatisch freigegeben (Standard: 3600 s, einstellbar über `import.lock_stale_seconds` in der `imp_exp_nl.yaml`). Der Lock ist an ein zufälliges **Inhaber-Token** gebunden: Heartbeat und Freigabe wirken nur auf den eigenen Lock — wurde ein hängender Lock zwischenzeitlich freigeräumt und von einem anderen Import neu erworben, kann der alte Prozess diesen weder auffrischen noch löschen; er bricht stattdessen ab (Exit-Code 3). Der Dry-Run setzt keinen Lock.
 
 **Abbruchsicheres Rollback-Protokoll.** Bricht ein Import nach dem Anlegen erster Records ab (Fehler, Timeout), wird automatisch ein Notfall-Protokoll mit der bis dahin angelegten UID-Zuordnung geschrieben. Die Teil-Daten lassen sich damit per `impexpnl:undo <Import-ID>` vollständig entfernen – es entstehen keine nicht-rückrollbaren Geisterdaten.
 

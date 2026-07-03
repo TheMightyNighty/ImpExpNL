@@ -43,6 +43,7 @@ CREATE TABLE tx_impexpnl_import_log (
 #
 CREATE TABLE tx_impexpnl_lock (
     lock_id varchar(64) DEFAULT '' NOT NULL,
+    owner varchar(64) DEFAULT '' NOT NULL,
     info varchar(255) DEFAULT '' NOT NULL,
     created int DEFAULT 0 NOT NULL,
 

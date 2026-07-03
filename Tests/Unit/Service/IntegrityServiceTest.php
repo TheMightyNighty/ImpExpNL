@@ -102,6 +102,46 @@ class IntegrityServiceTest extends TestCase
         self::assertTrue($this->subject->verify($data, $legacy));
     }
 
+    #[Test]
+    public function plainChecksumIsRejectedWhenSigningKeyIsConfigured(): void
+    {
+        // Downgrade-Schutz: Mit konfiguriertem Schlüssel darf eine bloße sha256-
+        // Prüfsumme (von jedem neu berechenbar) NICHT mehr akzeptiert werden.
+        $data = $this->sampleData();
+        $plain = $this->subject->sign($data);
+        self::assertStringStartsWith('sha256:', $plain);
+
+        putenv('IMPEXPNL_SIGNING_KEY=geheim');
+        try {
+            self::assertFalse((new IntegrityService())->verify($data, $plain));
+        } finally {
+            putenv('IMPEXPNL_SIGNING_KEY');
+        }
+    }
+
+    #[Test]
+    public function legacyChecksumIsRejectedWhenSigningKeyIsConfigured(): void
+    {
+        $data = $this->sampleData();
+        $legacy = hash('sha256', json_encode($data['pages']) . json_encode($data['tt_content']));
+
+        putenv('IMPEXPNL_SIGNING_KEY=geheim');
+        try {
+            self::assertFalse((new IntegrityService())->verify($data, $legacy));
+        } finally {
+            putenv('IMPEXPNL_SIGNING_KEY');
+        }
+    }
+
+    #[Test]
+    public function isHmacSignatureDetectsOnlyHmacScheme(): void
+    {
+        self::assertTrue($this->subject->isHmacSignature('hmac-sha256:abc'));
+        self::assertFalse($this->subject->isHmacSignature('sha256:abc'));
+        self::assertFalse($this->subject->isHmacSignature('abc'));
+        self::assertFalse($this->subject->isHmacSignature(null));
+    }
+
     private function sampleData(): array
     {
         return [
