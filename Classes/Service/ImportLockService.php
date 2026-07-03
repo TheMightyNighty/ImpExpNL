@@ -116,6 +116,14 @@ class ImportLockService
         try {
             $affected = $this->connectionPool->getConnectionForTable(self::TABLE)
                 ->update(self::TABLE, ['created' => time()], ['lock_id' => self::LOCK_ID, 'owner' => $this->ownerToken]);
+
+            // MySQL/MariaDB melden 0 "affected rows", wenn die Zeile zwar matcht,
+            // sich aber kein Wert ändert (zwei Heartbeats in derselben Sekunde).
+            // Lock-Verlust daher nur nach explizitem Nachweis annehmen, dass die
+            // eigene Zeile wirklich fehlt.
+            if ((int)$affected === 0 && $this->ownLockRowExists()) {
+                return;
+            }
         } catch (\Throwable $e) {
             // Transienter DB-Fehler: nicht abbrechen, nächster Heartbeat versucht es erneut.
             $this->logger->warning('DB-Lock-Heartbeat fehlgeschlagen: ' . $e->getMessage());
@@ -128,6 +136,17 @@ class ImportLockService
                 . 'manuelles unlock). Import wird abgebrochen, um nicht parallel zu einem anderen Import zu schreiben.'
             );
         }
+    }
+
+    private function ownLockRowExists(): bool
+    {
+        $qb = $this->connectionPool->getQueryBuilderForTable(self::TABLE);
+        return (bool)$qb->count('lock_id')->from(self::TABLE)
+            ->where(
+                $qb->expr()->eq('lock_id', $qb->createNamedParameter(self::LOCK_ID)),
+                $qb->expr()->eq('owner', $qb->createNamedParameter($this->ownerToken))
+            )
+            ->executeQuery()->fetchOne();
     }
 
     private function acquireDbLock(): void

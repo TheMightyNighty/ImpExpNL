@@ -174,4 +174,25 @@ Das Grundmodell — Export als Datei, Transfer durch den Operator (rsync/Schleus
 
 ---
 
+## 7. Real-World-Verifikation (E2E, 2026-07-03)
+
+Nach Umsetzung aller Maßnahmen wurde die Extension in einem Zwei-Instanzen-Setup (TYPO3 14.3.4, PHP 8.4, MariaDB 11.4, getrennte Quell-/Ziel-Container) unter realen Bedingungen geprüft: **2.000 Seiten, 6.001 Inhalte, 2.000 echte Bilddateien (391 MB)**.
+
+**Erfolgreich verifiziert:** Schema-Migration (`owner`-Spalte) auf Bestandsinstanz; signierter Bundle-Export mit Key-ID (`hmac-sha256:k2026:…`, 21 s, alle Artefakte `0600`); Abweisung bei falschem Schlüssel/unbekannter Key-ID/fehlendem Schlüssel (Exit 4); Dry-Run-Gate mit Diff und Asset-Preflight; Voll-Import 8.002 Records inkl. Asset-Platzierung aus dem signierten Manifest in 3:36 min (Datei-Hashes Quelle↔Ziel identisch, FAL korrekt verdrahtet); Delta-Re-Import als No-Op (8.002 skipped, 2 min); SIGKILL-Test mit undo-then-retry (Checkpoint-Protokoll, Teilimport per Undo restlos entfernt); Auto-Rollback nach Abbruch inkl. Asset-GC (1.840 platzierte Dateien exakt zurückgenommen); Rollback des Voll-Imports auf die exakte Baseline.
+
+**Der Test fand sechs zusätzliche Fehler, die in der SQLite-basierten CI unsichtbar waren** (alle am 2026-07-03 behoben, Details im CHANGELOG „Unveröffentlicht"):
+
+| Nr. | Schwere | Fund |
+|---|---|---|
+| E-01 | Hoch | Lock-Heartbeat brach Importe fälschlich ab (MariaDB „affected rows" = 0 bei unverändertem Wert; Folge des F-04-Fixes, nur auf MySQL/MariaDB) |
+| E-02 | Hoch | Delta-Idempotenz wirkungslos: jeder Record „geändert" (`''`≠`'0'`-Repräsentation, regenerierter `slug` im Vergleich) — 8 min Vollupdate statt No-Op |
+| E-03 | Mittel | Stiller Prozesstod (Exit 255, keine Meldung) beim Parsen einer 21-MB-Datei mit `memory_limit=128M` — jetzt Plausibilitätsprüfung mit klarer Meldung |
+| E-04 | Mittel | `impexpnl:undo` lief ohne Lock-Koordination — Rollback parallel zu laufendem Import war möglich |
+| E-05 | Niedrig | `impexpnl:unlock --json` fehlte (README versprach es); Fehlschlag in Pipelines blieb dadurch unbemerkt |
+| E-06 | Niedrig | `impexpnl:check` brach auf schlanken Installationen mit Fehler ab, weil optionale Profil-Tabellen (sys_redirect/tt_address) fehlen — jetzt Warnung |
+
+**Empfehlung an den Betrieb:** Die Functional-Suite läuft in CI gegen SQLite; E-01/E-02 zeigen, dass MariaDB-spezifisches Verhalten dort nicht sichtbar wird. Vor Releases zusätzlich die Functional-Suite gegen MariaDB ausführen (Testcontainer existieren) und den hier dokumentierten E2E-Durchlauf als Release-Ritual etablieren.
+
+---
+
 *Erstellt durch automatisierte Code-Review (Claude Code). Die Feststellungen basieren auf statischer Durchsicht; F-03 (tar-Verhalten) sollte zusätzlich dynamisch gegen das konkrete Container-Image verifiziert werden.*

@@ -74,6 +74,12 @@ class ManifestLoaderService
             ));
         }
 
+        // Plausibilitätsprüfung gegen das PHP memory_limit: Das dekodierte Array
+        // braucht ein Vielfaches der Dateigröße. Ohne diese Prüfung stirbt der
+        // Prozess beim Parsen still mit einem OOM-Fatal (Exit 255, keine Meldung) –
+        // real beobachtet bei 21 MB Datei und memory_limit=128M.
+        $this->assertMemoryHeadroom($fileSize);
+
         $data = $isJsonl ? $this->parseJsonlFile($realPath) : $this->parseJsonFile($realPath);
 
         $manifest = ExportManifest::fromArray($data);
@@ -109,6 +115,47 @@ class ManifestLoaderService
             );
         }
         return $manifest;
+    }
+
+    /**
+     * Geschätzter Speicherfaktor: dekodiertes PHP-Array vs. JSON-Dateigröße.
+     * Konservativ gewählt (viele kleine Strings/Arrays je Record).
+     */
+    private const MEMORY_FACTOR = 8;
+
+    private function assertMemoryHeadroom(int $fileSize): void
+    {
+        $limit = $this->parseMemoryLimit((string)ini_get('memory_limit'));
+        if ($limit <= 0) {
+            return; // -1 = unbegrenzt
+        }
+        $estimated = memory_get_usage(true) + $fileSize * self::MEMORY_FACTOR;
+        if ($estimated > $limit) {
+            throw new ImpExpException(sprintf(
+                'PHP memory_limit (%s) reicht voraussichtlich nicht für das Parsen der %d-MB-Importdatei '
+                . '(geschätzter Bedarf ~%d MB). memory_limit erhöhen (z. B. php -d memory_limit=1G vendor/bin/typo3 …) '
+                . 'oder den Export aufteilen (--pages/--since).',
+                (string)ini_get('memory_limit'),
+                (int)round($fileSize / 1048576),
+                (int)round($estimated / 1048576)
+            ));
+        }
+    }
+
+    private function parseMemoryLimit(string $limit): int
+    {
+        $limit = trim($limit);
+        if ($limit === '' || $limit === '-1') {
+            return -1;
+        }
+        $unit = strtolower(substr($limit, -1));
+        $value = (int)$limit;
+        return match ($unit) {
+            'g' => $value * 1024 ** 3,
+            'm' => $value * 1024 ** 2,
+            'k' => $value * 1024,
+            default => $value,
+        };
     }
 
     /**

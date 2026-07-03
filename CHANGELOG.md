@@ -67,6 +67,26 @@ ausführen.
   wird das jetzt als Warnung geloggt statt still übergangen (DB-Lock trägt die
   Concurrency-Garantie weiter).
 
+### Behoben (Funde aus dem Real-World-/E2E-Test, 2 Instanzen, 2.000 Seiten / 6.000 Inhalte / 391 MB Assets)
+- **Lock-Heartbeat-Fehlabbruch:** MySQL/MariaDB melden 0 „affected rows", wenn zwei
+  Heartbeats in derselben Sekunde laufen (Wert unverändert) – der Import brach dann
+  fälschlich mit „Lock verloren" ab (in SQLite-CI unsichtbar). Der Heartbeat weist
+  den Lock-Verlust jetzt per Nachweis-SELECT nach, bevor er abbricht.
+- **Delta-Idempotenz unter Realbedingungen:** Der Feldvergleich meldete JEDEN Record
+  als geändert (8 002 Updates statt 8 002 Skips). Ursachen: `''` vs. `'0'`
+  (DB-Default vs. Export-Leerwert, z. B. `fe_group`) und der beim Import ohnehin
+  regenerierte `slug`. Vergleich normalisiert jetzt Leerwerte und ignoriert `slug`.
+- **Stiller OOM-Tod:** Eine 21-MB-Datei bei `memory_limit=128M` beendete den Prozess
+  mit Exit 255 ohne jede Meldung. Neue Speicher-Plausibilitätsprüfung vor dem Parsen
+  bricht mit klarer Fehlermeldung und Handlungsempfehlung ab.
+- **`impexpnl:undo` läuft jetzt unter dem Import-Lock:** Ein Rollback parallel zu
+  einem laufenden Import wird mit Exit-Code 3 abgewiesen (vorher ungeschützt).
+- **`impexpnl:unlock --json`** ergänzt (war in der README dokumentiert, fehlte aber;
+  ohne `--force` wird im JSON-Modus nur gemeldet, nicht gelöst).
+- **`impexpnl:check`:** Fehlende Tabellen optionaler Profile (z. B. `sys_redirect`,
+  `tt_address` nicht installiert) sind jetzt Warnungen statt Fehler – das
+  Preflight-Gate bricht auf schlanken Installationen nicht mehr grundlos.
+
 ### Veraltet
 - **Legacy-Prüfsummenformat (Export-Format 1** aus ImpExpNL 1.x, roher SHA256 nur
   über `pages`+`tt_content`): wird beim Import noch akzeptiert, löst aber eine

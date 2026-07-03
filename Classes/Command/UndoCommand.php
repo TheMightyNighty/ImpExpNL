@@ -19,6 +19,7 @@ namespace Robbi\ImpExpNL\Command;
 
 use Robbi\ImpExpNL\Domain\ExitCode;
 use Robbi\ImpExpNL\Exception\ImpExpException;
+use Robbi\ImpExpNL\Service\ImportLockService;
 use Robbi\ImpExpNL\Service\RollbackService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -35,9 +36,26 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 class UndoCommand extends Command
 {
     public function __construct(
-        private readonly RollbackService $rollbackService
+        private readonly RollbackService $rollbackService,
+        private readonly ImportLockService $importLock
     ) {
         parent::__construct();
+    }
+
+    /**
+     * Rollback unter dem Import-Lock ausführen: Ein Undo parallel zu einem
+     * LAUFENDEN Import wäre destruktiv (löscht Records, die der Import gerade
+     * referenziert). Läuft ein Import, bricht acquire() mit Exit-Code 3 ab;
+     * ein hängender Lock ist zuerst per impexpnl:unlock zu lösen.
+     */
+    private function runRollbackLocked(string $importId, bool $force): void
+    {
+        $lock = $this->importLock->acquire();
+        try {
+            $this->rollbackService->runRollback($importId, $force);
+        } finally {
+            $this->importLock->release($lock);
+        }
     }
 
     protected function configure(): void
@@ -69,7 +87,7 @@ class UndoCommand extends Command
                     $output->writeln((string)json_encode(['success' => true, 'dryRun' => true] + $preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                     return Command::SUCCESS;
                 }
-                $this->rollbackService->runRollback($preview['importId'], $force);
+                $this->runRollbackLocked($preview['importId'], $force);
                 $output->writeln((string)json_encode(['success' => true, 'dryRun' => false, 'rolledBack' => true] + $preview, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                 return Command::SUCCESS;
             }
@@ -101,7 +119,7 @@ class UndoCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $this->rollbackService->runRollback($preview['importId'], $force);
+            $this->runRollbackLocked($preview['importId'], $force);
             $io->success('Rollback erfolgreich abgeschlossen.');
             return Command::SUCCESS;
         } catch (\Throwable $e) {
