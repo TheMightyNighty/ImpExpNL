@@ -1,11 +1,12 @@
 # Changelog
 
-## Unveröffentlicht
+## 2.2.0 — Sicherheit & Betriebsstabilität (2026-07-03)
 
-Sicherheits-Härtung nach interner Code-Review (`Prüfbericht.md`), Fokus:
-Import über ein Sicherheitsgefälle. **Schema-Änderung:** neue Spalte
-`tx_impexpnl_lock.owner` → nach dem Update `vendor/bin/typo3 database:updateschema`
-ausführen.
+Sicherheits-Härtung nach interner Code-Review (`Prüfbericht.md`, F-01–F-14), Fokus:
+Import über ein Sicherheitsgefälle — plus acht Real-World-Funde aus dem neuen
+E2E-Release-Ritual (zwei echte Instanzen, MariaDB, 391 MB Assets).
+**Schema-Änderung:** neue Spalte `tx_impexpnl_lock.owner` → nach dem Update
+`vendor/bin/typo3 database:updateschema` ausführen.
 
 ### Sicherheit
 - **Signaturpflicht (`import.require_signature`):** Importdateien ohne
