@@ -53,6 +53,7 @@ class ExportCommand extends Command
             ->addOption('csv', null, InputOption::VALUE_NONE, 'Zusätzlich CSV-Dateien für Tabellenvergleich erzeugen')
             ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)')
             ->addOption('transport', null, InputOption::VALUE_OPTIONAL, 'Asset-Transport: external (Standard) oder bundle (self-contained .tar.gz)', 'external')
+            ->addOption('bundle-baseline', null, InputOption::VALUE_OPTIONAL, 'Inkrementelles Bundle: Asset-Manifest des Ziels (impexpnl_assets.json) – dort bereits inhaltsgleich vorhandene Dateien werden nicht eingepackt')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
@@ -82,6 +83,9 @@ class ExportCommand extends Command
         }
         if ($input->getOption('content-types')) {
             $options['contentTypes'] = explode(',', $input->getOption('content-types'));
+        }
+        if ($input->getOption('bundle-baseline')) {
+            $options['transportConfig']['baseline'] = (string)$input->getOption('bundle-baseline');
         }
 
         $progressBar = null;

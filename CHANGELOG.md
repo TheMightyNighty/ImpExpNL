@@ -1,5 +1,29 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Neu
+- **Delta-Idempotenz für Registry-`record`-Tabellen (Multi-Source):** Im
+  Delta-Modus werden bereits importierte Registry-Records (z. B. `sys_redirect`,
+  News, tt_address) über das Herkunfts-Mapping `tx_impexpnl_uid_map` aufgelöst
+  und bei Gleichheit übersprungen bzw. aktualisiert — statt wie bisher bei jedem
+  Lauf dupliziert. Voraussetzung ist `uid_remap: true`. Gematchte Bestands-Records
+  gehören nicht zur Rollback-Basis (ein Undo löscht weiterhin nur, was der
+  jeweilige Import selbst angelegt hat). Der deklarative Profil-Contract prüft
+  die Idempotenz jetzt für alle Profile (Klausel 3 inkl. Mapping-Zählung).
+- **Inkrementelles Bundle (`--bundle-baseline=<manifest>`):** Beim Bundle-Export
+  kann das Asset-Manifest des Ziels (`impexpnl_assets.json`) als Baseline
+  übergeben werden; dort bereits inhaltsgleich (sha256) vorhandene Dateien werden
+  nicht eingepackt. Fehlt eine übersprungene Datei wider Erwarten, meldet der
+  Import das über den Asset-Preflight (Exit-Code `7`) — kein stiller Verlust.
+  Unlesbare/fehlende Baselines werden ignoriert (Bundle wird vollständig gepackt).
+- **`SECURITY.md`:** Meldeweg für Sicherheitslücken (GitHub Private Vulnerability
+  Reporting), unterstützte Versionen, Reaktionszeiten.
+
+### Geändert
+- `ROADMAP.md` wird nicht mehr im Repository veröffentlicht (internes
+  Arbeitsdokument); maßgeblich sind CHANGELOG und Release Notes.
+
 ## 2.2.0 — Sicherheit & Betriebsstabilität (2026-07-03)
 
 Sicherheits-Härtung nach interner Code-Review (`Prüfbericht.md`, F-01–F-14), Fokus:

@@ -112,11 +112,14 @@ class DeclarativeProfileContractTest extends FunctionalTestCase
             self::assertSame(count($uids), $this->countMappedRecords($table), "[$name] Import: unerwartete Anzahl gemappter $table-Records");
         }
 
-        // Klausel 3: Delta-Re-Import ist idempotent. Für Registry-Tabellen noch nicht
-        // garantiert (Roadmap) → per Profil abschaltbar (deltaIdempotent: false).
+        // Klausel 3: Delta-Re-Import ist idempotent — weder neue Kern-Records
+        // (stats.new) noch neue Registry-Records (Mapping-Anzahl bleibt konstant).
         if ($def['deltaIdempotent'] ?? true) {
             $result = $this->get(ImportService::class)->runImport($exportFile, 0, ['workspaceId' => 0, 'deltaMode' => true]);
             self::assertSame(0, (int)($result['stats']['new'] ?? -1), "[$name] Delta-Re-Import legt neue Records an (nicht idempotent)");
+            foreach ($expected as $table => $uids) {
+                self::assertSame(count($uids), $this->countMappedRecords($table), "[$name] Delta-Re-Import hat $table-Mappings dupliziert");
+            }
         }
 
         // Klausel 4: Rollback entfernt alle importierten Records. Gezielt den Import aus

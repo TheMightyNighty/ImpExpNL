@@ -115,4 +115,57 @@ class BundleTransportTest extends FunctionalTestCase
         self::assertTrue(isset($phar['export.json']));
         self::assertFalse(isset($phar['files/dummy.txt']), 'Asset-Datei darf ohne includeAssets nicht enthalten sein');
     }
+
+    #[Test]
+    public function bundleWithBaselineSkipsUnchangedAssets(): void
+    {
+        $dir = $this->instancePath . '/var/bundle_baseline';
+        GeneralUtility::mkdir_deep($dir);
+
+        // Baseline = Asset-Manifest des Ziels: dummy.txt dort bereits inhaltsgleich vorhanden.
+        $baseline = $dir . '/target_assets.json';
+        file_put_contents($baseline, json_encode([[
+            'storage' => 1,
+            'identifier' => '/dummy.txt',
+            'size' => strlen(self::FILE_CONTENT),
+            'sha256' => hash('sha256', self::FILE_CONTENT),
+        ]]));
+
+        $result = $this->get(ExportService::class)->runExport(1, $dir . '/export.json', [
+            'transport' => 'bundle',
+            'transportConfig' => ['baseline' => $baseline],
+        ]);
+
+        $readCopy = $dir . '/verify_' . bin2hex(random_bytes(4)) . '.tar.gz';
+        copy($result['artifact'], $readCopy);
+        $phar = new \PharData($readCopy);
+        self::assertTrue(isset($phar['export.json']), 'Export-Datei muss enthalten sein');
+        self::assertFalse(isset($phar['files/dummy.txt']), 'Laut Baseline vorhandenes Asset darf nicht eingepackt werden');
+        self::assertStringContainsString('laut Baseline bereits auf dem Ziel', $result['message']);
+    }
+
+    #[Test]
+    public function bundleWithStaleBaselineStillPacksChangedAssets(): void
+    {
+        $dir = $this->instancePath . '/var/bundle_baseline_stale';
+        GeneralUtility::mkdir_deep($dir);
+
+        // Baseline nennt dummy.txt mit ANDEREM Inhalt -> Datei muss eingepackt werden.
+        $baseline = $dir . '/target_assets.json';
+        file_put_contents($baseline, json_encode([[
+            'storage' => 1,
+            'identifier' => '/dummy.txt',
+            'sha256' => hash('sha256', 'alter-inhalt'),
+        ]]));
+
+        $result = $this->get(ExportService::class)->runExport(1, $dir . '/export.json', [
+            'transport' => 'bundle',
+            'transportConfig' => ['baseline' => $baseline],
+        ]);
+
+        $readCopy = $dir . '/verify_' . bin2hex(random_bytes(4)) . '.tar.gz';
+        copy($result['artifact'], $readCopy);
+        $phar = new \PharData($readCopy);
+        self::assertTrue(isset($phar['files/dummy.txt']), 'Geändertes Asset muss trotz Baseline eingepackt werden');
+    }
 }

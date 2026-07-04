@@ -18,11 +18,10 @@ profiles:
       tt_content: [10, 11, 12, 13]
 
   # Ziel-Extension-Profil: registrierte Record-Tabelle einer Extension (EXT:redirects).
-  # deltaIdempotent: false — Delta-Idempotenz ist für Registry-Tabellen noch offen
-  # (Roadmap „Multi-Source-Delta für Registry-Tabellen"; heute nur pages/tt_content).
+  # Registry-record-Tabellen sind seit dem Multi-Source-Delta (uid_map-Auflösung)
+  # delta-idempotent.
   redirect:
     coreExtensions: [redirects]
-    deltaIdempotent: false
     fixtures: [pages.csv, sys_redirect.csv]
     expected:
       pages: [1, 2, 3, 4]

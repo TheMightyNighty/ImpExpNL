@@ -61,11 +61,24 @@ class BundleTransport implements TransportInterface
             $entries['impexpnl_assets.json'] = $assetsJson;
         }
 
+        // Inkrementelles Bundle: Dateien, die laut Baseline-Manifest (Asset-Manifest
+        // des Ziels) dort bereits inhaltsgleich vorliegen, werden nicht eingepackt.
+        // Fehlt eine übersprungene Datei auf dem Ziel doch, meldet der Import das
+        // über den Asset-Preflight bzw. Exit-Code 7 – es entsteht kein stiller Verlust.
+        $baseline = $this->loadBaseline((string)($config['baseline'] ?? ''));
+
         $bundled = 0;
         $missing = 0;
+        $skippedBaseline = 0;
         if ($includeAssets) {
             foreach ($assets as $asset) {
                 $identifier = (string)($asset['identifier'] ?? '');
+                $sha256 = (string)($asset['sha256'] ?? '');
+                $baselineKey = (int)($asset['storage'] ?? 0) . ':' . $identifier;
+                if ($sha256 !== '' && ($baseline[$baselineKey] ?? null) === $sha256) {
+                    $skippedBaseline++;
+                    continue;
+                }
                 $path = $this->localPath((int)($asset['storage'] ?? 0), $identifier);
                 if ($path === null) {
                     $missing++;
@@ -101,7 +114,14 @@ class BundleTransport implements TransportInterface
 
         $message = sprintf('Bundle geschrieben → %s', basename($gzPath));
         if ($includeAssets) {
-            $message .= sprintf(' (%d Asset-Datei(en) enthalten%s).', $bundled, $missing > 0 ? ", $missing fehlend übersprungen" : '');
+            $details = [sprintf('%d Asset-Datei(en) enthalten', $bundled)];
+            if ($skippedBaseline > 0) {
+                $details[] = sprintf('%d laut Baseline bereits auf dem Ziel', $skippedBaseline);
+            }
+            if ($missing > 0) {
+                $details[] = sprintf('%d fehlend übersprungen', $missing);
+            }
+            $message .= ' (' . implode(', ', $details) . ').';
         } else {
             $message .= ' (ohne Asset-Dateien).';
         }
@@ -219,6 +239,42 @@ class BundleTransport implements TransportInterface
             }
         }
         @rmdir($dir);
+    }
+
+    /**
+     * Lädt das Baseline-Manifest (impexpnl_assets.json des Ziels) als Map
+     * "storage:identifier" => sha256. Ein unlesbares Manifest wird mit Warnung
+     * ignoriert (Bundle wird dann vollständig gepackt – fail-safe).
+     *
+     * @return array<string, string>
+     */
+    private function loadBaseline(string $path): array
+    {
+        if ($path === '') {
+            return [];
+        }
+        if (!is_file($path)) {
+            $this->logger->warning('Bundle: Baseline-Manifest nicht gefunden – Bundle wird vollständig gepackt.', ['baseline' => $path]);
+            return [];
+        }
+        $entries = json_decode((string)file_get_contents($path), true);
+        if (!is_array($entries)) {
+            $this->logger->warning('Bundle: Baseline-Manifest nicht lesbar (kein JSON-Array) – Bundle wird vollständig gepackt.', ['baseline' => $path]);
+            return [];
+        }
+        $map = [];
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $identifier = (string)($entry['identifier'] ?? '');
+            $sha256 = (string)($entry['sha256'] ?? '');
+            if ($identifier === '' || $sha256 === '') {
+                continue;
+            }
+            $map[(int)($entry['storage'] ?? 0) . ':' . $identifier] = $sha256;
+        }
+        return $map;
     }
 
     private function localPath(int $storage, string $identifier): ?string

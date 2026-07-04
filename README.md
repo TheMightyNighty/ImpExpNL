@@ -188,6 +188,7 @@ ddev exec vendor/bin/typo3 impexpnl:export <Start-PID> <Zielpfad> [Optionen]
 | `--since=2026-01-01` | Zeitbasierter Filter. Es werden nur Records exportiert, deren `tstamp` nach dem angegebenen Datum liegt. Damit wird die Datenmenge bei Delta-Transfers erheblich reduziert. |
 | `--content-types=text,textmedia` | Einschränkung auf bestimmte CTypes. Alle anderen Inhaltselemente werden nicht exportiert. |
 | `--csv` | Erzeugung zusätzlicher CSV-Dateien (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). Diese Dateien können in Tabellenkalkulationsprogrammen geöffnet werden, um die Exportdaten vor dem Import tabellarisch zu prüfen oder mit anderen Datenquellen abzugleichen. |
+| `--bundle-baseline=<manifest>` | Inkrementelles Bundle (nur mit `--transport=bundle`): Pfad zum Asset-Manifest des **Ziels** (`impexpnl_assets.json`, z. B. vorab per Schleuse geholt). Dateien, die dort bereits inhaltsgleich (sha256) gelistet sind, werden nicht eingepackt — das Bundle enthält nur neue/geänderte Assets. Fehlt eine übersprungene Datei auf dem Ziel wider Erwarten, meldet der Import das über den Asset-Preflight (Exit-Code `7`); es entsteht kein stiller Verlust. |
 | `--jsonl` | Zeilenweise geschriebenes JSONL-Format (ein JSON-Objekt pro Zeile) — kompakt und speicherschonend beim Export (kein einzelnes `json_encode` über den gesamten Block). Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. (Hinweis: Der Import parst beide Formate aktuell vollständig in den Speicher — siehe Abschnitt „Chunked Verarbeitung".) |
 
 ### Erzeugte Dateien
@@ -479,9 +480,12 @@ Diese Tests (`Tests/Functional/Profile/`) sind zugleich die **Vorlage für eigen
 Wer eine weitere Tabelle „hart" machen will, kopiert einen dieser Tests, tauscht Fixture +
 Tabelle und stellt sicher, dass der Contract grün bleibt.
 
-> Hinweis: Registry-Tabellen vom Typ `record` sind heute noch **nicht delta-idempotent**
-> (ein erneuter Import legt neue Records an). MM-Tabellen mit `category_match: path` sind es.
-> Delta für `record`-Registry-Tabellen steht auf der Roadmap.
+> Hinweis: Registry-Tabellen vom Typ `record` (mit `uid_remap: true`) sind im
+> Delta-Modus **idempotent**: Bereits importierte Records werden über das
+> Herkunfts-Mapping (`tx_impexpnl_uid_map`, Multi-Source-fähig über `source_id`)
+> aufgelöst und bei Gleichheit übersprungen bzw. aktualisiert statt dupliziert.
+> MM-Tabellen mit `category_match: path` sind ebenfalls idempotent. Ohne
+> `uid_remap` gibt es kein persistiertes Mapping und damit kein Delta.
 
 ---
 

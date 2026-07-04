@@ -466,16 +466,20 @@ class ImportService
 
         $rawData = $manifest->toArray();
         $allowedTables = $options['allowedTables'] ?? null;
+        $createdRegistry = [];
         $this->dataHandlerErrors += $this->tableRegistry->importRegisteredTables(
             $rawData,
             $uidArray,
-            is_array($allowedTables) ? $allowedTables : null
+            is_array($allowedTables) ? $allowedTables : null,
+            $manifest->getSourceId(),
+            $deltaMode,
+            $createdRegistry
         );
         $this->linkRewriterService->rewriteLinks($uidArray, $workspaceId);
         $this->rewriteAbsoluteUrls($uidArray, $config, $workspaceId);
 
         $this->uidMap = UidMap::fromArray($uidArray);
-        $this->rollbackMap = $this->buildRollbackMap($uidArray);
+        $this->rollbackMap = $this->buildRollbackMap($uidArray, $createdRegistry);
         $this->eventDispatcher->dispatch(new ModifyImportDataEvent($rawData, $uidArray));
 
         $stats['errors'] = $this->dataHandlerErrors;
@@ -738,7 +742,13 @@ class ImportService
      * @param array<string, array<int,int>> $uidArray vollständige UID-Map nach dem Import
      * @return array<string, array<int,int>>
      */
-    private function buildRollbackMap(array $uidArray): array
+    /**
+     * @param array<string, array<int,int>> $createdRegistry Nur NEU angelegte
+     *        Registry-Records. Die volle $uidArray enthält im Delta-Modus auch
+     *        gematchte Bestands-Records – die dürfen nicht in die Rollback-Basis,
+     *        sonst würde ein Undo Bestandsdaten löschen.
+     */
+    private function buildRollbackMap(array $uidArray, array $createdRegistry = []): array
     {
         $rollback = $this->createdMap->toArray();
         foreach ($uidArray as $table => $entries) {
@@ -746,8 +756,7 @@ class ImportService
             if (in_array($table, ['pages', 'tt_content', 'sys_file'], true)) {
                 continue;
             }
-            // Registry-Record-Tabellen enthalten nur neu angelegte (NEW_REG) UIDs.
-            $rollback[$table] = $entries;
+            $rollback[$table] = $createdRegistry[$table] ?? $entries;
         }
         return $rollback;
     }

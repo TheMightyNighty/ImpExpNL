@@ -56,6 +56,8 @@ class TableRegistryService
         private readonly ConnectionPool $connectionPool,
         private readonly ConfigurationService $configurationService,
         private readonly TcaSchemaFactory $tcaSchemaFactory,
+        private readonly UidMapRepository $uidMapRepository,
+        private readonly ConflictResolver $conflictResolver,
         private readonly LoggerInterface $logger
     ) {}
 
@@ -186,9 +188,17 @@ class TableRegistryService
      * @param list<string>|null $allowedTables Allowlist aus dem Transfer-Profil:
      *        null = alle registrierten Tabellen, sonst werden nur die genannten
      *        importiert (Wirkbereichs-Begrenzung; übersprungene werden geloggt).
+     * @param string $sourceId Quellsystem-Kennung für das Herkunfts-Mapping (Delta)
+     * @param bool $deltaMode Delta-Import: bereits gemappte Records werden über
+     *        tx_impexpnl_uid_map aufgelöst und aktualisiert/übersprungen statt
+     *        dupliziert.
+     * @param array<string, array<int,int>> $createdMap Nur NEU angelegte Records
+     *        (by-ref befüllt) – Rollback-Basis; gematchte Bestands-Records gehören
+     *        nicht hinein, sonst würde ein Undo Bestandsdaten löschen.
+     * @param-out array<string, array<int,int>> $createdMap
      * @return int Anzahl der DataHandler-Fehler
      */
-    public function importRegisteredTables(array $exportedData, array &$uidMap, ?array $allowedTables = null): int
+    public function importRegisteredTables(array $exportedData, array &$uidMap, ?array $allowedTables = null, string $sourceId = '', bool $deltaMode = false, array &$createdMap = []): int
     {
         $errors = 0;
 
@@ -202,7 +212,7 @@ class TableRegistryService
                 continue;
             }
             try {
-                $errors += $this->importRecordTable($table, $config, $exportedData[$table], $uidMap);
+                $errors += $this->importRecordTable($table, $config, $exportedData[$table], $uidMap, $sourceId, $deltaMode, $createdMap);
             } catch (\Exception $e) {
                 $this->logger->warning("Registry-Import fehlgeschlagen: $table", ['error' => $e->getMessage()]);
             }
@@ -546,7 +556,11 @@ class TableRegistryService
         return $records;
     }
 
-    private function importRecordTable(string $table, array $config, array $records, array &$uidMap): int
+    /**
+     * @param array<string, array<int,int>> $createdMap
+     * @param-out array<string, array<int,int>> $createdMap
+     */
+    private function importRecordTable(string $table, array $config, array $records, array &$uidMap, string $sourceId = '', bool $deltaMode = false, array &$createdMap = []): int
     {
         if (empty($records)) {
             return 0;
@@ -558,12 +572,38 @@ class TableRegistryService
         if (!isset($uidMap[$table])) {
             $uidMap[$table] = [];
         }
+        // Immer initialisieren: Auch ein Lauf ohne Neu-Anlagen (Delta, alles
+        // gematcht) muss die Tabelle explizit als "keine neuen Records" markieren,
+        // damit die Rollback-Basis nicht auf die volle uidMap zurückfällt.
+        $createdMap[$table] ??= [];
+
+        // Delta: bereits importierte Records über das Herkunfts-Mapping auflösen.
+        // Nur mit uid_remap sinnvoll (ohne Remap gibt es kein persistiertes Mapping).
+        $existingTargets = [];
+        $existingRows = [];
+        if ($deltaMode && $uidRemap) {
+            $sourceUids = array_map(static fn(array $r): int => (int)($r['uid'] ?? 0), $records);
+            $existingTargets = $this->uidMapRepository->findTargets($sourceId, $table, $sourceUids);
+            if ($existingTargets !== []) {
+                foreach (array_chunk(array_values($existingTargets), 1000) as $chunk) {
+                    $qb = $this->connectionPool->getQueryBuilderForTable($table);
+                    $rows = $qb->select('*')->from($table)
+                        ->where($qb->expr()->in('uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
+                        ->executeQuery()->fetchAllAssociative();
+                    foreach ($rows as $row) {
+                        $existingRows[(int)$row['uid']] = $row;
+                    }
+                }
+            }
+        }
 
         $dh = GeneralUtility::makeInstance(DataHandler::class);
         $datamap = [];
         $relationFields = $this->getRelationContainerFields($table);
 
         $unmappable = 0;
+        $skipped = 0;
+        $updated = 0;
         foreach ($records as $rec) {
             $oldUid = (int)($rec['uid'] ?? 0);
             $oldPid = (int)($rec[$pidField] ?? 0);
@@ -592,6 +632,21 @@ class TableRegistryService
                 }
             }
 
+            // Delta: Bestands-Record aktualisieren/überspringen statt duplizieren.
+            // Gematchte Records gehören in die uidMap (MM-Phase, Link-Rewrite),
+            // aber NICHT in die createdMap (Rollback darf Bestand nicht löschen).
+            $existingUid = (int)($existingTargets[$oldUid] ?? 0);
+            if ($existingUid > 0 && isset($existingRows[$existingUid])) {
+                $uidMap[$table][$oldUid] = $existingUid;
+                if ($this->conflictResolver->isRecordIdentical($rec, $existingRows[$existingUid])) {
+                    $skipped++;
+                    continue;
+                }
+                $datamap[$table][$existingUid] = $data;
+                $updated++;
+                continue;
+            }
+
             $datamap[$table]['NEW_REG_' . $table . '_' . $oldUid] = $data;
         }
 
@@ -610,7 +665,9 @@ class TableRegistryService
             $prefix = 'NEW_REG_' . $table . '_';
             foreach ($dh->substNEWwithIDs as $ph => $newUid) {
                 if (str_starts_with($ph, $prefix)) {
-                    $uidMap[$table][(int)str_replace($prefix, '', $ph)] = (int)$newUid;
+                    $sourceUid = (int)str_replace($prefix, '', $ph);
+                    $uidMap[$table][$sourceUid] = (int)$newUid;
+                    $createdMap[$table][$sourceUid] = (int)$newUid;
                 }
             }
         }
@@ -619,7 +676,12 @@ class TableRegistryService
                 'skipped' => $unmappable,
             ]);
         }
-        $this->logger->info("Record-Import: $table", ['count' => count($records) - $unmappable]);
+        $this->logger->info("Record-Import: $table", [
+            'new' => count($createdMap[$table]),
+            'updated' => $updated,
+            'skipped_identical' => $skipped,
+            'skipped_containment' => $unmappable,
+        ]);
         return $errors;
     }
 
