@@ -24,8 +24,6 @@ use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
-use TYPO3\CMS\Core\DataHandling\TableColumnType;
-use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 /**
@@ -49,49 +47,14 @@ class TableRegistryService
     /** @var array<string, bool> Existenz-Cache je Tabelle. */
     private array $tableExistsCache = [];
 
-    /** @var array<string, array<string, true>> Relations-Container-Felder je Tabelle (Cache). */
-    private array $relationFieldCache = [];
-
     public function __construct(
         private readonly ConnectionPool $connectionPool,
         private readonly ConfigurationService $configurationService,
-        private readonly TcaSchemaFactory $tcaSchemaFactory,
+        private readonly RecordDataBuilder $recordDataBuilder,
         private readonly UidMapRepository $uidMapRepository,
         private readonly ConflictResolver $conflictResolver,
         private readonly LoggerInterface $logger
     ) {}
-
-    /**
-     * Relations-Container-Felder (inline/file/category) einer Tabelle. Diese tragen nur einen
-     * denormalisierten Zähler; direkt an den DataHandler gereicht würde z. B. `categories: 1`
-     * fälschlich eine Relation zu Kategorie-UID 1 erzeugen. Die echten Relationen laufen über
-     * die MM-/FAL-Registry, daher werden diese Felder beim Record-Import ausgeblendet.
-     *
-     * @return array<string, true>
-     */
-    private function getRelationContainerFields(string $table): array
-    {
-        if (isset($this->relationFieldCache[$table])) {
-            return $this->relationFieldCache[$table];
-        }
-        $fields = [];
-        try {
-            if ($this->tcaSchemaFactory->has($table)) {
-                foreach ($this->tcaSchemaFactory->get($table)->getFields() as $field) {
-                    if (
-                        $field->isType(TableColumnType::INLINE)
-                        || $field->isType(TableColumnType::FILE)
-                        || $field->isType(TableColumnType::CATEGORY)
-                    ) {
-                        $fields[$field->getName()] = true;
-                    }
-                }
-            }
-        } catch (\Throwable) {
-            // TCA nicht verfügbar -> keine Filterung.
-        }
-        return $this->relationFieldCache[$table] = $fields;
-    }
 
     /**
      * Existiert die Tabelle im DB-Schema? Erlaubt das Registrieren optionaler Tabellen
@@ -599,7 +562,7 @@ class TableRegistryService
 
         $dh = GeneralUtility::makeInstance(DataHandler::class);
         $datamap = [];
-        $relationFields = $this->getRelationContainerFields($table);
+        $relationFields = $this->recordDataBuilder->relationContainerFields($table);
 
         $unmappable = 0;
         $skipped = 0;

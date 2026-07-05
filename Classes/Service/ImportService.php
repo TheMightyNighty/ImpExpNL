@@ -33,8 +33,6 @@ use TYPO3\CMS\Core\Database\Connection;
 use TYPO3\CMS\Core\Database\ConnectionPool;
 use TYPO3\CMS\Core\Database\Query\Restriction\DeletedRestriction;
 use TYPO3\CMS\Core\DataHandling\DataHandler;
-use TYPO3\CMS\Core\DataHandling\TableColumnType;
-use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 class ImportService
@@ -79,8 +77,7 @@ class ImportService
     private array $l10nFixups = ['pages' => [], 'tt_content' => []];
 
     /**
-     * Felder die beim Import grundsätzlich ignoriert werden (Systemfelder).
-     * Ergänzt wird dynamisch durch buildRecordData() anhand des tatsächlichen TCA.
+     * Systemfelder, die beim Record-Vergleich (IRRE, Diff) ignoriert werden.
      *
      * @var string[]
      */
@@ -88,12 +85,6 @@ class ImportService
 
     /** Records pro DataHandler-Batch. */
     private int $batchSize = 500;
-
-    /** @var array<string, array<string, true>> Vorhandene DB-Spalten je Tabelle (Cache). */
-    private array $knownColumnsCache = [];
-
-    /** @var array<string, array<string, true>> Relations-Container-Felder je Tabelle (Cache). */
-    private array $relationFieldCache = [];
 
     public function __construct(
         private readonly EventDispatcherInterface $eventDispatcher,
@@ -106,7 +97,6 @@ class ImportService
         private readonly ImportLockService $importLock,
         private readonly ImportLogRepository $importLogRepository,
         private readonly ConflictResolver $conflictResolver,
-        private readonly TcaSchemaFactory $tcaSchemaFactory,
         private readonly RollbackService $rollbackService,
         private readonly UidMapRepository $uidMapRepository,
         private readonly AssetManifestService $assetManifestService,
@@ -114,6 +104,10 @@ class ImportService
         private readonly UrlRewriteService $urlRewriteService,
         private readonly BundleImportService $bundleImportService,
         private readonly ManifestLoaderService $manifestLoader,
+        private readonly RecordDataBuilder $recordDataBuilder,
+        private readonly ExistingRecordLocator $existingRecordLocator,
+        private readonly DiffAnalysisService $diffAnalysisService,
+        private readonly SlugRegenerationService $slugRegenerationService,
         private readonly RootlineCacheGuard $rootlineCacheGuard,
         private readonly LoggerInterface $logger
     ) {}
@@ -207,7 +201,7 @@ class ImportService
 
             if ($dryRun) {
                 $manifest = $this->loadAndValidateJson($jsonPath);
-                $diff = $this->runDiffAnalysis($manifest, (bool)($options['verbose'] ?? false));
+                $diff = $this->diffAnalysisService->analyze($manifest, (bool)($options['verbose'] ?? false));
                 $assets = $this->buildAssetPreflight($manifest->getAssets());
                 $this->logger->info('DRY-RUN BEENDET.');
                 return [
@@ -371,7 +365,7 @@ class ImportService
         $uidArray = $this->uidMap->toArray();
 
         if (!empty($manifest->getSiteConfig())) {
-            $this->adjustSlugsForTargetSite($uidArray);
+            $this->dataHandlerErrors += $this->slugRegenerationService->regenerate($uidArray);
         }
 
         $fileReferences = $manifest->getFileReferences();
@@ -445,11 +439,11 @@ class ImportService
      */
     private function buildPageBatchDatamap(array $batch, string $sourceId, int $targetPid, array $exportedPageUids, bool $deltaMode, ConflictStrategy $conflictStrategy, bool $verbose, ?callable $onConflictAsk): array
     {
-        $existingPageMap = $deltaMode ? $this->findExistingRecordsByMapping($sourceId, 'pages', $batch) : [];
+        $existingPageMap = $deltaMode ? $this->existingRecordLocator->find($sourceId, 'pages', $batch) : [];
         $datamap = [];
         foreach ($batch as $page) {
             $oldUid = (int)$page['uid'];
-            $recordData = $this->buildRecordData($page, 'pages');
+            $recordData = $this->recordDataBuilder->build($page, 'pages');
 
             if ($deltaMode && isset($existingPageMap[$oldUid])) {
                 $existingUid = (int)$existingPageMap[$oldUid]['uid'];
@@ -514,7 +508,7 @@ class ImportService
      */
     private function buildContentBatchDatamap(array $batch, string $sourceId, int $targetPid, array $exportedPageUids, array $exportedContentUids, bool $deltaMode, ConflictStrategy $conflictStrategy, ?callable $onConflictAsk, array $config): array
     {
-        $existingContentMap = $deltaMode ? $this->findExistingRecordsByMapping($sourceId, 'tt_content', $batch) : [];
+        $existingContentMap = $deltaMode ? $this->existingRecordLocator->find($sourceId, 'tt_content', $batch) : [];
         $datamap = [];
         foreach ($batch as $content) {
             $oldContentUid = (int)$content['uid'];
@@ -523,7 +517,7 @@ class ImportService
                 continue;
             }
 
-            $recordData = $this->buildRecordData($content, 'tt_content');
+            $recordData = $this->recordDataBuilder->build($content, 'tt_content');
 
             if ($deltaMode && isset($existingContentMap[$oldContentUid])) {
                 $existingUid = (int)$existingContentMap[$oldContentUid]['uid'];
@@ -913,89 +907,6 @@ class ImportService
         }
     }
 
-    /**
-     * Regeneriert die Slug-Felder importierter Seiten für die Ziel-Site.
-     */
-    private function adjustSlugsForTargetSite(array $uidMap): void
-    {
-        if (empty($uidMap['pages'])) {
-            return;
-        }
-
-        try {
-            $slugConfig = [];
-            if ($this->tcaSchemaFactory->has('pages') && $this->tcaSchemaFactory->get('pages')->hasField('slug')) {
-                $slugConfig = $this->tcaSchemaFactory->get('pages')->getField('slug')->getConfiguration();
-            }
-            $slugHelper = GeneralUtility::makeInstance(
-                \TYPO3\CMS\Core\DataHandling\SlugHelper::class,
-                'pages',
-                'slug',
-                $slugConfig
-            );
-        } catch (\Exception $e) {
-            $this->logger->warning('Slug-Regenerierung übersprungen, SlugHelper nicht verfügbar: ' . $e->getMessage());
-            return;
-        }
-
-        $datamap = [];
-        $newUids = array_map('intval', array_values($uidMap['pages']));
-
-        foreach (array_chunk($newUids, 1000) as $chunk) {
-            $qb = $this->connectionPool->getQueryBuilderForTable('pages');
-            $pages = $qb->select('*')->from('pages')
-                ->where($qb->expr()->in('uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
-                ->executeQuery()->fetchAllAssociative();
-
-            foreach ($pages as $page) {
-                try {
-                    $newSlug = $this->generateUniqueSlug($slugHelper, $slugConfig, $page);
-                    if ($newSlug !== ($page['slug'] ?? '')) {
-                        $datamap['pages'][(int)$page['uid']] = ['slug' => $newSlug];
-                    }
-                } catch (\Exception $e) {
-                    // Slug konnte nicht erzeugt werden; bestehenden Wert beibehalten.
-                }
-            }
-        }
-
-        if (!empty($datamap)) {
-            $dh = GeneralUtility::makeInstance(DataHandler::class);
-            $dh->start($datamap, []);
-            $this->processInTransaction('pages', $dh->process_datamap(...));
-            $this->recordDataHandlerErrors($dh, 'slug');
-            $this->logger->info('Slugs angepasst', ['count' => count($datamap['pages'])]);
-        }
-    }
-
-    /**
-     * Erzeugt einen für die Ziel-Site eindeutigen Slug, damit beim Einspielen in
-     * einen bestehenden Baum keine Slug-Kollisionen entstehen.
-     *
-     * @param array<string, mixed> $slugConfig
-     * @param array<string, mixed> $page
-     */
-    private function generateUniqueSlug(\TYPO3\CMS\Core\DataHandling\SlugHelper $slugHelper, array $slugConfig, array $page): string
-    {
-        $pid = (int)$page['pid'];
-        $slug = $slugHelper->generate($page, $pid);
-
-        $state = \TYPO3\CMS\Core\DataHandling\Model\RecordStateFactory::forName('pages')
-            ->fromArray($page, $pid, (int)$page['uid']);
-
-        $eval = (string)($slugConfig['eval'] ?? '');
-        if (str_contains($eval, 'uniqueInSite')) {
-            return $slugHelper->buildSlugForUniqueInSite($slug, $state);
-        }
-        if (str_contains($eval, 'uniqueInPid')) {
-            return $slugHelper->buildSlugForUniqueInPid($slug, $state);
-        }
-        if (str_contains($eval, 'uniqueInTable')) {
-            return $slugHelper->buildSlugForUniqueInTable($slug, $state);
-        }
-        return $slug;
-    }
-
     // =========================================================================
     // HILFSMETHODEN
     // =========================================================================
@@ -1003,47 +914,6 @@ class ImportService
     protected function loadAndValidateJson(string $jsonPath): ManifestReader
     {
         return $this->manifestLoader->load($jsonPath);
-    }
-
-    /**
-     * Findet bereits importierte Ziel-Records anhand des Herkunfts-Mappings.
-     * Liefert source_uid => Ziel-Record-Zeile (für die Delta-/Konfliktprüfung).
-     *
-     * @param array<int, array<string, mixed>> $records
-     * @return array<int, array<string, mixed>>
-     */
-    private function findExistingRecordsByMapping(string $sourceId, string $table, array $records): array
-    {
-        $sourceUids = array_column($records, 'uid');
-        if (empty($sourceUids)) {
-            return [];
-        }
-
-        $mapping = $this->uidMapRepository->findTargets($sourceId, $table, array_map('intval', $sourceUids));
-        if (empty($mapping)) {
-            return [];
-        }
-
-        // Ziel-Records laden (nur existierende; gelöschte fallen via Restriction
-        // raus und werden dadurch als neu behandelt).
-        $rowsByTarget = [];
-        foreach (array_chunk(array_values($mapping), 1000) as $chunk) {
-            $qb = $this->connectionPool->getQueryBuilderForTable($table);
-            $rows = $qb->select('*')->from($table)
-                ->where($qb->expr()->in('uid', $qb->createNamedParameter($chunk, Connection::PARAM_INT_ARRAY)))
-                ->executeQuery()->fetchAllAssociative();
-            foreach ($rows as $r) {
-                $rowsByTarget[(int)$r['uid']] = $r;
-            }
-        }
-
-        $map = [];
-        foreach ($mapping as $sourceUid => $targetUid) {
-            if (isset($rowsByTarget[$targetUid])) {
-                $map[(int)$sourceUid] = $rowsByTarget[$targetUid];
-            }
-        }
-        return $map;
     }
 
     /**
@@ -1066,92 +936,6 @@ class ImportService
                     ->update($table, [$parentField => $newParent], ['uid' => $newUid]);
             }
         }
-    }
-
-    /**
-     * Baut die Record-Daten für den DataHandler und filtert dabei Felder heraus,
-     * die in der Zieltabelle nicht (mehr) existieren.
-     */
-    protected function buildRecordData(array $source, string $table = ''): array
-    {
-        $knownColumns = $table !== '' ? $this->getKnownColumns($table) : [];
-        $relationFields = $table !== '' ? $this->getRelationContainerFields($table) : [];
-        $data = [];
-        foreach ($source as $field => $value) {
-            if (in_array($field, $this->excludedFields, true)) {
-                continue;
-            }
-            // Wenn Spalten-Info vorhanden: nur tatsächlich existierende Felder übernehmen
-            if (!empty($knownColumns) && !isset($knownColumns[$field])) {
-                continue;
-            }
-            // Relations-Container (inline/file/category) tragen nur einen Count und werden
-            // separat behandelt (sys_file_reference / IRRE / Registry). Direkt gesetzt würden
-            // sie u. a. den DataMapProcessor bei Übersetzungen brechen (trimExplode auf int).
-            if (isset($relationFields[$field])) {
-                continue;
-            }
-            $data[$field] = $value;
-        }
-        return $data;
-    }
-
-    /**
-     * Relations-Container-Felder (inline/file/category) einer Tabelle – diese tragen nur
-     * einen Zähler und dürfen nicht direkt in die Datamap übernommen werden.
-     *
-     * @return array<string, true> Feldname → true
-     */
-    private function getRelationContainerFields(string $table): array
-    {
-        if (isset($this->relationFieldCache[$table])) {
-            return $this->relationFieldCache[$table];
-        }
-        $fields = [];
-        try {
-            if ($this->tcaSchemaFactory->has($table)) {
-                foreach ($this->tcaSchemaFactory->get($table)->getFields() as $field) {
-                    if (
-                        $field->isType(TableColumnType::INLINE)
-                        || $field->isType(TableColumnType::FILE)
-                        || $field->isType(TableColumnType::CATEGORY)
-                    ) {
-                        $fields[$field->getName()] = true;
-                    }
-                }
-            }
-        } catch (\Throwable) {
-            // TCA nicht verfügbar -> keine Filterung.
-        }
-        $this->relationFieldCache[$table] = $fields;
-        return $fields;
-    }
-
-    /**
-     * Ermittelt die tatsächlich vorhandenen DB-Spalten einer Tabelle (gecacht).
-     *
-     * @return array<string, true> Spaltenname → true
-     */
-    private function getKnownColumns(string $table): array
-    {
-        if (isset($this->knownColumnsCache[$table])) {
-            return $this->knownColumnsCache[$table];
-        }
-        try {
-            $schemaManager = $this->connectionPool
-                ->getConnectionForTable($table)
-                ->createSchemaManager();
-            // DBAL 4 (TYPO3 v13): listTableColumns() entfernt → introspectTable() verwenden.
-            $columns = $schemaManager->introspectTable($table)->getColumns();
-            $map = [];
-            foreach ($columns as $col) {
-                $map[$col->getName()] = true;
-            }
-            $this->knownColumnsCache[$table] = $map;
-        } catch (\Exception $e) {
-            $this->knownColumnsCache[$table] = [];
-        }
-        return $this->knownColumnsCache[$table];
     }
 
     /**
@@ -1204,130 +988,6 @@ class ImportService
             $this->processInTransaction($table, $dh->process_datamap(...));
             $this->recordDataHandlerErrors($dh, 'irre');
         }
-    }
-
-    // =========================================================================
-    // DIFF-ANALYSE
-    // =========================================================================
-
-    /**
-     * @return array{pages:array{new:int,changed:int,identical:int}, tt_content:array{new:int,changed:int,identical:int}, samples:array<string,array<string,mixed>>}
-     */
-    protected function runDiffAnalysis(ManifestReader $manifest, bool $verbose): array
-    {
-        $this->logger->info('=== DIFFERENZ-ANALYSE ===');
-        $sourceId = $manifest->getSourceId();
-
-        // Erste neue/geänderte Records als Beispielzeilen für die Dry-Run-Vorschau merken.
-        $samples = [];
-
-        $nP = $uP = $iP = 0;
-        $this->streamDiffBatches($manifest, 'pages', $sourceId, function (array $p, ?array $existing) use ($verbose, &$nP, &$uP, &$iP, &$samples): void {
-            if ($existing === null) {
-                $nP++;
-                if (!isset($samples['new'])) {
-                    $samples['new'] = ['table' => 'pages', 'title' => (string)($p['title'] ?? ''), 'slug' => (string)($p['slug'] ?? '')];
-                }
-                $this->logger->info('<fg=green>+ NEU</>        | ' . ($p['title'] ?? ''));
-            } elseif (!$this->conflictResolver->isRecordIdentical($p, $existing)) {
-                $uP++;
-                if (!isset($samples['changed'])) {
-                    $samples['changed'] = ['table' => 'pages', 'uid' => (int)$p['uid'], 'field' => $this->firstChangedField($p, $existing)];
-                }
-                $this->logger->info('<fg=yellow>~ GEÄNDERT</>   | ' . ($p['title'] ?? ''));
-                if ($verbose) {
-                    $this->conflictResolver->logFieldDiff($p, $existing, 'pages');
-                }
-            } else {
-                $iP++;
-                $this->logger->info('<fg=blue>= IDENTISCH</>  | ' . ($p['title'] ?? ''));
-            }
-        });
-
-        $nC = $uC = $iC = 0;
-        $this->streamDiffBatches($manifest, 'tt_content', $sourceId, function (array $c, ?array $existing) use ($verbose, &$nC, &$uC, &$iC, &$samples): void {
-            if ($existing === null) {
-                $nC++;
-            } elseif (!$this->conflictResolver->isRecordIdentical($c, $existing)) {
-                $uC++;
-                // tt_content-Beispiel bevorzugen (zeigt Feld-Diff schöner als pages).
-                $samples['changed'] = ['table' => 'tt_content', 'uid' => (int)$c['uid'], 'field' => $this->firstChangedField($c, $existing)];
-                if ($verbose) {
-                    $this->conflictResolver->logFieldDiff($c, $existing, 'tt_content');
-                }
-            } else {
-                $iC++;
-            }
-        });
-
-        $this->logger->info(sprintf('Seiten:  %d neu, %d geändert, %d identisch.', $nP, $uP, $iP));
-        $this->logger->info(sprintf('Inhalte: %d neu, %d geändert, %d identisch.', $nC, $uC, $iC));
-        if ($iP + $iC > 0) {
-            $this->logger->info('Tipp: Mit --delta werden identische Records übersprungen.');
-        }
-
-        return [
-            'pages' => ['new' => $nP, 'changed' => $uP, 'identical' => $iP],
-            'tt_content' => ['new' => $nC, 'changed' => $uC, 'identical' => $iC],
-            'samples' => $samples,
-        ];
-    }
-
-    /**
-     * Streamt eine Tabelle für die Diff-Analyse batch-weise (konstanter Speicher):
-     * pro Batch ein Herkunfts-Mapping-Lookup, dann je Record die Callback mit dem
-     * gefundenen Bestands-Record (oder null = neu).
-     *
-     * @param callable(array<string,mixed>, array<string,mixed>|null): void $onRecord
-     */
-    private function streamDiffBatches(ManifestReader $manifest, string $table, string $sourceId, callable $onRecord): void
-    {
-        $batch = [];
-        foreach ($manifest->eachRecord($table) as $record) {
-            $batch[] = $record;
-            if (count($batch) >= $this->batchSize) {
-                $this->diffBatch($batch, $table, $sourceId, $onRecord);
-                $batch = [];
-            }
-        }
-        if ($batch !== []) {
-            $this->diffBatch($batch, $table, $sourceId, $onRecord);
-        }
-    }
-
-    /**
-     * @param array<int, array<string,mixed>> $batch
-     * @param callable(array<string,mixed>, array<string,mixed>|null): void $onRecord
-     */
-    private function diffBatch(array $batch, string $table, string $sourceId, callable $onRecord): void
-    {
-        $existing = $this->findExistingRecordsByMapping($sourceId, $table, $batch);
-        foreach ($batch as $record) {
-            $onRecord($record, $existing[(int)$record['uid']] ?? null);
-        }
-    }
-
-    /**
-     * Erstes inhaltlich abweichende Feld zwischen Import- und Bestands-Record (für die
-     * Dry-Run-Vorschau, z. B. „bodytext changed"); Systemfelder bleiben außen vor.
-     *
-     * @param array<string, mixed> $new
-     * @param array<string, mixed> $existing
-     */
-    private function firstChangedField(array $new, array $existing): string
-    {
-        // Ordnungs-/Volatile-Felder driften oft als Import-Artefakt – das aussagekräftige
-        // Inhaltsfeld (z. B. bodytext) ist als Diff-Beispiel relevanter.
-        $skip = ['sorting', 'sorting_foreign', 'l10n_diffsource'];
-        foreach ($new as $field => $value) {
-            if (in_array($field, $this->excludedFields, true) || in_array($field, $skip, true) || is_array($value)) {
-                continue;
-            }
-            if ((string)$value !== (string)($existing[$field] ?? '')) {
-                return (string)$field;
-            }
-        }
-        return 'content';
     }
 
     private function writeTransactionLog(string $id, int $ws, string $file, array $stats, bool $delta): void

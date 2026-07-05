@@ -1,5 +1,16 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Intern
+- **`ImportService` zerlegt** (Prüfbericht F-13, reines Refactoring ohne Verhaltensänderung):
+  Aufteilung in fokussierte Kollaboratoren `RecordDataBuilder` (Record-Aufbereitung,
+  von der Registry mitgenutzt statt Duplikat), `ExistingRecordLocator` (Herkunfts-Mapping-
+  Lookup, von Import + Diff geteilt), `DiffAnalysisService` (Dry-Run-Differenzanalyse) und
+  `SlugRegenerationService`. `ImportService` von ~1360 auf ~1020 Zeilen; der transaktionale
+  Streaming-Schreibkern blieb unangetastet. Abgesichert über die Functional-Suite
+  (SQLite + MariaDB) und den Real-World-E2E.
+
 ## 2.3.0 — Streamender Import, Push-Transport & Registry-Delta (2026-07-05)
 
 Feature-Release. **Kein Schema-Update nötig** (keine neuen DB-Spalten). Abgesichert
