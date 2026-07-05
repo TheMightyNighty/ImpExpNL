@@ -228,6 +228,41 @@ class IntegrityServiceTest extends TestCase
         self::assertFalse($this->subject->isHmacSignature(null));
     }
 
+    #[Test]
+    public function streamingHashEqualsArrayHash(): void
+    {
+        // Der streamende Hash (für JSONL) muss bei identischer Eingabe exakt denselben
+        // Wert liefern wie der Array-Weg (computeHash via sign()).
+        $data = $this->sampleData();
+
+        foreach ([null, 'geheim'] as $key) {
+            if ($key !== null) {
+                putenv('IMPEXPNL_SIGNING_KEY=' . $key);
+            } else {
+                putenv('IMPEXPNL_SIGNING_KEY');
+            }
+            $subject = new IntegrityService();
+            $expected = $subject->sign($data);
+
+            // Streamende Tabellen in ksort-Reihenfolge, pro Aufruf FRISCH erzeugt
+            // (Generatoren sind nur einmal iterierbar; die Rotations-Verifikation kann
+            // die Closure mehrfach aufrufen – so wie der ManifestLoader es tut).
+            $tableNames = array_keys($data);
+            sort($tableNames);
+            $makeTables = function () use ($tableNames, $data): \Generator {
+                foreach ($tableNames as $name) {
+                    yield [$name, $data[$name]];
+                }
+            };
+
+            self::assertTrue(
+                $subject->verifyStreaming($expected, fn(?string $k): string => $subject->computeHashStreaming($makeTables(), $k)),
+                'Streaming-Hash muss die Array-Signatur verifizieren (key=' . var_export($key, true) . ')'
+            );
+        }
+        putenv('IMPEXPNL_SIGNING_KEY');
+    }
+
     private function sampleData(): array
     {
         return [

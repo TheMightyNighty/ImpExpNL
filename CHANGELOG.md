@@ -1,8 +1,33 @@
 # Changelog
 
-## Unveröffentlicht
+## 2.3.0 — Streamender Import, Push-Transport & Registry-Delta (2026-07-05)
+
+Feature-Release. **Kein Schema-Update nötig** (keine neuen DB-Spalten). Abgesichert
+mit der Functional-Suite (SQLite + MariaDB) und dem Real-World-E2E über zwei Instanzen
+(inkl. neuer push/Inbox-Stufe).
 
 ### Neu
+- **Streamender Import (JSONL):** JSONL-Importdateien werden records-weise verarbeitet,
+  statt die dekodierte Datei komplett in den Speicher zu laden. Der Peak ist damit von
+  der Datei-*Größe* entkoppelt und hängt nur noch an der Record-*Zahl* (UID-Map, ints).
+  Nachweis (isoliert, 43-MB-JSONL / 180 000 Records): Voll-Dekodierung ~276 MB vs.
+  Streaming ~4 MB Peak; der Import läuft dadurch auch unter knappem `memory_limit`.
+  JSON bleibt unverändert in-memory (mit Größen-/Memory-Guard). Umgesetzt über
+  `JsonlStreamReader` + `ManifestReader`-Abstraktion (In-Memory für JSON, Streaming
+  für JSONL) inkl. streamender Prüfsummen-/Signaturverifikation ohne Vollparse.
+  Hinweis: Registry-, FAL- und IRRE-Tabellen (klein) werden weiterhin materialisiert;
+  gestreamt werden `pages`/`tt_content` (der Speicherhebel). Das Post-Import-Event
+  (`ModifyImportDataEvent`) trägt jetzt die relationalen Aux-Daten plus die vollständige
+  UID-Map – nicht mehr den pages/tt_content-Bulk (dessen Ergebnis steht in der UID-Map).
+- **Ausgehender Transport `push` + Inbox:** `--transport=push` erzeugt ein signiertes
+  Bundle und legt es **atomar** (`.incoming/*.part` → `rename`) in eine Outbox ab
+  (`--outbox=<pfad>` oder `assetTransports.<name>.outbox`); der Transfer über die
+  Zonengrenze bleibt Operator-Sache (kein Netzwerk-/Empfangskanal im Core).
+  `impexpnl:inbox` listet eingegangene Pakete **read-only** (`--json`); der Import bleibt
+  ein separater, expliziter Schritt (Empfang ≠ Anwendung, kein Auto-Import).
+- **`--transport` löst benannte `assetTransports` auf:** Beim Export wird ein benannter
+  Transport-Eintrag aus der YAML-Config (inkl. dessen Optionen) angewandt; CLI-Optionen
+  haben Vorrang. Bisher wirkte auf der Export-Seite nur der reine Typ.
 - **Delta-Idempotenz für Registry-`record`-Tabellen (Multi-Source):** Im
   Delta-Modus werden bereits importierte Registry-Records (z. B. `sys_redirect`,
   News, tt_address) über das Herkunfts-Mapping `tx_impexpnl_uid_map` aufgelöst

@@ -604,6 +604,25 @@ Für den Transfer aus einer niedriger in eine höher eingestufte Zone (Behörden
 
 **Rollen:** Der Export (Low-Side) signiert; die Schleuse transportiert nur; das Zielsystem verifiziert und entscheidet (Dry-Run-Gate, Konflikt-Policy). Für High→Low-Exporte (z. B. Prod→Dev) zusätzlich `export.sanitize` mit `hash_key` aktivieren, damit personenbezogene Daten die höhere Zone nicht verlassen.
 
+### Ausgehender Transfer (`push`) und Inbox
+
+Der Transport `push` legt das signierte Bundle **atomar** in ein konfiguriertes Outbox-Verzeichnis (z. B. eine gemountete Schleuse) ab — geschrieben wird zunächst nach `<outbox>/.incoming/<name>.part`, dann per `rename()` auf `<outbox>/<name>.tar.gz`. Ein Schleusenprozess sieht dadurch nie eine unvollständige Datei. ImpExpNL öffnet dabei **keinen** Netzwerk- oder Empfangskanal; der eigentliche Transfer über die Zonengrenze bleibt Sache des Betriebs (rsync/SFTP/Datendiode).
+
+```bash
+# Quelle: signiertes Bundle in die Outbox schieben
+vendor/bin/typo3 impexpnl:export 123 var/export.jsonl --transport=push
+# (Transport-Config: assetTransports.push_outbox.outbox in imp_exp_nl.yaml)
+```
+
+Auf der Zielseite listet `impexpnl:inbox` eingegangene Pakete — **read-only, ohne Auto-Import**:
+
+```bash
+vendor/bin/typo3 impexpnl:inbox --json        # transfer.inbox_path aus der Config
+vendor/bin/typo3 impexpnl:inbox /pfad/inbox   # oder explizites Verzeichnis
+```
+
+**Empfang ≠ Anwendung:** Ein Paket in der Inbox löst nie selbsttätig einen Import aus. Der Import bleibt der bestehende explizite Schritt (`impexpnl:import <inbox>/<paket> <pid>`) mit voller Signatur-/Dry-Run-Prüfung — ein entfernter Akteur, der eine Datei in die Inbox legt, kann damit keine DB-Schreibzugriffe auslösen.
+
 ---
 
 ## Praxis-Szenarien
@@ -1001,6 +1020,7 @@ Tests/
 ├── Unit/
 │   ├── ConfigurationSchemaTest.php        # YAML-Config gegen JSON-Schema
 │   ├── Domain/                            # ConflictStrategy, ExportManifest,
+│   │                                      # ManifestReader (In-Memory/Streaming),
 │   │                                      # PageLinkRewriter, UidMap
 │   └── Service/                           # BundleImport (Härtung), Configuration,
 │                                          # ConflictResolver, Export, Import,
@@ -1035,11 +1055,11 @@ imp_exp_nl/
 │   │                     # PageLinkRewriter, SystemFields, TransferProfile, UidMap
 │   ├── Event/            # ModifyExportDataEvent, ModifyImportDataEvent (PSR-14)
 │   ├── Exception/        # typisierte Fehler mit Exit-Codes (Lock, Integrity, …)
-│   ├── Service/          # Export/Import/Rollback, ManifestLoader (Eingangs-
-│   │                     # Validierung), Integrity (HMAC/Key-Rotation), Locks,
-│   │                     # TableRegistry, AssetManifest, Sanitize, Configuration,
+│   ├── Service/          # Export/Import/Rollback, ManifestLoader + JsonlStreamReader
+│   │                     # (streamender JSONL-Import), Integrity (HMAC/Key-Rotation),
+│   │                     # Locks, TableRegistry, AssetManifest, Sanitize, Configuration,
 │   │                     # RootlineCacheGuard, Repositories (ImportLog, UidMap)
-│   └── Transport/        # external/bundle-Transport + Factory
+│   └── Transport/        # external/bundle/push-Transport + Factory
 ├── Configuration/
 │   ├── Services.yaml
 │   └── Schema/ImpExpNL.schema.json    # JSON-Schema für YAML-Autocomplete/CI

@@ -21,14 +21,15 @@ use Robbi\ImpExpNL\Exception\ConfigException;
 
 /**
  * Wählt den Asset-Transport anhand des Typ-Schlüssels. Default ist `external`
- * (kein zusätzliches Artefakt). Neue Transporte (z. B. `http-pull`, `s3`) werden
- * hier ergänzt – das übrige Export-Flow bleibt unberührt.
+ * (kein zusätzliches Artefakt). Neue Transporte werden hier ergänzt – das übrige
+ * Export-Flow bleibt unberührt.
  */
 class AssetTransportFactory
 {
     public function __construct(
         private readonly ExternalTransport $external,
-        private readonly BundleTransport $bundle
+        private readonly BundleTransport $bundle,
+        private readonly PushTransport $push
     ) {}
 
     public function get(string $type): TransportInterface
@@ -36,8 +37,9 @@ class AssetTransportFactory
         return match ($type) {
             '', 'external' => $this->external,
             'bundle' => $this->bundle,
+            'push' => $this->push,
             default => throw new ConfigException(sprintf(
-                "Unbekannter Asset-Transport '%s'. Erlaubt: external, bundle.",
+                "Unbekannter Asset-Transport '%s'. Erlaubt: external, bundle, push.",
                 $type
             )),
         };

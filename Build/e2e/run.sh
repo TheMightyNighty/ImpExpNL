@@ -161,5 +161,24 @@ END_CONTENT=$(sql "$DBT" "SELECT COUNT(*) FROM tt_content WHERE deleted=0")
 [ "$(sql "$DBT" "SELECT COUNT(*) FROM tx_impexpnl_lock")" = "0" ] || fail "Lock nach Abschluss nicht frei"
 echo "    Baseline wiederhergestellt ($END_PAGES Seiten, $END_CONTENT Inhalte), Lock frei ✓"
 
+step "10/10 Ausgehender Transport (push) → Outbox → Inbox (kein Auto-Import)"
+docker exec "$SRC" bash -c 'rm -rf /var/www/var/e2e_outbox && mkdir -p /var/www/var/e2e_outbox'
+t3 "$SRC" impexpnl:export 1 /var/www/var/e2e_push.jsonl --transport=push \
+    --outbox=/var/www/var/e2e_outbox --json > "$TMP/push.json" 2>/dev/null || true
+PUSHED=$(docker exec "$SRC" bash -c 'ls /var/www/var/e2e_outbox/*.tar.gz 2>/dev/null | head -1 || true')
+[ -n "$PUSHED" ] || fail "Push-Transport hat kein Bundle in der Outbox abgelegt: $(cat "$TMP/push.json")"
+STAGING=$(docker exec "$SRC" bash -c 'ls /var/www/var/e2e_outbox/.incoming/*.part 2>/dev/null || true')
+[ -z "$STAGING" ] || fail "Push-Transport hinterließ .part-Reste (Ablage nicht atomar)"
+# Schleuse simulieren: Paket in die Ziel-Inbox übertragen.
+docker exec "$TGT" bash -c 'rm -rf /var/www/var/e2e_inbox && mkdir -p /var/www/var/e2e_inbox'
+docker cp -q "$SRC:$PUSHED" "$TMP/pushed.tar.gz"
+docker cp -q "$TMP/pushed.tar.gz" "$TGT:/var/www/var/e2e_inbox/pushed.tar.gz"
+INBOX_JSON=$(docker exec "$TGT" php /var/www/vendor/bin/typo3 impexpnl:inbox /var/www/var/e2e_inbox --json 2>/dev/null)
+echo "$INBOX_JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["success"] and any(p["name"]=="pushed.tar.gz" for p in d["packages"]), "Inbox listet das Paket nicht"' \
+    || fail "impexpnl:inbox listet das Paket nicht: $INBOX_JSON"
+# Empfang ≠ Anwendung: kein neuer Import im Protokoll durch das Auflisten.
+[ "$(sql "$DBT" "SELECT COUNT(*) FROM pages WHERE deleted=0")" = "$BASE_PAGES" ] || fail "Inbox-Auflistung hat Daten verändert (Auto-Import?)"
+echo "    push → Outbox (atomar) → Inbox gelistet, kein Auto-Import ✓"
+
 echo
-echo "E2E-Lauf ERFOLGREICH: Export → Schleuse → Verifikation → Import → Delta-No-Op → SIGKILL/undo → Rollback."
+echo "E2E-Lauf ERFOLGREICH: Export → Schleuse → Verifikation → Import → Delta-No-Op → SIGKILL/undo → Rollback → push/Inbox."

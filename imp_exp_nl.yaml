@@ -107,7 +107,7 @@ impexpnl:
 #
 # assetTransports = das "Wie" (Verpackung), transferProfiles = das "Was"/Policy.
 # Auswahl beim Import:  impexpnl:import <file> <pid> --transfer-profile=<name>
-# Beim Export wählt der Transport-Typ die Verpackung: --transport=external|bundle
+# Beim Export wählt der Transport-Typ die Verpackung: --transport=external|bundle|push
 # ============================================================================
 
 assetTransports:
@@ -116,6 +116,18 @@ assetTransports:
   bundle_full:
     type: bundle              # self-contained .tar.gz inkl. der Asset-Dateien
     includeAssets: true
+  push_outbox:
+    type: push                # signiertes Bundle atomar in eine Outbox ablegen
+    includeAssets: true
+    # outbox: existierendes, beschreibbares Verzeichnis (z. B. gemountete Schleuse).
+    # Der Transfer über die Zonengrenze bleibt Sache des Betriebs (rsync/SFTP/Datendiode);
+    # ImpExpNL öffnet keinen Netzwerk-/Empfangskanal. Ablage ist atomar (.incoming/*.part → rename).
+    outbox: /var/www/html/var/impexpnl_outbox
+
+# Read-only-Inbox für eingegangene Pakete (impexpnl:inbox listet sie; der Import bleibt
+# ein separater, expliziter Schritt – kein Auto-Import bei Eintreffen).
+transfer:
+  inbox_path: ''              # z. B. /var/www/html/var/impexpnl_inbox
 
 transferProfiles:
   # Inhalte von Produktion nach Dev holen: Überschreiben ok, nur auf Dev/Test erlaubt.

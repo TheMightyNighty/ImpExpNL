@@ -32,7 +32,7 @@ use TYPO3\CMS\Core\Schema\TcaSchemaFactory;
 class ConfigValidationService
 {
     private const VALID_TYPES = ['mm', 'record'];
-    private const VALID_TRANSPORT_TYPES = ['external', 'bundle'];
+    private const VALID_TRANSPORT_TYPES = ['external', 'bundle', 'push'];
 
     /** @var array<string, array<string, true>> Spalten je Tabelle (Cache). */
     private array $columnCache = [];

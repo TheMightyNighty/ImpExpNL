@@ -20,7 +20,7 @@ namespace Robbi\ImpExpNL\Service;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Psr\Log\LoggerInterface;
 use Robbi\ImpExpNL\Domain\ConflictStrategy;
-use Robbi\ImpExpNL\Domain\ExportManifest;
+use Robbi\ImpExpNL\Domain\ManifestReader;
 use Robbi\ImpExpNL\Domain\SystemFields;
 use Robbi\ImpExpNL\Domain\UidMap;
 use Robbi\ImpExpNL\Event\ModifyImportDataEvent;
@@ -62,6 +62,21 @@ class ImportService
 
     /** Anzahl der vom DataHandler gemeldeten Fehler. */
     private int $dataHandlerErrors = 0;
+
+    /**
+     * Laufende Import-Statistik (transient während processImport). Als Member-Feld,
+     * damit die über Closures aufgerufenen Batch-Builder sie fortschreiben können.
+     *
+     * @var array<string, int>
+     */
+    private array $importStats = [];
+
+    /**
+     * l10n-Eltern-Nachpass: Quell-UID => Quell-Eltern-UID (transient während processImport).
+     *
+     * @var array{pages: array<int,int>, tt_content: array<int,int>}
+     */
+    private array $l10nFixups = ['pages' => [], 'tt_content' => []];
 
     /**
      * Felder die beim Import grundsätzlich ignoriert werden (Systemfelder).
@@ -281,7 +296,7 @@ class ImportService
      *
      * @return array{new:int, updated:int, skipped:int, conflict_skipped:int, errors:int, assets_missing:int}
      */
-    private function processImport(ExportManifest $manifest, int $targetPid, array $options, array $config): array
+    private function processImport(ManifestReader $manifest, int $targetPid, array $options, array $config): array
     {
         $workspaceId = (int)($options['workspaceId'] ?? 0);
         $deltaMode = (bool)($options['deltaMode'] ?? false);
@@ -290,159 +305,65 @@ class ImportService
         $onProgress = $options['onProgress'] ?? null;
         $onConflictAsk = $options['onConflictAsk'] ?? null;
 
-        $pages = $manifest->getPages();
-        $ttContent = $manifest->getTtContent();
         $sourceId = $manifest->getSourceId();
 
-        $existingPageMap = $this->findExistingRecordsByMapping($sourceId, 'pages', $pages);
-        $existingContentMap = $this->findExistingRecordsByMapping($sourceId, 'tt_content', $ttContent);
+        // Containment-Prüfungen brauchen nur die uid-Mengen (ints) – nicht den
+        // Record-Inhalt. Als Set (uid => true) für O(1)-Lookups.
+        $exportedPageUids = array_fill_keys($manifest->collectUids('pages'), true);
+        $exportedContentUids = array_fill_keys($manifest->collectUids('tt_content'), true);
 
-        $exportedPageUids = array_column($pages, 'uid');
-        $exportedContentUids = array_column($ttContent, 'uid');
-        $stats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0, 'errors' => 0, 'assets_missing' => 0];
-        // Übersetzungen: Quell-UID => Quell-Eltern-UID, für den l10n-Eltern-Nachpass.
-        $l10nFixups = ['pages' => [], 'tt_content' => []];
+        // Statistik + l10n-Nachpass liegen für die Dauer der Verarbeitung in
+        // Member-Feldern (die Batch-Builder werden über Closures aufgerufen; per-Wert
+        // capturende Arrow-Funktionen könnten sie sonst nicht zurückschreiben).
+        $this->importStats = ['new' => 0, 'updated' => 0, 'skipped' => 0, 'conflict_skipped' => 0, 'errors' => 0, 'assets_missing' => 0];
+        $this->l10nFixups = ['pages' => [], 'tt_content' => []];
 
-        $pageDatamap = [];
-        foreach ($pages as $page) {
-            $oldUid = (int)$page['uid'];
-            $recordData = $this->buildRecordData($page, 'pages');
+        // Seiten zuerst (streamend in Batches), damit ihre UIDs für die Content-pids
+        // vorliegen. Peak = ein Batch Record-Content statt des ganzen Baums.
+        $pageBatchTotal = (int)ceil(count($exportedPageUids) / max(1, $this->batchSize));
+        $this->streamRecordsInBatches(
+            $manifest,
+            'pages',
+            $pageBatchTotal,
+            $onProgress,
+            fn(array $batch): array => $this->buildPageBatchDatamap(
+                $batch,
+                $sourceId,
+                $targetPid,
+                $exportedPageUids,
+                $deltaMode,
+                $conflictStrategy,
+                $verbose,
+                $onConflictAsk
+            )
+        );
 
-            if ($deltaMode && isset($existingPageMap[$oldUid])) {
-                $existingUid = (int)$existingPageMap[$oldUid]['uid'];
+        // Inhalte (streamend): alle Seiten sind bereits verarbeitet, ihre Ziel-UIDs
+        // stehen in der uidMap → Content-pids werden direkt aufgelöst.
+        $contentBatchTotal = (int)ceil(count($exportedContentUids) / max(1, $this->batchSize));
+        $this->streamRecordsInBatches(
+            $manifest,
+            'tt_content',
+            $contentBatchTotal,
+            $onProgress,
+            fn(array $batch): array => $this->buildContentBatchDatamap(
+                $batch,
+                $sourceId,
+                $targetPid,
+                $exportedPageUids,
+                $exportedContentUids,
+                $deltaMode,
+                $conflictStrategy,
+                $onConflictAsk,
+                $config
+            )
+        );
 
-                if ($this->conflictResolver->isRecordIdentical($page, $existingPageMap[$oldUid])) {
-                    $this->uidMap->set('pages', $oldUid, $existingUid);
-                    $stats['skipped']++;
-                    continue;
-                }
-
-                $conflict = $this->conflictResolver->detectConflict($page, $existingPageMap[$oldUid]);
-                if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
-                    throw new ConflictException('Konflikt (pages uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
-                }
-                if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
-                    $this->uidMap->set('pages', $oldUid, $existingUid);
-                    $stats['conflict_skipped']++;
-                    $this->logger->warning('Konflikt übersprungen: ' . $conflict);
-                    continue;
-                }
-                if ($conflict && $conflictStrategy === ConflictStrategy::Ask && $onConflictAsk) {
-                    if (!$onConflictAsk(['message' => $conflict, 'table' => 'pages', 'uid' => $existingUid])) {
-                        $this->uidMap->set('pages', $oldUid, $existingUid);
-                        $stats['conflict_skipped']++;
-                        continue;
-                    }
-                }
-
-                if ($verbose && $conflict) {
-                    $this->conflictResolver->logFieldDiff($page, $existingPageMap[$oldUid], 'pages');
-                }
-
-                $pageDatamap[$existingUid] = $recordData;
-                $this->uidMap->set('pages', $oldUid, $existingUid);
-                $stats['updated']++;
-                continue;
-            }
-
-            $newIdString = self::NEW_PAGE_PREFIX . $oldUid;
-            $oldPid = (int)$page['pid'];
-            $recordData['pid'] = in_array($oldPid, $exportedPageUids, true) ? self::NEW_PAGE_PREFIX . $oldPid : $targetPid;
-
-            if (((int)($page['sys_language_uid'] ?? 0) > 0) && !empty($page['l10n_parent']) && $page['l10n_parent'] > 0) {
-                $pOld = (int)$page['l10n_parent'];
-                $recordData['l10n_parent'] = $this->uidMap->get('pages', $pOld) ?? self::NEW_PAGE_PREFIX . $pOld;
-                $l10nFixups['pages'][$oldUid] = $pOld;
-            }
-
-            $pageDatamap[$newIdString] = $recordData;
-            $stats['new']++;
-        }
-
-        $contentDatamap = [];
-        foreach ($ttContent as $content) {
-            $oldContentUid = (int)$content['uid'];
-            $oldPageId = (int)$content['pid'];
-            if (!in_array($oldPageId, $exportedPageUids, true)) {
-                continue;
-            }
-
-            $recordData = $this->buildRecordData($content, 'tt_content');
-
-            if ($deltaMode && isset($existingContentMap[$oldContentUid])) {
-                $existingUid = (int)$existingContentMap[$oldContentUid]['uid'];
-
-                if ($this->conflictResolver->isRecordIdentical($content, $existingContentMap[$oldContentUid])) {
-                    $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
-                    $stats['skipped']++;
-                    continue;
-                }
-
-                $conflict = $this->conflictResolver->detectConflict($content, $existingContentMap[$oldContentUid]);
-                if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
-                    throw new ConflictException('Konflikt (tt_content uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
-                }
-                if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
-                    $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
-                    $stats['conflict_skipped']++;
-                    continue;
-                }
-                if ($conflict && $conflictStrategy === ConflictStrategy::Ask && $onConflictAsk) {
-                    if (!$onConflictAsk(['message' => $conflict, 'table' => 'tt_content', 'uid' => $existingUid])) {
-                        $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
-                        $stats['conflict_skipped']++;
-                        continue;
-                    }
-                }
-
-                $contentDatamap[$existingUid] = $recordData;
-                $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
-                $stats['updated']++;
-                continue;
-            }
-
-            $newId = self::NEW_CONTENT_PREFIX . $oldContentUid;
-            $recordData['pid'] = $this->uidMap->get('pages', $oldPageId) ?? self::NEW_PAGE_PREFIX . $oldPageId;
-
-            if (((int)($content['sys_language_uid'] ?? 0) > 0) && !empty($content['l18n_parent']) && $content['l18n_parent'] > 0) {
-                $pOld = (int)$content['l18n_parent'];
-                $recordData['l18n_parent'] = $this->uidMap->get('tt_content', $pOld) ?? self::NEW_CONTENT_PREFIX . $pOld;
-                $l10nFixups['tt_content'][$oldContentUid] = $pOld;
-            }
-
-            if (!empty($config['import']['container_support']) && !empty($content['tx_container_parent'])
-                && in_array((int)$content['tx_container_parent'], $exportedContentUids, true)) {
-                $cOld = (int)$content['tx_container_parent'];
-                $recordData['tx_container_parent'] = $this->uidMap->get('tt_content', $cOld) ?? self::NEW_CONTENT_PREFIX . $cOld;
-            }
-
-            $contentDatamap[$newId] = $recordData;
-            $stats['new']++;
-        }
-
-        // Seiten zuerst, damit ihre UIDs für die Content-pids vorliegen.
-        $this->executeBatchedDataHandler('pages', $pageDatamap, $onProgress);
-
-        // Platzhalter-pids der Inhalte auf die nun bekannten Seiten-UIDs auflösen.
-        foreach ($contentDatamap as $newId => &$recordData) {
-            if (!isset($recordData['pid'])) {
-                continue;
-            }
-            if (is_string($recordData['pid']) && str_starts_with($recordData['pid'], self::NEW_PAGE_PREFIX)) {
-                $oldPageUid = (int)str_replace(self::NEW_PAGE_PREFIX, '', $recordData['pid']);
-                $recordData['pid'] = (int)($this->uidMap->get('pages', $oldPageUid) ?? $targetPid);
-            }
-            if (!is_int($recordData['pid'])) {
-                $recordData['pid'] = (int)$recordData['pid'];
-            }
-        }
-        unset($recordData);
-
-        $this->executeBatchedDataHandler('tt_content', $contentDatamap, $onProgress);
+        $stats = $this->importStats;
 
         // l10n-Eltern auflösen: der NEW_-Platzhalter im l10n_parent/l18n_parent wird vom
         // DataHandler nicht ersetzt, daher hier mit den nun bekannten Ziel-UIDs nachziehen.
-        $this->applyL10nFixups($l10nFixups);
+        $this->applyL10nFixups($this->l10nFixups);
 
         // Sub-Services arbeiten weiterhin auf dem Array (teils mutierend per Referenz).
         // Wir materialisieren einmal, lassen sie ihre Ergänzungen vornehmen und
@@ -464,14 +385,16 @@ class ImportService
             $this->importInlineRelations($manifest->getIrreRelations(), $uidArray);
         }
 
-        $rawData = $manifest->toArray();
+        // Registry + relationale Bereiche: die kleineren Tabellen (kein pages/tt_content-
+        // Bulk). Im Streaming-Fall einmalig materialisiert, im JSON-Fall aus dem Array.
+        $auxData = $manifest->getAuxiliaryData();
         $allowedTables = $options['allowedTables'] ?? null;
         $createdRegistry = [];
         $this->dataHandlerErrors += $this->tableRegistry->importRegisteredTables(
-            $rawData,
+            $auxData,
             $uidArray,
             is_array($allowedTables) ? $allowedTables : null,
-            $manifest->getSourceId(),
+            $sourceId,
             $deltaMode,
             $createdRegistry
         );
@@ -480,10 +403,180 @@ class ImportService
 
         $this->uidMap = UidMap::fromArray($uidArray);
         $this->rollbackMap = $this->buildRollbackMap($uidArray, $createdRegistry);
-        $this->eventDispatcher->dispatch(new ModifyImportDataEvent($rawData, $uidArray));
+        // Post-Import-Event: die vollständige UID-Map plus die relationalen Aux-Daten.
+        // pages/tt_content-Bulk wird bewusst nicht erneut mitgegeben – ihr Ergebnis
+        // steht vollständig in der UID-Map (siehe ManifestReader::getAuxiliaryData()).
+        $this->eventDispatcher->dispatch(new ModifyImportDataEvent($auxData, $uidArray));
 
         $stats['errors'] = $this->dataHandlerErrors;
         return $stats;
+    }
+
+    /**
+     * Streamt die Records einer Tabelle in Batches und führt jeden Batch sofort aus.
+     * Peak-Speicher = ein Batch Record-Content (die Datei selbst wird nicht komplett
+     * gehalten). `$buildDatamap` baut aus einem rohen Record-Batch das DataHandler-Datamap.
+     *
+     * @param callable(array<int, array<string,mixed>>): array<string|int, array<string,mixed>> $buildDatamap
+     */
+    private function streamRecordsInBatches(ManifestReader $manifest, string $table, int $batchTotal, ?callable $onProgress, callable $buildDatamap): void
+    {
+        $batch = [];
+        $index = 0;
+        foreach ($manifest->eachRecord($table) as $record) {
+            $batch[] = $record;
+            if (count($batch) >= $this->batchSize) {
+                $this->executeDataHandlerBatch($table, $buildDatamap($batch), $onProgress, ++$index, $batchTotal);
+                $batch = [];
+            }
+        }
+        if ($batch !== []) {
+            $this->executeDataHandlerBatch($table, $buildDatamap($batch), $onProgress, ++$index, $batchTotal);
+        }
+    }
+
+    /**
+     * Baut das Seiten-Datamap eines Batches (Delta/Konflikt/Neu) und schreibt
+     * Statistik und l10n-Nachpass in die Member-Felder fort.
+     *
+     * @param array<int, array<string,mixed>> $batch
+     * @param array<int, true> $exportedPageUids
+     * @return array<string|int, array<string,mixed>>
+     */
+    private function buildPageBatchDatamap(array $batch, string $sourceId, int $targetPid, array $exportedPageUids, bool $deltaMode, ConflictStrategy $conflictStrategy, bool $verbose, ?callable $onConflictAsk): array
+    {
+        $existingPageMap = $deltaMode ? $this->findExistingRecordsByMapping($sourceId, 'pages', $batch) : [];
+        $datamap = [];
+        foreach ($batch as $page) {
+            $oldUid = (int)$page['uid'];
+            $recordData = $this->buildRecordData($page, 'pages');
+
+            if ($deltaMode && isset($existingPageMap[$oldUid])) {
+                $existingUid = (int)$existingPageMap[$oldUid]['uid'];
+
+                if ($this->conflictResolver->isRecordIdentical($page, $existingPageMap[$oldUid])) {
+                    $this->uidMap->set('pages', $oldUid, $existingUid);
+                    $this->importStats['skipped']++;
+                    continue;
+                }
+
+                $conflict = $this->conflictResolver->detectConflict($page, $existingPageMap[$oldUid]);
+                if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
+                    throw new ConflictException('Konflikt (pages uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
+                }
+                if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
+                    $this->uidMap->set('pages', $oldUid, $existingUid);
+                    $this->importStats['conflict_skipped']++;
+                    $this->logger->warning('Konflikt übersprungen: ' . $conflict);
+                    continue;
+                }
+                if ($conflict && $conflictStrategy === ConflictStrategy::Ask && $onConflictAsk) {
+                    if (!$onConflictAsk(['message' => $conflict, 'table' => 'pages', 'uid' => $existingUid])) {
+                        $this->uidMap->set('pages', $oldUid, $existingUid);
+                        $this->importStats['conflict_skipped']++;
+                        continue;
+                    }
+                }
+
+                if ($verbose && $conflict) {
+                    $this->conflictResolver->logFieldDiff($page, $existingPageMap[$oldUid], 'pages');
+                }
+
+                $datamap[$existingUid] = $recordData;
+                $this->uidMap->set('pages', $oldUid, $existingUid);
+                $this->importStats['updated']++;
+                continue;
+            }
+
+            $oldPid = (int)$page['pid'];
+            $recordData['pid'] = isset($exportedPageUids[$oldPid]) ? self::NEW_PAGE_PREFIX . $oldPid : $targetPid;
+
+            if (((int)($page['sys_language_uid'] ?? 0) > 0) && !empty($page['l10n_parent']) && $page['l10n_parent'] > 0) {
+                $pOld = (int)$page['l10n_parent'];
+                $recordData['l10n_parent'] = $this->uidMap->get('pages', $pOld) ?? self::NEW_PAGE_PREFIX . $pOld;
+                $this->l10nFixups['pages'][$oldUid] = $pOld;
+            }
+
+            $datamap[self::NEW_PAGE_PREFIX . $oldUid] = $recordData;
+            $this->importStats['new']++;
+        }
+        return $datamap;
+    }
+
+    /**
+     * Baut das Inhalts-Datamap eines Batches. Da die Seiten vollständig verarbeitet
+     * sind, werden Content-pids direkt aus der uidMap aufgelöst.
+     *
+     * @param array<int, array<string,mixed>> $batch
+     * @param array<int, true> $exportedPageUids
+     * @param array<int, true> $exportedContentUids
+     * @return array<string|int, array<string,mixed>>
+     */
+    private function buildContentBatchDatamap(array $batch, string $sourceId, int $targetPid, array $exportedPageUids, array $exportedContentUids, bool $deltaMode, ConflictStrategy $conflictStrategy, ?callable $onConflictAsk, array $config): array
+    {
+        $existingContentMap = $deltaMode ? $this->findExistingRecordsByMapping($sourceId, 'tt_content', $batch) : [];
+        $datamap = [];
+        foreach ($batch as $content) {
+            $oldContentUid = (int)$content['uid'];
+            $oldPageId = (int)$content['pid'];
+            if (!isset($exportedPageUids[$oldPageId])) {
+                continue;
+            }
+
+            $recordData = $this->buildRecordData($content, 'tt_content');
+
+            if ($deltaMode && isset($existingContentMap[$oldContentUid])) {
+                $existingUid = (int)$existingContentMap[$oldContentUid]['uid'];
+
+                if ($this->conflictResolver->isRecordIdentical($content, $existingContentMap[$oldContentUid])) {
+                    $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
+                    $this->importStats['skipped']++;
+                    continue;
+                }
+
+                $conflict = $this->conflictResolver->detectConflict($content, $existingContentMap[$oldContentUid]);
+                if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
+                    throw new ConflictException('Konflikt (tt_content uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
+                }
+                if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
+                    $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
+                    $this->importStats['conflict_skipped']++;
+                    continue;
+                }
+                if ($conflict && $conflictStrategy === ConflictStrategy::Ask && $onConflictAsk) {
+                    if (!$onConflictAsk(['message' => $conflict, 'table' => 'tt_content', 'uid' => $existingUid])) {
+                        $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
+                        $this->importStats['conflict_skipped']++;
+                        continue;
+                    }
+                }
+
+                $datamap[$existingUid] = $recordData;
+                $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
+                $this->importStats['updated']++;
+                continue;
+            }
+
+            // Seiten sind fertig → pid direkt auflösen (Fallback Ziel-PID, falls die
+            // Seite z. B. wegen DataHandler-Fehler nicht angelegt wurde).
+            $recordData['pid'] = $this->uidMap->get('pages', $oldPageId) ?? $targetPid;
+
+            if (((int)($content['sys_language_uid'] ?? 0) > 0) && !empty($content['l18n_parent']) && $content['l18n_parent'] > 0) {
+                $pOld = (int)$content['l18n_parent'];
+                $recordData['l18n_parent'] = $this->uidMap->get('tt_content', $pOld) ?? self::NEW_CONTENT_PREFIX . $pOld;
+                $this->l10nFixups['tt_content'][$oldContentUid] = $pOld;
+            }
+
+            if (!empty($config['import']['container_support']) && !empty($content['tx_container_parent'])
+                && isset($exportedContentUids[(int)$content['tx_container_parent']])) {
+                $cOld = (int)$content['tx_container_parent'];
+                $recordData['tx_container_parent'] = $this->uidMap->get('tt_content', $cOld) ?? self::NEW_CONTENT_PREFIX . $cOld;
+            }
+
+            $datamap[self::NEW_CONTENT_PREFIX . $oldContentUid] = $recordData;
+            $this->importStats['new']++;
+        }
+        return $datamap;
     }
 
     /**
@@ -762,62 +855,61 @@ class ImportService
     }
 
     /**
-     * Verarbeitet die Records in Batches, um den Speicherbedarf bei großen Bäumen zu begrenzen.
+     * Führt einen einzelnen Batch über den DataHandler aus. Batch-Commit und
+     * Checkpoint-Fortschreibung laufen in EINER Transaktion, damit ein Abbruch
+     * dazwischen keine committeten Records ohne Undo-Eintrag hinterlässt.
+     *
+     * @param array<string|int, array<string,mixed>> $datamap
      */
-    private function executeBatchedDataHandler(string $table, array $datamap, ?callable $onProgress): void
+    private function executeDataHandlerBatch(string $table, array $datamap, ?callable $onProgress, int $batchIndex, int $batchCount): void
     {
-        if (empty($datamap)) {
-            return;
-        }
-
-        $batches = array_chunk($datamap, $this->batchSize, true);
-        $batchCount = count($batches);
-        $batchIndex = 0;
-        $prefix = $table === 'pages' ? self::NEW_PAGE_PREFIX : self::NEW_CONTENT_PREFIX;
-
-        foreach ($batches as $batch) {
-            $this->importLock->refresh();
-
-            // Eltern-UIDs aus früheren Batches auflösen: ein neuer DataHandler kennt
-            // nur die Platzhalter des aktuellen Batches. Seiten-interne NEW_PAGE_-Pids
-            // bleiben als String, damit der DataHandler sie batchintern auflöst.
-            if ($table === 'pages') {
-                foreach ($batch as &$record) {
-                    if (isset($record['pid']) && is_string($record['pid']) && str_starts_with($record['pid'], self::NEW_PAGE_PREFIX)) {
-                        $oldPageUid = (int)str_replace(self::NEW_PAGE_PREFIX, '', $record['pid']);
-                        $resolvedUid = $this->uidMap->get('pages', $oldPageUid);
-                        if ($resolvedUid !== null) {
-                            $record['pid'] = $resolvedUid;
-                        }
-                    }
-                }
-                unset($record);
-            }
-
-            $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
-            $dataHandler->start([$table => $batch], []);
-
-            // Batch und Checkpoint committen in einer Transaktion: Ein Abbruch
-            // zwischen Batch-Commit und Protokoll-Fortschreibung würde sonst
-            // committete Records ohne Undo-Eintrag hinterlassen.
-            $this->processInTransaction($table, function () use ($dataHandler, $table, $prefix): void {
-                $dataHandler->process_datamap();
-                foreach ($dataHandler->substNEWwithIDs as $placeholder => $newUid) {
-                    if (str_starts_with($placeholder, $prefix)) {
-                        $oldUid = (int)str_replace($prefix, '', $placeholder);
-                        $this->uidMap->set($table, $oldUid, (int)$newUid);
-                        $this->createdMap->set($table, $oldUid, (int)$newUid);
-                    }
-                }
-                $this->checkpointImportLog();
-            });
-
-            $this->recordDataHandlerErrors($dataHandler, $table);
-
-            $batchIndex++;
+        if ($datamap === []) {
+            // Leerer Batch (z. B. alle Records im Delta übersprungen): nichts zu
+            // schreiben, aber Fortschritt trotzdem melden.
             if ($onProgress) {
                 $onProgress("$table Batch $batchIndex/$batchCount", $batchIndex, $batchCount);
             }
+            return;
+        }
+
+        $this->importLock->refresh();
+        $prefix = $table === 'pages' ? self::NEW_PAGE_PREFIX : self::NEW_CONTENT_PREFIX;
+
+        // Eltern-UIDs aus früheren Batches auflösen: ein neuer DataHandler kennt
+        // nur die Platzhalter des aktuellen Batches. Seiten-interne NEW_PAGE_-Pids
+        // bleiben als String, damit der DataHandler sie batchintern auflöst.
+        if ($table === 'pages') {
+            foreach ($datamap as &$record) {
+                if (isset($record['pid']) && is_string($record['pid']) && str_starts_with($record['pid'], self::NEW_PAGE_PREFIX)) {
+                    $oldPageUid = (int)str_replace(self::NEW_PAGE_PREFIX, '', $record['pid']);
+                    $resolvedUid = $this->uidMap->get('pages', $oldPageUid);
+                    if ($resolvedUid !== null) {
+                        $record['pid'] = $resolvedUid;
+                    }
+                }
+            }
+            unset($record);
+        }
+
+        $dataHandler = GeneralUtility::makeInstance(DataHandler::class);
+        $dataHandler->start([$table => $datamap], []);
+
+        $this->processInTransaction($table, function () use ($dataHandler, $table, $prefix): void {
+            $dataHandler->process_datamap();
+            foreach ($dataHandler->substNEWwithIDs as $placeholder => $newUid) {
+                if (str_starts_with($placeholder, $prefix)) {
+                    $oldUid = (int)str_replace($prefix, '', $placeholder);
+                    $this->uidMap->set($table, $oldUid, (int)$newUid);
+                    $this->createdMap->set($table, $oldUid, (int)$newUid);
+                }
+            }
+            $this->checkpointImportLog();
+        });
+
+        $this->recordDataHandlerErrors($dataHandler, $table);
+
+        if ($onProgress) {
+            $onProgress("$table Batch $batchIndex/$batchCount", $batchIndex, $batchCount);
         }
     }
 
@@ -908,7 +1000,7 @@ class ImportService
     // HILFSMETHODEN
     // =========================================================================
 
-    protected function loadAndValidateJson(string $jsonPath): ExportManifest
+    protected function loadAndValidateJson(string $jsonPath): ManifestReader
     {
         return $this->manifestLoader->load($jsonPath);
     }
@@ -1121,58 +1213,52 @@ class ImportService
     /**
      * @return array{pages:array{new:int,changed:int,identical:int}, tt_content:array{new:int,changed:int,identical:int}, samples:array<string,array<string,mixed>>}
      */
-    protected function runDiffAnalysis(ExportManifest $manifest, bool $verbose): array
+    protected function runDiffAnalysis(ManifestReader $manifest, bool $verbose): array
     {
         $this->logger->info('=== DIFFERENZ-ANALYSE ===');
-        $pages = $manifest->getPages();
-        $ttContent = $manifest->getTtContent();
         $sourceId = $manifest->getSourceId();
 
         // Erste neue/geänderte Records als Beispielzeilen für die Dry-Run-Vorschau merken.
         $samples = [];
 
-        $eP = $this->findExistingRecordsByMapping($sourceId, 'pages', $pages);
         $nP = $uP = $iP = 0;
-        foreach ($pages as $p) {
-            $id = (int)$p['uid'];
-            if (!isset($eP[$id])) {
+        $this->streamDiffBatches($manifest, 'pages', $sourceId, function (array $p, ?array $existing) use ($verbose, &$nP, &$uP, &$iP, &$samples): void {
+            if ($existing === null) {
                 $nP++;
                 if (!isset($samples['new'])) {
                     $samples['new'] = ['table' => 'pages', 'title' => (string)($p['title'] ?? ''), 'slug' => (string)($p['slug'] ?? '')];
                 }
                 $this->logger->info('<fg=green>+ NEU</>        | ' . ($p['title'] ?? ''));
-            } elseif (!$this->conflictResolver->isRecordIdentical($p, $eP[$id])) {
+            } elseif (!$this->conflictResolver->isRecordIdentical($p, $existing)) {
                 $uP++;
                 if (!isset($samples['changed'])) {
-                    $samples['changed'] = ['table' => 'pages', 'uid' => $id, 'field' => $this->firstChangedField($p, $eP[$id])];
+                    $samples['changed'] = ['table' => 'pages', 'uid' => (int)$p['uid'], 'field' => $this->firstChangedField($p, $existing)];
                 }
                 $this->logger->info('<fg=yellow>~ GEÄNDERT</>   | ' . ($p['title'] ?? ''));
                 if ($verbose) {
-                    $this->conflictResolver->logFieldDiff($p, $eP[$id], 'pages');
+                    $this->conflictResolver->logFieldDiff($p, $existing, 'pages');
                 }
             } else {
                 $iP++;
                 $this->logger->info('<fg=blue>= IDENTISCH</>  | ' . ($p['title'] ?? ''));
             }
-        }
+        });
 
-        $eC = $this->findExistingRecordsByMapping($sourceId, 'tt_content', $ttContent);
         $nC = $uC = $iC = 0;
-        foreach ($ttContent as $c) {
-            $id = (int)$c['uid'];
-            if (!isset($eC[$id])) {
+        $this->streamDiffBatches($manifest, 'tt_content', $sourceId, function (array $c, ?array $existing) use ($verbose, &$nC, &$uC, &$iC, &$samples): void {
+            if ($existing === null) {
                 $nC++;
-            } elseif (!$this->conflictResolver->isRecordIdentical($c, $eC[$id])) {
+            } elseif (!$this->conflictResolver->isRecordIdentical($c, $existing)) {
                 $uC++;
                 // tt_content-Beispiel bevorzugen (zeigt Feld-Diff schöner als pages).
-                $samples['changed'] = ['table' => 'tt_content', 'uid' => $id, 'field' => $this->firstChangedField($c, $eC[$id])];
+                $samples['changed'] = ['table' => 'tt_content', 'uid' => (int)$c['uid'], 'field' => $this->firstChangedField($c, $existing)];
                 if ($verbose) {
-                    $this->conflictResolver->logFieldDiff($c, $eC[$id], 'tt_content');
+                    $this->conflictResolver->logFieldDiff($c, $existing, 'tt_content');
                 }
             } else {
                 $iC++;
             }
-        }
+        });
 
         $this->logger->info(sprintf('Seiten:  %d neu, %d geändert, %d identisch.', $nP, $uP, $iP));
         $this->logger->info(sprintf('Inhalte: %d neu, %d geändert, %d identisch.', $nC, $uC, $iC));
@@ -1185,6 +1271,40 @@ class ImportService
             'tt_content' => ['new' => $nC, 'changed' => $uC, 'identical' => $iC],
             'samples' => $samples,
         ];
+    }
+
+    /**
+     * Streamt eine Tabelle für die Diff-Analyse batch-weise (konstanter Speicher):
+     * pro Batch ein Herkunfts-Mapping-Lookup, dann je Record die Callback mit dem
+     * gefundenen Bestands-Record (oder null = neu).
+     *
+     * @param callable(array<string,mixed>, array<string,mixed>|null): void $onRecord
+     */
+    private function streamDiffBatches(ManifestReader $manifest, string $table, string $sourceId, callable $onRecord): void
+    {
+        $batch = [];
+        foreach ($manifest->eachRecord($table) as $record) {
+            $batch[] = $record;
+            if (count($batch) >= $this->batchSize) {
+                $this->diffBatch($batch, $table, $sourceId, $onRecord);
+                $batch = [];
+            }
+        }
+        if ($batch !== []) {
+            $this->diffBatch($batch, $table, $sourceId, $onRecord);
+        }
+    }
+
+    /**
+     * @param array<int, array<string,mixed>> $batch
+     * @param callable(array<string,mixed>, array<string,mixed>|null): void $onRecord
+     */
+    private function diffBatch(array $batch, string $table, string $sourceId, callable $onRecord): void
+    {
+        $existing = $this->findExistingRecordsByMapping($sourceId, $table, $batch);
+        foreach ($batch as $record) {
+            $onRecord($record, $existing[(int)$record['uid']] ?? null);
+        }
     }
 
     /**

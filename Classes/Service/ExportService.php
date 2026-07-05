@@ -126,8 +126,30 @@ class ExportService
             !empty($options['csv'])
         );
 
-        $transport = $this->assetTransportFactory->get((string)($options['transport'] ?? 'external'));
-        return $transport->package($filePath, $finalData['assets'] ?? [], (array)($options['transportConfig'] ?? []));
+        [$type, $transportConfig] = $this->resolveTransport(
+            (string)($options['transport'] ?? 'external'),
+            (array)($options['transportConfig'] ?? [])
+        );
+        return $this->assetTransportFactory->get($type)->package($filePath, $finalData['assets'] ?? [], $transportConfig);
+    }
+
+    /**
+     * Löst `--transport` auf: entweder ein benannter Eintrag aus `assetTransports`
+     * (dessen YAML-Config gilt) oder direkt ein Typ (external/bundle/push). CLI-
+     * übergebene transportConfig-Werte haben Vorrang vor der YAML-Config.
+     *
+     * @param array<string, mixed> $cliConfig
+     * @return array{0:string, 1:array<string, mixed>}
+     */
+    private function resolveTransport(string $transport, array $cliConfig): array
+    {
+        $named = $this->configurationService->getConfig()['assetTransports'][$transport] ?? null;
+        if (is_array($named)) {
+            $type = (string)($named['type'] ?? $transport);
+            unset($named['type']);
+            return [$type, $cliConfig + $named];
+        }
+        return [$transport, $cliConfig];
     }
 
     private function collectAndDispatch(int $startPid, array $options): array

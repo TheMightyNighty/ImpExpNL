@@ -18,17 +18,24 @@ declare(strict_types=1);
 namespace Robbi\ImpExpNL\Service;
 
 use Robbi\ImpExpNL\Domain\ExportManifest;
+use Robbi\ImpExpNL\Domain\InMemoryManifestReader;
+use Robbi\ImpExpNL\Domain\ManifestReader;
+use Robbi\ImpExpNL\Domain\StreamingManifestReader;
 use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Exception\IntegrityException;
 use TYPO3\CMS\Core\Core\Environment;
 
 /**
- * Lädt und validiert eine Export-Datei (JSON/JSONL) zum {@see ExportManifest}.
+ * Lädt und validiert eine Export-Datei (JSON/JSONL) zu einem {@see ManifestReader}.
  *
  * Bündelt die komplette Eingangs-Validierungskette des Imports:
  * Pfad-Containment (Projektverzeichnis, realpath), Dateigrößen-Limit
  * (import.max_file_size_mb), Format-Parsing sowie die Integritäts-/
  * Signaturprüfung inkl. Signaturpflicht (import.require_signature).
+ *
+ * JSON wird vollständig in den Speicher geladen ({@see InMemoryManifestReader}),
+ * JSONL records-weise gestreamt ({@see StreamingManifestReader}) – inkl.
+ * streamender Prüfsummen-/Signaturverifikation ohne Vollparse.
  *
  * Aus {@see ImportService} extrahiert, damit die sicherheitskritische
  * Eingangsprüfung eine eigene, überschaubare Einheit ist.
@@ -37,10 +44,11 @@ class ManifestLoaderService
 {
     public function __construct(
         private readonly ConfigurationService $configurationService,
-        private readonly IntegrityService $integrityService
+        private readonly IntegrityService $integrityService,
+        private readonly JsonlStreamReader $jsonlReader
     ) {}
 
-    public function load(string $jsonPath): ExportManifest
+    public function load(string $jsonPath): ManifestReader
     {
         if (!file_exists($jsonPath)) {
             throw new \RuntimeException("Datei nicht gefunden: $jsonPath");
@@ -60,9 +68,8 @@ class ManifestLoaderService
             throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
         }
 
-        // Prüfung vor dem Parsen: JSON/JSONL wird derzeit vollständig in den
-        // Speicher geladen; das Limit bricht übergroße Dateien mit Fehlermeldung
-        // ab, bevor der Prozess in ein OOM läuft.
+        // Dateigrößen-Limit als DoS-Guard (auch der streamende Pfad soll nicht
+        // beliebig große Dateien ungefragt verarbeiten). 0 = unbegrenzt.
         $maxBytes = $this->configurationService->getImportMaxFileSizeBytes();
         $fileSize = (int)filesize($realPath);
         if ($maxBytes > 0 && $fileSize > $maxBytes) {
@@ -74,46 +81,101 @@ class ManifestLoaderService
             ));
         }
 
+        return $isJsonl
+            ? $this->loadStreaming($realPath)
+            : $this->loadInMemory($realPath, $fileSize);
+    }
+
+    private function loadInMemory(string $realPath, int $fileSize): ManifestReader
+    {
         // Plausibilitätsprüfung gegen das PHP memory_limit: Das dekodierte Array
         // benötigt ein Vielfaches der Dateigröße; ohne Prüfung endet das Parsen
-        // in einem OOM-Fatal ohne verwertbare Fehlermeldung.
+        // in einem OOM-Fatal ohne verwertbare Fehlermeldung. Nur für den JSON-Pfad
+        // relevant – JSONL wird gestreamt und braucht diesen Headroom nicht.
         $this->assertMemoryHeadroom($fileSize);
 
-        $data = $isJsonl ? $this->parseJsonlFile($realPath) : $this->parseJsonFile($realPath);
-
-        $manifest = ExportManifest::fromArray($data);
+        $manifest = ExportManifest::fromArray($this->parseJsonFile($realPath));
         if (!$manifest->hasPages()) {
             throw new \RuntimeException('"pages" muss ein nicht-leeres Array sein.');
         }
 
         $checksum = $manifest->getChecksum();
-
-        // Signaturpflicht (import.require_signature): ohne gültige HMAC-Signatur wird
-        // gar nicht erst verifiziert, sondern sofort abgewiesen. Verhindert sowohl das
-        // Weglassen der Prüfsumme als auch den Downgrade auf eine bloße sha256-Prüfsumme.
-        if ($this->configurationService->isSignatureRequired()) {
-            if (!$this->integrityService->hasSigningKey()) {
-                throw new IntegrityException(
-                    'import.require_signature ist aktiv, aber es ist kein Signing-Key konfiguriert '
-                    . '(IMPEXPNL_SIGNING_KEY bzw. EXTENSIONS/imp_exp_nl/signingKey). Import nicht möglich.'
-                );
-            }
-            if (!$this->integrityService->isHmacSignature($checksum)) {
-                throw new IntegrityException(
-                    'Signaturpflicht aktiv (import.require_signature): Die Importdatei trägt keine '
-                    . 'HMAC-Signatur (hmac-sha256:). Datei auf dem Quellsystem mit identischem '
-                    . 'Signing-Key neu exportieren.'
-                );
-            }
-        }
+        $this->assertSignaturePolicy($checksum);
 
         if ($checksum !== null && !$this->integrityService->verify($manifest->toArray(), $checksum)) {
+            throw $this->integrityFailed();
+        }
+        return new InMemoryManifestReader($manifest);
+    }
+
+    private function loadStreaming(string $realPath): ManifestReader
+    {
+        $meta = $this->jsonlReader->readMeta($realPath);
+        $reader = new StreamingManifestReader($this->jsonlReader, $realPath, $meta);
+        if (!$reader->hasPages()) {
+            throw new \RuntimeException('"pages" muss ein nicht-leeres Array sein.');
+        }
+
+        $checksum = $reader->getChecksum();
+        $this->assertSignaturePolicy($checksum);
+
+        if ($checksum !== null && !$this->integrityService->verifyStreaming(
+            $checksum,
+            fn(?string $key): string => $this->integrityService->computeHashStreaming($this->hashTables($realPath), $key)
+        )) {
+            throw $this->integrityFailed();
+        }
+        return $reader;
+    }
+
+    /**
+     * Alle Tabellen der JSONL-Datei in ksort-Reihenfolge, jeweils records-weise
+     * gestreamt – Eingabe für {@see IntegrityService::computeHashStreaming()}.
+     * Reihenfolge und Skip-Empty entsprechen dem Array-Weg (computeHash: ksort +
+     * nur nicht-leere Tabellen; tableNames() liefert nur vorkommende Tabellen).
+     *
+     * @return \Generator<int, array{0:string, 1:iterable<array<string,mixed>>}>
+     */
+    private function hashTables(string $realPath): \Generator
+    {
+        $tableNames = $this->jsonlReader->tableNames($realPath);
+        sort($tableNames);
+        foreach ($tableNames as $name) {
+            yield [$name, $this->jsonlReader->streamTable($realPath, $name)];
+        }
+    }
+
+    /**
+     * Signaturpflicht (import.require_signature): ohne gültige HMAC-Signatur wird
+     * gar nicht erst verifiziert, sondern sofort abgewiesen. Verhindert sowohl das
+     * Weglassen der Prüfsumme als auch den Downgrade auf eine bloße sha256-Prüfsumme.
+     */
+    private function assertSignaturePolicy(?string $checksum): void
+    {
+        if (!$this->configurationService->isSignatureRequired()) {
+            return;
+        }
+        if (!$this->integrityService->hasSigningKey()) {
             throw new IntegrityException(
-                'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '
-                . 'konfigurierten Schlüssel (IMPEXPNL_SIGNING_KEY) nicht verifiziert werden.'
+                'import.require_signature ist aktiv, aber es ist kein Signing-Key konfiguriert '
+                . '(IMPEXPNL_SIGNING_KEY bzw. EXTENSIONS/imp_exp_nl/signingKey). Import nicht möglich.'
             );
         }
-        return $manifest;
+        if (!$this->integrityService->isHmacSignature($checksum)) {
+            throw new IntegrityException(
+                'Signaturpflicht aktiv (import.require_signature): Die Importdatei trägt keine '
+                . 'HMAC-Signatur (hmac-sha256:). Datei auf dem Quellsystem mit identischem '
+                . 'Signing-Key neu exportieren.'
+            );
+        }
+    }
+
+    private function integrityFailed(): IntegrityException
+    {
+        return new IntegrityException(
+            'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '
+            . 'konfigurierten Schlüssel (IMPEXPNL_SIGNING_KEY) nicht verifiziert werden.'
+        );
     }
 
     /**
@@ -167,42 +229,5 @@ class ManifestLoaderService
             throw new \RuntimeException('JSON-Fehler: ' . json_last_error_msg());
         }
         return is_array($data) ? $data : [];
-    }
-
-    /**
-     * Liest eine JSONL-Datei zeilenweise ein (ein JSON-Objekt pro Zeile),
-     * ohne die gesamte Datei als einen String zu dekodieren.
-     *
-     * @return array<string, mixed>
-     */
-    private function parseJsonlFile(string $path): array
-    {
-        $handle = fopen($path, 'r');
-        if ($handle === false) {
-            throw new \RuntimeException("Datei nicht lesbar: $path");
-        }
-        $data = [];
-        try {
-            while (($line = fgets($handle)) !== false) {
-                $line = trim($line);
-                if ($line === '') {
-                    continue;
-                }
-                $obj = json_decode($line, true);
-                if (json_last_error() !== JSON_ERROR_NONE || !is_array($obj)) {
-                    throw new \RuntimeException('JSONL-Fehler: ungültige Zeile.');
-                }
-                if (array_key_exists('_meta', $obj)) {
-                    $data['_meta'] = $obj['_meta'];
-                    continue;
-                }
-                if (isset($obj['_t']) && array_key_exists('_r', $obj)) {
-                    $data[(string)$obj['_t']][] = $obj['_r'];
-                }
-            }
-        } finally {
-            fclose($handle);
-        }
-        return $data;
     }
 }

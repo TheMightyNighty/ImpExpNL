@@ -54,6 +54,7 @@ class ExportCommand extends Command
             ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)')
             ->addOption('transport', null, InputOption::VALUE_OPTIONAL, 'Asset-Transport: external (Standard) oder bundle (self-contained .tar.gz)', 'external')
             ->addOption('bundle-baseline', null, InputOption::VALUE_OPTIONAL, 'Inkrementelles Bundle: Asset-Manifest des Ziels (impexpnl_assets.json) – dort bereits inhaltsgleich vorhandene Dateien werden nicht eingepackt')
+            ->addOption('outbox', null, InputOption::VALUE_OPTIONAL, 'Zielverzeichnis für --transport=push (überschreibt assetTransports.<name>.outbox aus der Config)')
             ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
     }
 
@@ -86,6 +87,9 @@ class ExportCommand extends Command
         }
         if ($input->getOption('bundle-baseline')) {
             $options['transportConfig']['baseline'] = (string)$input->getOption('bundle-baseline');
+        }
+        if ($input->getOption('outbox')) {
+            $options['transportConfig']['outbox'] = (string)$input->getOption('outbox');
         }
 
         $progressBar = null;

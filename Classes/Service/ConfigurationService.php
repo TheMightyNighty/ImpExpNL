@@ -86,6 +86,16 @@ class ConfigurationService
     }
 
     /**
+     * Inbox-Verzeichnis für ausgehend transportierte Bundles (transfer.inbox_path).
+     * Read-only genutzt (impexpnl:inbox listet, löst KEINEN Import aus). Leer = nicht
+     * konfiguriert.
+     */
+    public function getInboxPath(): string
+    {
+        return trim((string)($this->getConfig()['transfer']['inbox_path'] ?? ''));
+    }
+
+    /**
      * Müssen Importdateien eine HMAC-Signatur tragen (import.require_signature)?
      * Erzwingt beim Import eine `hmac-sha256:`-Signatur; Dateien ohne Prüfsumme
      * oder mit bloßer sha256-Prüfsumme werden abgewiesen (Exit-Code 4).

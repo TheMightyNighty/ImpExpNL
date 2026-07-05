@@ -78,6 +78,34 @@ class IntegrityService
      */
     public function verify(array $data, string $expected): bool
     {
+        return $this->verifyWith(
+            $expected,
+            fn(?string $key): string => $this->computeHash($data, $key),
+            fn(): string => hash('sha256', json_encode($data['pages'] ?? []) . json_encode($data['tt_content'] ?? []))
+        );
+    }
+
+    /**
+     * Streamende Verifikation für den JSONL-Import: berechnet denselben Hash wie
+     * {@see verify()}, ohne die Datei vollständig zu dekodieren. Legacy-Format
+     * (nur pages+tt_content) entfällt – JSONL ist stets Format 2.
+     *
+     * @param callable(?string):string $computeHash liefert den Hash für einen Schlüssel
+     *        (null = ohne HMAC), i. d. R. über {@see computeHashStreaming()}.
+     */
+    public function verifyStreaming(string $expected, callable $computeHash): bool
+    {
+        return $this->verifyWith($expected, $computeHash, null);
+    }
+
+    /**
+     * Gemeinsame Schlüssel-/Rotations-/Downgrade-Logik für Array- und Stream-Verifikation.
+     *
+     * @param callable(?string):string $computeHash Hash für einen Schlüssel
+     * @param (callable():string)|null $legacyHash Legacy-Hash (nur Array-Weg, sonst null)
+     */
+    private function verifyWith(string $expected, callable $computeHash, ?callable $legacyHash): bool
+    {
         $key = $this->getSigningKey();
 
         if (str_starts_with($expected, 'hmac-sha256:')) {
@@ -92,13 +120,13 @@ class IntegrityService
                     // Unbekannte Key-ID → nicht verifizierbar.
                     return false;
                 }
-                return hash_equals($expected, 'hmac-sha256:' . $keyId . ':' . $this->computeHash($data, $resolved));
+                return hash_equals($expected, 'hmac-sha256:' . $keyId . ':' . $computeHash($resolved));
             }
 
             // Format ohne Key-ID: gegen den aktiven und alle hinterlegten
             // Alt-Schlüssel prüfen (Übergangszeit einer Rotation).
             foreach ($this->getVerificationKeys() as $candidate) {
-                if (hash_equals($expected, 'hmac-sha256:' . $this->computeHash($data, $candidate))) {
+                if (hash_equals($expected, 'hmac-sha256:' . $computeHash($candidate))) {
                     return true;
                 }
             }
@@ -114,7 +142,12 @@ class IntegrityService
         }
 
         if (str_starts_with($expected, 'sha256:')) {
-            return hash_equals($expected, 'sha256:' . $this->computeHash($data, null));
+            return hash_equals($expected, 'sha256:' . $computeHash(null));
+        }
+
+        if ($legacyHash === null) {
+            // Streamender Pfad (JSONL): kein Legacy-Format.
+            return false;
         }
 
         // Legacy (Format 1): roher SHA256 nur über pages + tt_content.
@@ -124,8 +157,7 @@ class IntegrityService
             'Legacy-Prüfsumme (Export-Format 1) akzeptiert – dieses Format ist veraltet und wird '
             . 'in ImpExpNL 3.0 entfernt. Datei auf dem Quellsystem neu exportieren.'
         );
-        $legacy = hash('sha256', json_encode($data['pages'] ?? []) . json_encode($data['tt_content'] ?? []));
-        return hash_equals($expected, $legacy);
+        return hash_equals($expected, $legacyHash());
     }
 
     /**
@@ -156,6 +188,29 @@ class IntegrityService
                 }
             } else {
                 hash_update($ctx, $this->encodeCanonical($value) . "\x00");
+            }
+        }
+
+        return hash_final($ctx);
+    }
+
+    /**
+     * Streamendes Pendant zu {@see computeHash()}: liefert bei identischer Eingabe
+     * denselben Hash, hält aber nie mehr als einen Record im Speicher. Der Aufrufer
+     * muss die Tabellen in **ksort-Reihenfolge** und jeweils nur nicht-leere Tabellen
+     * liefern (das entspricht dem `ksort` + Skip-Empty in computeHash).
+     *
+     * @param iterable<array{0:string, 1:iterable<array<string,mixed>>}> $tables
+     *        Paare [Tabellenname, Record-Iterable] in ksort-Reihenfolge.
+     */
+    public function computeHashStreaming(iterable $tables, ?string $key): string
+    {
+        $ctx = $key !== null ? hash_init('sha256', HASH_HMAC, $key) : hash_init('sha256');
+
+        foreach ($tables as [$tableName, $records]) {
+            hash_update($ctx, $tableName . "\x00");
+            foreach ($records as $record) {
+                hash_update($ctx, $this->encodeCanonical($record) . "\x00");
             }
         }
 

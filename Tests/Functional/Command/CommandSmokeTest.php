@@ -22,6 +22,7 @@ use PHPUnit\Framework\Attributes\Test;
 use Robbi\ImpExpNL\Command\CheckCommand;
 use Robbi\ImpExpNL\Command\ExportCommand;
 use Robbi\ImpExpNL\Command\ImportCommand;
+use Robbi\ImpExpNL\Command\InboxCommand;
 use Robbi\ImpExpNL\Command\ListCommand;
 use Robbi\ImpExpNL\Command\MigrateLegacySchemaCommand;
 use Robbi\ImpExpNL\Command\StatusCommand;
@@ -60,6 +61,7 @@ class CommandSmokeTest extends FunctionalTestCase
             'unlock' => [UnlockCommand::class, 'impexpnl:unlock'],
             'migrate' => [MigrateLegacySchemaCommand::class, 'impexpnl:migrate-legacy-schema'],
             'validate-config' => [ValidateConfigCommand::class, 'impexpnl:validate-config'],
+            'inbox' => [InboxCommand::class, 'impexpnl:inbox'],
         ];
     }
 
