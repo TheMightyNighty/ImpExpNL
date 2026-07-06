@@ -1,7 +1,24 @@
 {
     "name": "themightynighty/impexpnl",
     "type": "typo3-cms-extension",
-    "description": "Enterprise CLI Exporter für TYPO3 v14",
+    "description": "CLI-first content transfer for TYPO3: signed export/import (JSON/JSONL), delta sync with dry-run diff, conflict handling, rollback, FAL assets, and hardened transfers across security zones (bundle/push/inbox).",
+    "keywords": [
+        "typo3",
+        "cli",
+        "export",
+        "import",
+        "content-transfer",
+        "delta",
+        "deployment",
+        "staging",
+        "sync",
+        "rollback"
+    ],
+    "support": {
+        "issues": "https://github.com/TheMightyNighty/ImpExpNL/issues",
+        "source": "https://github.com/TheMightyNighty/ImpExpNL",
+        "docs": "https://docs.typo3.org/p/themightynighty/impexpnl/main/en-us/"
+    },
     "license": "GPL-2.0-or-later",
     "authors": [
         {

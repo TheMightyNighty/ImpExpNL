@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <title>ImpExpNL</title>
+  <!-- Hintergrund -->
+  <rect x="2" y="2" width="60" height="60" rx="10" fill="#1a2b42"/>
+  <!-- Export-Pfeil (obere Hälfte, nach rechts) -->
+  <path d="M12 22 h22 v-7 l16 12 -16 12 v-7 H12 z" fill="#ff8700"/>
+  <!-- Import-Pfeil (untere Hälfte, nach links) -->
+  <path d="M52 42 H30 v-7 L14 47 l16 12 v-7 h22 z" fill="#4da3ff"/>
+</svg>

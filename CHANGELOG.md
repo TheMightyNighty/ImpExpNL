@@ -16,6 +16,15 @@
   Verarbeitung" auf den Stand nach 2.3.0 gebracht (JSONL streamt, `.json` parst
   voll; Hinweis zu Auxiliary-Tabellen inkl. Stellschrauben).
 
+### Neu
+- **reST-Handbuch für docs.typo3.org** (`Documentation/` mit `guides.xml`, englisch):
+  Introduction, Installation, Quick start, Commands, Configuration, Security.
+  Mit dem offiziellen `render-guides`-Container fehlerfrei gerendert.
+- **TER-/Packagist-Feinschliff:** englische `description` + `keywords` + `support`-Links
+  in `composer.json`; `ext_emconf.php` mit englischer Beschreibung, PHP-Constraint
+  (8.2–8.4), `suggests: workspaces`, Kategorie `misc`; Extension-Icon
+  (`Resources/Public/Icons/Extension.svg`).
+
 ### Intern
 - **`SigningKeyProvider` extrahiert:** die Beschaffung des Signatur-Schlüsselmaterials
   (ExtConf/Umgebung) ist aus `IntegrityService` in eine eigene, abhängigkeitsfreie
