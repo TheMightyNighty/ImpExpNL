@@ -21,6 +21,7 @@ use Robbi\ImpExpNL\Domain\ConflictStrategy;
 use Robbi\ImpExpNL\Domain\ExitCode;
 use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Service\ImportService;
+use Robbi\ImpExpNL\Service\ManifestLoaderService;
 use Robbi\ImpExpNL\Service\ProfileService;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
@@ -104,6 +105,21 @@ class ImportCommand extends Command
         // (realpath + Projektverzeichnis-Containment) macht ImportService::loadAndValidateJson;
         // Dateien außerhalb des Projektverzeichnisses werden dort abgewiesen.
         $file = GeneralUtility::getFileAbsFileName((string)$file) ?: (string)$file;
+
+        // Große .json-Dateien werden komplett in den Speicher geparst — sichtbar
+        // warnen und JSONL empfehlen (die verbindliche Prüfung inkl. memory_limit-
+        // Guard macht der ManifestLoaderService).
+        if (!$jsonOutput
+            && str_ends_with($file, '.json')
+            && is_file($file)
+            && (int)filesize($file) > ManifestLoaderService::LARGE_JSON_WARN_BYTES
+        ) {
+            $io->warning(sprintf(
+                'Große JSON-Importdatei (%d MB): .json wird vollständig in den Speicher geparst. '
+                . 'Für Exporte dieser Größe das streamende JSONL-Format verwenden (Export mit --jsonl).',
+                (int)round((int)filesize($file) / 1048576)
+            ));
+        }
 
         $options['dryRun'] = (bool)$input->getOption('dry-run');
         // Feld-Diff über die eingebaute Symfony-Verbosity (-v) statt eigener Option

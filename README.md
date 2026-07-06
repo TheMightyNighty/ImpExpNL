@@ -189,7 +189,7 @@ ddev exec vendor/bin/typo3 impexpnl:export <Start-PID> <Zielpfad> [Optionen]
 | `--content-types=text,textmedia` | Einschränkung auf bestimmte CTypes. Alle anderen Inhaltselemente werden nicht exportiert. |
 | `--csv` | Erzeugung zusätzlicher CSV-Dateien (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). Diese Dateien können in Tabellenkalkulationsprogrammen geöffnet werden, um die Exportdaten vor dem Import tabellarisch zu prüfen oder mit anderen Datenquellen abzugleichen. |
 | `--bundle-baseline=<manifest>` | Inkrementelles Bundle (nur mit `--transport=bundle`): Pfad zum Asset-Manifest des **Ziels** (`impexpnl_assets.json`, z. B. vorab per Schleuse geholt). Dateien, die dort bereits inhaltsgleich (sha256) gelistet sind, werden nicht eingepackt — das Bundle enthält nur neue/geänderte Assets. Fehlt eine übersprungene Datei auf dem Ziel wider Erwarten, meldet der Import das über den Asset-Preflight (Exit-Code `7`); es entsteht kein stiller Verlust. |
-| `--jsonl` | Zeilenweise geschriebenes JSONL-Format (ein JSON-Objekt pro Zeile) — kompakt und speicherschonend beim Export (kein einzelnes `json_encode` über den gesamten Block). Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. (Hinweis: Der Import parst beide Formate aktuell vollständig in den Speicher — siehe Abschnitt „Chunked Verarbeitung".) |
+| `--jsonl` | Zeilenweise geschriebenes JSONL-Format (ein JSON-Objekt pro Zeile) — kompakt und speicherschonend beim Export (kein einzelnes `json_encode` über den gesamten Block). Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. **Empfehlung: Für große Exporte (ab einigen tausend Records) JSONL verwenden** — nur dieses Format wird beim Import und Dry-Run-Diff records-weise gestreamt (konstanter Speicher); `.json` wird vollständig in den Speicher geparst. Siehe Abschnitt „Chunked Verarbeitung". |
 
 ### Erzeugte Dateien
 
@@ -265,7 +265,14 @@ Bei großen Seitenbäumen (mehrere tausend Records) werden die Daten automatisch
 
 Die Prüfsummenberechnung erfolgt inkrementell pro Record. Beim **Export** schreibt das JSONL-Format (`--jsonl`) zeilenweise und vermeidet so ein einzelnes, sehr großes `json_encode` über den gesamten Datenblock.
 
-Beim **Import** begrenzt `import.max_file_size_mb` (Standard: 512, `0` = unbegrenzt) die Dateigröße: Übergroße Dateien werden **vor** dem Parsen mit klarer Fehlermeldung abgewiesen, statt den Prozess in ein OOM zu laufen (im Container: Pod-Kill, hängender Lock bis zum Stale-Timeout). Beim **Import** werden derzeit beide Formate (JSON wie JSONL) zunächst vollständig in den Speicher geparst; erst die anschließende DataHandler-Verarbeitung läuft gechunkt (Batches à 500 Records). JSONL ist hier kompakter und zeilenweise lesbar, senkt den Spitzenbedarf des Datei-Parsens aber nur begrenzt. Ein **vollständig streamender Import** (konstanter Speicher unabhängig von der Dateigröße, für Bäume deutlich über 50.000 Records) ist als künftige Ausbaustufe vorgesehen.
+Beim **Import** begrenzt `import.max_file_size_mb` (Standard: 512, `0` = unbegrenzt) die Dateigröße: Übergroße Dateien werden **vor** dem Parsen mit klarer Fehlermeldung abgewiesen, statt den Prozess in ein OOM zu laufen (im Container: Pod-Kill, hängender Lock bis zum Stale-Timeout).
+
+Der Speicherbedarf beim Import hängt vom Dateiformat ab:
+
+- **JSONL** (`.jsonl`): `pages` und `tt_content` werden records-weise **gestreamt** — Import wie Dry-Run-Diff arbeiten batch-weise mit konstantem Speicher, unabhängig von der Dateigröße (gemessen: 180.000 Records / 43 MB, Peak 276 MB → 4 MB). **Für große Exporte ist JSONL daher das empfohlene Format.**
+- **JSON** (`.json`): Die Datei wird vollständig in den Speicher geparst; der Spitzenbedarf skaliert mit der Record-Zahl. Für kleine bis mittlere Transfers unproblematisch — bei großen Beständen JSONL verwenden statt das PHP-`memory_limit` hochzudrehen.
+
+**Hinweis zu registrierten Record-Tabellen (Auxiliary-Daten):** Auch im JSONL-Pfad werden die *nicht* gestreamten Bereiche — registrierte Record-Tabellen (z.B. `sys_redirect`, `tx_news_domain_model_news`), `sys_file_reference`, IRRE-Relationen und das Asset-Manifest — einmalig vollständig materialisiert, weil sie relational verflochten und typischerweise klein sind. Der Speicher skaliert hier mit der Record-Zahl dieser Tabellen. Enthält eine registrierte Tabelle sehr viele Datensätze (Größenordnung ab ~100.000), stehen heute zwei Stellschrauben zur Verfügung: das PHP-`memory_limit` des CLI-Aufrufs erhöhen (grobe Faustregel: ~1 KB pro Record zzgl. Grundbedarf) oder den Transfer aufteilen — die große Tabelle in einem separaten Lauf mit eigenem, eingeschränktem Export übertragen (z.B. per `--since` zeitlich partitioniert). Ein streamender Pfad für Registry-Tabellen ist bei Bedarf eine mögliche Ausbaustufe.
 
 ### Slug-Regenerierung
 

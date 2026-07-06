@@ -23,6 +23,7 @@ use Robbi\ImpExpNL\Domain\ManifestReader;
 use Robbi\ImpExpNL\Domain\StreamingManifestReader;
 use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Exception\IntegrityException;
+use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Core\Environment;
 
 /**
@@ -42,10 +43,19 @@ use TYPO3\CMS\Core\Core\Environment;
  */
 class ManifestLoaderService
 {
+    /**
+     * Ab dieser Dateigröße wird für .json vor dem Vollparse gewarnt und JSONL
+     * empfohlen: mit MEMORY_FACTOR 8 entspricht das etwa dem PHP-Default-
+     * memory_limit von 128 MB. Auch von {@see \Robbi\ImpExpNL\Command\ImportCommand}
+     * für die Konsolen-Warnung genutzt.
+     */
+    public const LARGE_JSON_WARN_BYTES = 16 * 1024 * 1024;
+
     public function __construct(
         private readonly ConfigurationService $configurationService,
         private readonly IntegrityService $integrityService,
-        private readonly JsonlStreamReader $jsonlReader
+        private readonly JsonlStreamReader $jsonlReader,
+        private readonly LoggerInterface $logger
     ) {}
 
     public function load(string $jsonPath): ManifestReader
@@ -88,6 +98,16 @@ class ManifestLoaderService
 
     private function loadInMemory(string $realPath, int $fileSize): ManifestReader
     {
+        // Weiche Warnung vor dem harten memory_limit-Guard: Große .json-Dateien
+        // werden komplett geparst; der streamende JSONL-Pfad wäre der richtige Weg.
+        if ($fileSize > self::LARGE_JSON_WARN_BYTES) {
+            $this->logger->warning(sprintf(
+                'Große JSON-Importdatei (%d MB) wird vollständig in den Speicher geparst. '
+                . 'Für Exporte dieser Größe das streamende JSONL-Format verwenden (Export mit --jsonl).',
+                (int)round($fileSize / 1048576)
+            ));
+        }
+
         // Plausibilitätsprüfung gegen das PHP memory_limit: Das dekodierte Array
         // benötigt ein Vielfaches der Dateigröße; ohne Prüfung endet das Parsen
         // in einem OOM-Fatal ohne verwertbare Fehlermeldung. Nur für den JSON-Pfad
