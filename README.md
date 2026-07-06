@@ -893,6 +893,8 @@ Alle Werte sind über Umgebungsvariablen überschreibbar. Die Werte in der `phpu
 
 Unit-Tests und Functional-Tests werden über separate Konfigurationsdateien gestartet. Die Trennung ist erforderlich, da beide einen unterschiedlichen Bootstrap benötigen.
 
+Welche Test-Stufe wann Pflicht ist (SQLite vs. MariaDB, Real-World-E2E), das Container-Setup der Testumgebung und das Release-Ritual sind in [`Documentation/DEVELOPMENT.md`](Documentation/DEVELOPMENT.md) beschrieben.
+
 ```bash
 # Unit-Tests (kein Datenbankzugriff, schnell)
 ddev exec vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.unit.xml
@@ -1075,7 +1077,9 @@ imp_exp_nl/
 │   ├── e2e/                           # Real-World-E2E (run.sh, seed_generate.php)
 │   ├── generate-testdata.php
 │   └── demo/                          # DDEV-Demo-Projekt
-├── Documentation/PERFORMANCE.md
+├── Documentation/
+│   ├── DEVELOPMENT.md                 # Test-Betrieb, Container-Setup, Release-Ritual
+│   └── PERFORMANCE.md
 ├── Tests/                             # siehe Teststruktur oben
 ├── composer.json
 ├── ext_emconf.php
