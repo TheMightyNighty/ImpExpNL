@@ -101,6 +101,33 @@ impexpnl:status / impexpnl:list
 the number of undoable imports, and the last import. ``impexpnl:list`` prints
 the import history (``--limit=N``, default 20).
 
+..  _command-report:
+
+impexpnl:report
+===============
+
+Creates or verifies a **signed transfer report** — a small, self-contained
+audit artifact for a completed import: import ID, date, mode, workspace,
+per-table record counts, placed assets, and (if the source file is still
+available) its sha256. The report is signed with the same key that protects
+import files (HMAC-SHA256 incl. key rotation; without a key it carries a
+plain checksum and the command points this out).
+
+..  code-block:: bash
+
+    # Report for the most recent import (human-readable summary)
+    vendor/bin/typo3 impexpnl:report
+
+    # Write the signed report as a JSON artifact
+    vendor/bin/typo3 impexpnl:report <importId> --output=var/report.json
+
+    # Verify a report later (exit code 4 on tampering)
+    vendor/bin/typo3 impexpnl:report --verify=var/report.json
+
+Verification follows the same rules as import files: with any configured key
+only HMAC signatures are accepted (downgrade protection), rotated keys are
+resolved via their key ID.
+
 ..  _command-inbox:
 
 impexpnl:inbox

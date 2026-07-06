@@ -381,6 +381,21 @@ ddev exec vendor/bin/typo3 impexpnl:unlock
 
 The command `impexpnl:status` shows the DB lock (owner, age, stale status), the number of rollback-capable imports, and the details of the last import. `impexpnl:list` outputs the import history as a table (import ID, date, mode, workspace, record count, source file). `impexpnl:unlock` releases a stuck import lock (with confirmation, `--force` without confirmation). All three support `--json` for machine-readable output.
 
+### Signed transfer report (audit artifact)
+
+For audit trails across security zones, `impexpnl:report` produces a **signed transfer report** for a completed import: import ID, date, mode, workspace, per-table record counts, placed assets, and — if the source file is still available — its sha256. The report is signed with the same key that protects the import files (HMAC-SHA256 incl. key rotation; without a key it carries a plain checksum and the command notes this).
+
+```bash
+# Report for the most recent import (human-readable summary)
+ddev exec vendor/bin/typo3 impexpnl:report
+
+# Write the signed report as a JSON artifact and verify it later
+ddev exec vendor/bin/typo3 impexpnl:report 20260706_180010_1901ac --output=var/report.json
+ddev exec vendor/bin/typo3 impexpnl:report --verify=var/report.json   # exit code 4 on tampering
+```
+
+Verification follows the same rules as import files: with any configured key, only HMAC signatures are accepted (downgrade protection), and rotated keys are resolved via their key ID.
+
 ---
 
 ## Table registry
@@ -607,7 +622,7 @@ For transfers from a lower- into a higher-classified zone (government operations
 2. Take the package through the data lock; with `bundle`, a single file is enough, the contained assets are SHA256-verified via the signed manifest.
 3. `impexpnl:import <package> <pid> --transfer-profile=<profile> --dry-run --json` — gate: review diff and asset preflight (optionally a four-eyes check on the dry-run result).
 4. Run the import; evaluate the exit code (`4` = integrity, `5` = conflict, `6` = rolled-back partial import).
-5. Evidence: import ID, `impexpnl:list --json`, and `var/log/impexpnl_transactions.log` as an audit record; the import can be undone at any time via `impexpnl:undo <import-id>`.
+5. Evidence: `impexpnl:report <import-id> --output=<file>` produces a **signed transfer report** as the audit artifact (verifiable via `--verify`); additionally `impexpnl:list --json` and `var/log/impexpnl_transactions.log`. The import can be undone at any time via `impexpnl:undo <import-id>`.
 
 **Roles:** The export (low side) signs; the data lock only transports; the target system verifies and decides (dry-run gate, conflict policy). For high-to-low exports (e.g. prod→dev), additionally enable `export.sanitize` with `hash_key` so that personal data does not leave the higher zone.
 

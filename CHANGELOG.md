@@ -1,5 +1,17 @@
 # Changelog
 
+## Unveröffentlicht
+
+### Neu
+- **Signierter Transfer-Nachweis (`impexpnl:report`):** erzeugt zu einem
+  abgeschlossenen Import ein kleines, selbsttragendes Audit-Artefakt
+  (Import-ID, Datum, Modus, Workspace, Record-Zahlen je Tabelle, platzierte
+  Assets, sha256 der Quelldatei sofern noch vorhanden) und signiert es mit
+  demselben Schlüssel wie die Importdateien (HMAC-SHA256 inkl. Key-Rotation;
+  ohne Schlüssel bloße Prüfsumme mit Hinweis). `--output` schreibt das
+  JSON-Artefakt, `--verify` prüft es später (Exit-Code 4 bei Manipulation,
+  Downgrade-Sperre wie beim Import). Kein Schema-Update.
+
 ## 2.4.0 — Internationalisierung & TER-Reife (2026-07-06)
 
 Doku-/Politur-Release als Vorbereitung der TER-Veröffentlichung. **Kein

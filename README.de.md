@@ -383,6 +383,21 @@ ddev exec vendor/bin/typo3 impexpnl:unlock
 
 Der Befehl `impexpnl:status` zeigt den DB-Lock (Inhaber, Alter, Stale-Status), die Anzahl rollback-fähiger Imports und die Details des letzten Imports. `impexpnl:list` gibt die Import-Historie tabellarisch aus (Import-ID, Datum, Modus, Workspace, Anzahl Records, Quelldatei). `impexpnl:unlock` löst einen hängenden Import-Lock (mit Bestätigung, `--force` ohne Rückfrage). Alle drei unterstützen `--json` für die maschinenlesbare Ausgabe.
 
+### Signierter Transfer-Nachweis (Audit-Artefakt)
+
+Für die Revision über Zonengrenzen erzeugt `impexpnl:report` einen **signierten Transfer-Nachweis** zu einem abgeschlossenen Import: Import-ID, Datum, Modus, Workspace, Record-Zahlen je Tabelle, platzierte Assets und — sofern die Quelldatei noch vorliegt — deren sha256. Signiert wird mit demselben Schlüssel, der auch die Importdateien schützt (HMAC-SHA256 inkl. Key-Rotation; ohne Schlüssel trägt der Bericht eine bloße Prüfsumme, worauf der Befehl hinweist).
+
+```bash
+# Nachweis für den letzten Import (menschenlesbare Zusammenfassung)
+ddev exec vendor/bin/typo3 impexpnl:report
+
+# Signierten Nachweis als JSON-Artefakt schreiben und später verifizieren
+ddev exec vendor/bin/typo3 impexpnl:report 20260706_180010_1901ac --output=var/report.json
+ddev exec vendor/bin/typo3 impexpnl:report --verify=var/report.json   # Exit-Code 4 bei Manipulation
+```
+
+Die Verifikation folgt denselben Regeln wie bei Importdateien: Sobald ein Schlüssel konfiguriert ist, werden nur HMAC-Signaturen akzeptiert (Downgrade-Sperre), rotierte Schlüssel werden über die Key-ID aufgelöst.
+
 ---
 
 ## Table-Registry
@@ -609,7 +624,7 @@ Für den Transfer aus einer niedriger in eine höher eingestufte Zone (Behörden
 2. Paket durch die Schleuse übernehmen; bei `bundle` genügt eine Datei, die enthaltenen Assets sind über das signierte Manifest SHA256-geprüft.
 3. `impexpnl:import <paket> <pid> --transfer-profile=<profil> --dry-run --json` — Gate: Diff und Asset-Preflight reviewen (bei Bedarf Vier-Augen-Prinzip auf dem Dry-Run-Ergebnis).
 4. Import ausführen; Exit-Code auswerten (`4` = Integrität, `5` = Konflikt, `6` = zurückgerollter Teilimport).
-5. Nachweis: Import-ID, `impexpnl:list --json` und `var/log/impexpnl_transactions.log` als Protokoll für die Revision; Rücknahme jederzeit per `impexpnl:undo <import-id>`.
+5. Nachweis: `impexpnl:report <import-id> --output=<datei>` erzeugt einen **signierten Transfer-Nachweis** als Audit-Artefakt (verifizierbar per `--verify`); zusätzlich `impexpnl:list --json` und `var/log/impexpnl_transactions.log`. Rücknahme jederzeit per `impexpnl:undo <import-id>`.
 
 **Rollen:** Der Export (Low-Side) signiert; die Schleuse transportiert nur; das Zielsystem verifiziert und entscheidet (Dry-Run-Gate, Konflikt-Policy). Für High→Low-Exporte (z. B. Prod→Dev) zusätzlich `export.sanitize` mit `hash_key` aktivieren, damit personenbezogene Daten die höhere Zone nicht verlassen.
 

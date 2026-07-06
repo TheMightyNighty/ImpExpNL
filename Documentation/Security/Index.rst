@@ -96,8 +96,11 @@ Recommended setup:
     ``allowedTables``, and ``requireDryRun`` as a review gate.
 #.  **Per transfer:** health check (``impexpnl:check``), take the package
     through the lock, dry-run gate with diff and asset preflight, import,
-    evaluate the exit code, keep the import ID and transaction log as an
-    audit trail.
+    evaluate the exit code.
+#.  **Audit trail:** ``impexpnl:report <import-id> --output=<file>`` produces
+    a **signed transfer report** (verifiable later with ``--verify``) —
+    together with the import ID and the transaction log this documents the
+    transfer for revision purposes.
 
 ..  _security-push:
 
