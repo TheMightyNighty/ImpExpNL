@@ -1,6 +1,10 @@
 # Changelog
 
-## Unveröffentlicht
+## 2.4.0 — Internationalisierung & TER-Reife (2026-07-06)
+
+Doku-/Politur-Release als Vorbereitung der TER-Veröffentlichung. **Kein
+Schema-Update nötig** (keine neuen DB-Spalten). Abgesichert mit der
+Functional-Suite (SQLite + MariaDB) und dem Real-World-E2E über zwei Instanzen.
 
 ### Sicherheit
 - **Bundle: Link-Member werden vor der Extraktion abgelehnt.** Archive mit
