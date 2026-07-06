@@ -105,7 +105,7 @@ class UrlRewriteService
             if (!empty($rule['regex'])) {
                 $result = @preg_replace($search, $replace, $value);
                 if ($result === null) {
-                    $this->logger->warning('rewrite_urls: ungültiges Regex übersprungen', ['pattern' => $search]);
+                    $this->logger->warning('rewrite_urls: invalid regex skipped', ['pattern' => $search]);
                     continue;
                 }
                 $value = $result;

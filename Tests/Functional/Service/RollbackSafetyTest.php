@@ -92,7 +92,7 @@ class RollbackSafetyTest extends FunctionalTestCase
             $this->get(RollbackService::class)->runRollback();
             self::fail('Rollback hätte wegen lokaler Änderung abbrechen müssen.');
         } catch (\RuntimeException $e) {
-            self::assertStringContainsString('lokal', $e->getMessage());
+            self::assertStringContainsString('locally', $e->getMessage());
             self::assertStringContainsString('--force', $e->getMessage());
         }
 

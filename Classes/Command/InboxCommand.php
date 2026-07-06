@@ -28,7 +28,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'impexpnl:inbox',
-    description: 'Listet eingegangene Transfer-Pakete in der Inbox (löst KEINEN Import aus).'
+    description: 'Lists incoming transfer packages in the inbox (does NOT trigger an import).'
 )]
 class InboxCommand extends Command
 {
@@ -41,8 +41,8 @@ class InboxCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('path', InputArgument::OPTIONAL, 'Inbox-Verzeichnis (Standard: transfer.inbox_path aus der Config)')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+            ->addArgument('path', InputArgument::OPTIONAL, 'Inbox directory (default: transfer.inbox_path from the config)')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -52,7 +52,7 @@ class InboxCommand extends Command
 
         $path = rtrim((string)($input->getArgument('path') ?: $this->configurationService->getInboxPath()), '/');
         if ($path === '') {
-            $msg = 'Kein Inbox-Verzeichnis angegeben (transfer.inbox_path in der Config oder als Argument).';
+            $msg = 'No inbox directory given (transfer.inbox_path in the config or as an argument).';
             if ($jsonOutput) {
                 $output->writeln((string)json_encode(['success' => false, 'error' => $msg], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
@@ -61,7 +61,7 @@ class InboxCommand extends Command
             return Command::FAILURE;
         }
         if (!is_dir($path)) {
-            $msg = sprintf('Inbox-Verzeichnis existiert nicht: %s', $path);
+            $msg = sprintf('Inbox directory does not exist: %s', $path);
             if ($jsonOutput) {
                 $output->writeln((string)json_encode(['success' => false, 'error' => $msg], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
@@ -78,13 +78,13 @@ class InboxCommand extends Command
         }
 
         $io->title('ImpExpNL: Inbox');
-        $io->text('Verzeichnis: ' . $path);
+        $io->text('Directory: ' . $path);
         if ($packages === []) {
-            $io->text('Keine Pakete in der Inbox.');
+            $io->text('No packages in the inbox.');
             return Command::SUCCESS;
         }
         $io->table(
-            ['Paket', 'Größe', 'Eingegangen', 'Signatur'],
+            ['Package', 'Size', 'Received', 'Signature'],
             array_map(static fn(array $p): array => [
                 $p['name'],
                 self::humanBytes($p['size']),
@@ -93,7 +93,7 @@ class InboxCommand extends Command
             ], $packages)
         );
         // Bewusst KEIN Auto-Import: der Import bleibt ein separater, expliziter Schritt.
-        $io->text('Import: vendor/bin/typo3 impexpnl:import ' . $path . '/<paket> <ziel-pid>');
+        $io->text('Import: vendor/bin/typo3 impexpnl:import ' . $path . '/<package> <target-pid>');
 
         return Command::SUCCESS;
     }

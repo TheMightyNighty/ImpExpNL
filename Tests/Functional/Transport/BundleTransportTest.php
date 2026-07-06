@@ -141,7 +141,7 @@ class BundleTransportTest extends FunctionalTestCase
         $phar = new \PharData($readCopy);
         self::assertTrue(isset($phar['export.json']), 'Export-Datei muss enthalten sein');
         self::assertFalse(isset($phar['files/dummy.txt']), 'Laut Baseline vorhandenes Asset darf nicht eingepackt werden');
-        self::assertStringContainsString('laut Baseline bereits auf dem Ziel', $result['message']);
+        self::assertStringContainsString('already on the target per baseline', $result['message']);
     }
 
     #[Test]

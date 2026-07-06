@@ -75,7 +75,7 @@ class RootlineCacheGuard
         } catch (\Throwable $e) {
             // Cache bereits instanziert o. Ä. → unverändertes Kernverhalten
             // (TRUNCATE pro Record); nur informieren.
-            $this->logger->info('Rootline-Cache konnte nicht umgelenkt werden – Batch-Transaktionen ggf. nicht atomar: ' . $e->getMessage());
+            $this->logger->info('Rootline cache could not be redirected – batch transactions may not be atomic: ' . $e->getMessage());
         }
     }
 
@@ -93,7 +93,7 @@ class RootlineCacheGuard
             try {
                 $this->connectionPool->getConnectionByName('Default')->truncate($table);
             } catch (\Throwable $e) {
-                $this->logger->warning("Rootline-Cache-Tabelle $table konnte nicht geleert werden: " . $e->getMessage());
+                $this->logger->warning("Rootline cache table $table could not be truncated: " . $e->getMessage());
             }
         }
     }

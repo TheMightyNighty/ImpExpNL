@@ -136,16 +136,16 @@ class ImportService
             $this->transferProfileService->assertContextAllowed($profile);
             if ($profile->requireDryRun && !$dryRun) {
                 throw new ConfigException(sprintf(
-                    "Transfer-Profil '%s' erlaubt nur Dry-Run (requireDryRun). Mit --dry-run ausführen.",
+                    "Transfer profile '%s' only allows dry runs (requireDryRun). Run with --dry-run.",
                     $profile->name
                 ));
             }
             $options['conflict'] = $profile->conflictStrategy;
             $options['allowedTables'] = $profile->allowedTables;
-            $this->logger->info('Transfer-Profil aktiv', [
+            $this->logger->info('Transfer profile active', [
                 'profile' => $profile->name,
                 'conflict' => $profile->conflictStrategy->value,
-                'allowedTables' => $profile->allowedTables ?? '(alle)',
+                'allowedTables' => $profile->allowedTables ?? '(all)',
             ]);
         }
 
@@ -203,7 +203,7 @@ class ImportService
                 $manifest = $this->loadAndValidateJson($jsonPath);
                 $diff = $this->diffAnalysisService->analyze($manifest, (bool)($options['verbose'] ?? false));
                 $assets = $this->buildAssetPreflight($manifest->getAssets());
-                $this->logger->info('DRY-RUN BEENDET.');
+                $this->logger->info('DRY RUN FINISHED.');
                 return [
                     'dryRun' => true,
                     'diff' => $diff,
@@ -279,7 +279,7 @@ class ImportService
         $this->uidMapRepository->persist($manifest->getSourceId(), $timestamp, $this->rollbackMap);
         $this->writeTransactionLog($timestamp, $workspaceId, $jsonPath, $stats, $deltaMode);
 
-        $this->logger->info('Import abgeschlossen', array_merge($stats, ['importId' => $timestamp]));
+        $this->logger->info('Import completed', array_merge($stats, ['importId' => $timestamp]));
 
         return ['importId' => $timestamp, 'stats' => $stats];
     }
@@ -456,12 +456,12 @@ class ImportService
 
                 $conflict = $this->conflictResolver->detectConflict($page, $existingPageMap[$oldUid]);
                 if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
-                    throw new ConflictException('Konflikt (pages uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
+                    throw new ConflictException('Conflict (pages uid=' . $existingUid . '): ' . $conflict . ' — import aborted (conflict=abort).');
                 }
                 if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
                     $this->uidMap->set('pages', $oldUid, $existingUid);
                     $this->importStats['conflict_skipped']++;
-                    $this->logger->warning('Konflikt übersprungen: ' . $conflict);
+                    $this->logger->warning('Conflict skipped: ' . $conflict);
                     continue;
                 }
                 if ($conflict && $conflictStrategy === ConflictStrategy::Ask && $onConflictAsk) {
@@ -530,7 +530,7 @@ class ImportService
 
                 $conflict = $this->conflictResolver->detectConflict($content, $existingContentMap[$oldContentUid]);
                 if ($conflict && $conflictStrategy === ConflictStrategy::Abort) {
-                    throw new ConflictException('Konflikt (tt_content uid=' . $existingUid . '): ' . $conflict . ' — Import abgebrochen (conflict=abort).');
+                    throw new ConflictException('Conflict (tt_content uid=' . $existingUid . '): ' . $conflict . ' — import aborted (conflict=abort).');
                 }
                 if ($conflict && $conflictStrategy === ConflictStrategy::Skip) {
                     $this->uidMap->set('tt_content', $oldContentUid, $existingUid);
@@ -596,7 +596,7 @@ class ImportService
             return;
         }
         if ($targetPid < 0) {
-            throw new \RuntimeException("Ungültige Ziel-PID: $targetPid");
+            throw new \RuntimeException("Invalid target PID: $targetPid");
         }
         $qb = $this->connectionPool->getQueryBuilderForTable('pages');
         $qb->getRestrictions()->removeAll()->add(GeneralUtility::makeInstance(DeletedRestriction::class));
@@ -604,7 +604,7 @@ class ImportService
             ->where($qb->expr()->eq('uid', $qb->createNamedParameter($targetPid, Connection::PARAM_INT)))
             ->executeQuery()->fetchOne();
         if (!$exists) {
-            throw new \RuntimeException("Ziel-Seite (PID $targetPid) existiert nicht.");
+            throw new \RuntimeException("Target page (PID $targetPid) does not exist.");
         }
     }
 
@@ -698,7 +698,7 @@ class ImportService
         $this->importLogRepository->upsert(
             $timestamp,
             (int)($options['workspaceId'] ?? 0),
-            $jsonPath . ' [ABGEBROCHEN]',
+            $jsonPath . ' [ABORTED]',
             (bool)($options['deltaMode'] ?? false),
             $this->withPlacedFiles($this->createdMap->toArray())
         );
@@ -707,13 +707,13 @@ class ImportService
             try {
                 // Auto-Rollback räumt die eigenen, gerade erst angelegten Teil-Records auf -> force.
                 $this->rollbackService->runRollback($timestamp, true);
-                $this->logger->error('Import abgebrochen – Teilimport automatisch zurückgerollt.', [
+                $this->logger->error('Import aborted – partial import automatically rolled back.', [
                     'importId' => $timestamp,
                     'error' => $e->getMessage(),
                 ]);
                 return;
             } catch (\Throwable $rollbackError) {
-                $this->logger->critical('Import abgebrochen UND automatischer Rollback fehlgeschlagen – manueller Eingriff nötig (impexpnl:undo ' . $timestamp . ').', [
+                $this->logger->critical('Import aborted AND automatic rollback failed – manual intervention required (impexpnl:undo ' . $timestamp . ').', [
                     'importId' => $timestamp,
                     'error' => $e->getMessage(),
                     'rollbackError' => $rollbackError->getMessage(),
@@ -722,7 +722,7 @@ class ImportService
             }
         }
 
-        $this->logger->error('Import abgebrochen – Notfall-Protokoll geschrieben (Rollback via impexpnl:undo ' . $timestamp . ' möglich).', [
+        $this->logger->error('Import aborted – emergency log written (rollback via impexpnl:undo ' . $timestamp . ' possible).', [
             'importId' => $timestamp,
             'error' => $e->getMessage(),
         ]);
@@ -748,8 +748,8 @@ class ImportService
             if ($issue['reason'] === 'missing') {
                 $missing++;
                 $this->logger->warning(sprintf(
-                    'Asset fehlt auf dem Ziel: "%s" (Storage %d). Die FAL-Referenz wird übersprungen – '
-                    . 'Datei vor dem Import übertragen (siehe impexpnl_assets.txt).',
+                    'Asset missing on the target: "%s" (storage %d). The FAL reference is skipped – '
+                    . 'transfer the file before importing (see impexpnl_assets.txt).',
                     $issue['identifier'],
                     $issue['storage']
                 ));
@@ -760,8 +760,8 @@ class ImportService
             }
             $mismatches++;
             $this->logger->warning(sprintf(
-                'Asset-Integrität: "%s" (Storage %d) hat auf dem Ziel anderen Inhalt als im Export '
-                . '(erwartet sha256 %s…, vorhanden %s…). Bestehende Datei bleibt unverändert.',
+                'Asset integrity: "%s" (storage %d) has different content on the target than in the export '
+                . '(expected sha256 %s…, found %s…). The existing file is left unchanged.',
                 $issue['identifier'],
                 $issue['storage'],
                 substr((string)$issue['expected'], 0, 12),
@@ -769,10 +769,10 @@ class ImportService
             ));
         }
         if ($mismatches > 0) {
-            $this->logger->warning(sprintf('Asset-Integrität: %d Datei(en) mit abweichendem Inhalt auf dem Ziel.', $mismatches));
+            $this->logger->warning(sprintf('Asset integrity: %d file(s) with different content on the target.', $mismatches));
         }
         if ($missing > 0) {
-            $this->logger->warning(sprintf('Asset-Integrität: %d Datei(en) fehlen auf dem Ziel.', $missing));
+            $this->logger->warning(sprintf('Asset integrity: %d file(s) missing on the target.', $missing));
         }
         return $missing;
     }
@@ -817,7 +817,7 @@ class ImportService
 
         $changed = $this->urlRewriteService->rewrite($uidMap, array_values($cfg['rules']), $fields, $workspaceId);
         if ($changed > 0) {
-            $this->logger->info(sprintf('rewrite_urls: %d Feld(er) angepasst.', $changed));
+            $this->logger->info(sprintf('rewrite_urls: %d field(s) adjusted.', $changed));
         }
     }
 
@@ -972,7 +972,7 @@ class ImportService
             // IRRE-Kinder ohne gemappte Ziel-Seite werden übersprungen.
             $newPid = $uidMap['pages'][$rec['pid'] ?? 0] ?? null;
             if ($newPid === null) {
-                $this->logger->warning('IRRE-Relation übersprungen: Ziel-Seite nicht auflösbar (PID-Containment).', [
+                $this->logger->warning('IRRE relation skipped: target page not resolvable (PID containment).', [
                     'table' => $table,
                     'source_uid' => $rec['uid'] ?? null,
                 ]);
@@ -996,10 +996,10 @@ class ImportService
         if (!is_dir($logDir)) {
             mkdir($logDir, 0775, true);
         }
-        $mode = $delta ? 'DELTA' : 'VOLL';
+        $mode = $delta ? 'DELTA' : 'FULL';
         $lines = [str_repeat('=', 72), sprintf('[%s] %s-IMPORT %s', date('Y-m-d H:i:s'), $mode, $id), str_repeat('-', 72),
-            sprintf('Quelldatei: %s | Workspace: %d', $file, $ws),
-            sprintf('Neu: %d | Aktualisiert: %d | Übersprungen: %d | Konflikte übersprungen: %d', $stats['new'], $stats['updated'], $stats['skipped'], $stats['conflict_skipped'] ?? 0), ''];
+            sprintf('Source file: %s | Workspace: %d', $file, $ws),
+            sprintf('New: %d | Updated: %d | Skipped: %d | Conflicts skipped: %d', $stats['new'], $stats['updated'], $stats['skipped'], $stats['conflict_skipped'] ?? 0), ''];
         foreach (['pages', 'tt_content'] as $t) {
             $entries = $this->uidMap->forTable($t);
             if (!empty($entries)) {

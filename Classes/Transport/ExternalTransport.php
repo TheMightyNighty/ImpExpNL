@@ -35,7 +35,7 @@ class ExternalTransport implements TransportInterface
             'type' => 'external',
             'artifact' => null,
             'message' => sprintf(
-                'Manifest + Asset-Liste geschrieben (%d Datei(en)). Transfer der Assets via rsync/rclone/S3 (Operator).',
+                'Manifest + asset list written (%d file(s)). Transfer the assets via rsync/rclone/S3 (operator).',
                 count($assets)
             ),
         ];

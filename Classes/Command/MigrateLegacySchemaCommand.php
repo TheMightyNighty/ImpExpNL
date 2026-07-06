@@ -40,7 +40,7 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
  */
 #[AsCommand(
     name: 'impexpnl:migrate-legacy-schema',
-    description: 'Übernimmt Daten aus älteren Schemata (remote_uid-Spalten, robbi_copy) in das ImpExpNL-Schema.'
+    description: 'Migrates data from older schemas (remote_uid columns, robbi_copy) into the ImpExpNL schema.'
 )]
 class MigrateLegacySchemaCommand extends Command
 {
@@ -57,7 +57,7 @@ class MigrateLegacySchemaCommand extends Command
 
     protected function configure(): void
     {
-        $this->addOption('drop-legacy', null, InputOption::VALUE_NONE, 'Alte Spalten/Tabellen nach der Übernahme entfernen');
+        $this->addOption('drop-legacy', null, InputOption::VALUE_NONE, 'Remove old columns/tables after migration');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -94,7 +94,7 @@ class MigrateLegacySchemaCommand extends Command
                 // Einzelquelle (source_id=''); idempotent dank delete-then-insert.
                 $this->uidMapRepository->persist('', 'legacy-migration', [$table => $mapping]);
             }
-            $io->text(sprintf('%s: %d Herkunfts-Zuordnungen aus %s in tx_impexpnl_uid_map übernommen.', $table, count($mapping), $sourceColumn));
+            $io->text(sprintf('%s: %d origin mapping(s) migrated from %s into tx_impexpnl_uid_map.', $table, count($mapping), $sourceColumn));
             $didSomething = true;
 
             if ($dropLegacy) {
@@ -103,7 +103,7 @@ class MigrateLegacySchemaCommand extends Command
                     $connection->quoteIdentifier($table),
                     $connection->quoteIdentifier($sourceColumn)
                 ));
-                $io->text(sprintf('%s: alte Spalte %s entfernt.', $table, $sourceColumn));
+                $io->text(sprintf('%s: old column %s removed.', $table, $sourceColumn));
             }
         }
 
@@ -123,13 +123,13 @@ class MigrateLegacySchemaCommand extends Command
         }
 
         if (!$didSomething) {
-            $io->success('Kein Alt-Schema (robbi_copy) gefunden – nichts zu migrieren.');
+            $io->success('No legacy schema (robbi_copy) found – nothing to migrate.');
             return Command::SUCCESS;
         }
 
         $io->success($dropLegacy
-            ? 'Migration abgeschlossen, Alt-Schema entfernt.'
-            : 'Migration abgeschlossen. Mit --drop-legacy lassen sich die Alt-Spalten/-Tabellen entfernen.');
+            ? 'Migration completed, legacy schema removed.'
+            : 'Migration completed. Use --drop-legacy to remove the old columns/tables.');
         return Command::SUCCESS;
     }
 
@@ -165,13 +165,13 @@ class MigrateLegacySchemaCommand extends Command
             $quoted,
             $connection->quoteIdentifier($from)
         ));
-        $io->text(sprintf('%s → %s: %d Zeilen übernommen.', $from, $to, $affected));
+        $io->text(sprintf('%s → %s: %d row(s) migrated.', $from, $to, $affected));
     }
 
     private function dropTable(string $table, SymfonyStyle $io): void
     {
         $connection = $this->connectionPool->getConnectionForTable($table);
         $connection->executeStatement('DROP TABLE ' . $connection->quoteIdentifier($table));
-        $io->text(sprintf('Alte Tabelle %s entfernt.', $table));
+        $io->text(sprintf('Old table %s removed.', $table));
     }
 }

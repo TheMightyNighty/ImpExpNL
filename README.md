@@ -1,93 +1,93 @@
+🇩🇪 [Deutsche Version](README.de.md)
+
 # ImpExpNL — TYPO3 v14 (2.x)
 
-ImpExpNL ist eine TYPO3-Extension für den strukturierten Export und Import von Seitenbäumen zwischen TYPO3-Instanzen. Diese Version ist für **TYPO3 v14 LTS** entwickelt (Doctrine DBAL 4). Für **TYPO3 v13.4 LTS** (und GSB 11) siehe den Branch `13.x` / die `1.x`-Releases.
+ImpExpNL is a TYPO3 extension for the structured export and import of page trees between TYPO3 instances. This version is built for **TYPO3 v14 LTS** (Doctrine DBAL 4). For **TYPO3 v13.4 LTS** (and GSB 11) see the `13.x` branch / the `1.x` releases.
 
-Beim Export wird ein vollständiger Seitenbaum einschließlich aller Inhaltselemente, FAL-Referenzen, Systemkategorien, Redirects, Container-Layouts und IRRE-Relationen als JSON-Datei gespeichert. Beim Import werden alle internen Verknüpfungen (UIDs, Seiten-Links, Sprach-Overlays, Container-Hierarchien, Kategorie-Zuordnungen) automatisch auf die Zielstruktur umgeschrieben.
+On export, a complete page tree — including all content elements, FAL references, system categories, redirects, container layouts and IRRE relations — is saved as a JSON file. On import, all internal links (UIDs, page links, language overlays, container hierarchies, category assignments) are automatically rewritten to match the target structure.
 
-Zusätzliche Tabellen können rein deklarativ über YAML-Konfiguration registriert werden. PHP-Code ist dafür nicht erforderlich.
-
----
-
-## Einsatzzweck
-
-Die Extension adressiert den Bedarf, Inhalte kontrolliert zwischen TYPO3-Instanzen zu transferieren, beispielsweise von einer Entwicklungsumgebung über ein Referenzsystem auf das Produktivsystem. Ein direkter Datenbank-Transfer ist zwischen verschiedenen Instanzen nicht möglich, da sich die UIDs aller Records unterscheiden. ImpExpNL übernimmt das vollständige UID-Remapping, die Auflösung von Dateireferenzen über Dateipfade statt UIDs sowie die Umschreibung interner Links.
+Additional tables can be registered purely declaratively via YAML configuration. No PHP code is required for this.
 
 ---
 
-## Abgrenzung zu EXT:impexp
+## Purpose
 
-ImpExpNL ist als CLI-first-, automatisierungs- und cluster-taugliche Alternative zum TYPO3-Kernmodul **EXT:impexp** entworfen. Die wesentlichen Unterschiede:
+The extension addresses the need to transfer content between TYPO3 instances in a controlled way, for example from a development environment via a staging system to production. A direct database transfer is not possible between different instances because the UIDs of all records differ. ImpExpNL handles the complete UID remapping, resolves file references via file paths instead of UIDs, and rewrites internal links.
 
-| Aspekt | EXT:impexp (Kern) | **ImpExpNL** |
+---
+
+## Comparison with EXT:impexp
+
+ImpExpNL is designed as a CLI-first, automation- and cluster-capable alternative to the TYPO3 core module **EXT:impexp**. The key differences:
+
+| Aspect | EXT:impexp (core) | **ImpExpNL** |
 |---|---|---|
-| **Transferformat** | T3D (serialisiert) / XML – opak, nicht diffbar | **JSON / JSONL / CSV** – lesbar, versionierbar, diff- & pipeline-tauglich |
-| **Bedienung** | primär Backend-Modul (GUI) | **CLI-first**, headless, `--json`-Ausgabe + Exit-Codes für CI/CD & GitOps |
-| **Wiederholter Import** | erzeugt Duplikate | **Delta-/Idempotenz-Modus** – erkennt bereits importierte Records über das Herkunfts-Mapping (`tx_impexpnl_uid_map`), überspringt Identische |
-| **Konflikte** | keine Erkennung | **Konflikterkennung + Strategien** (overwrite / skip / ask) inkl. Feld-Diff |
-| **Vorab-Prüfung** | – | **Dry-Run-Differenzanalyse** vor jedem Schreibvorgang |
-| **Rückgängig machen** | kein gezieltes Undo | **Protokolliertes Rollback/Undo** jedes Imports + **automatischer Rollback bei Abbruch** (kein halber Baum) |
-| **Große Bäume** | lädt Struktur komplett in den Speicher | **Batch-/Chunk-Verarbeitung** über DataHandler (10 000 Seiten / 20 000 Inhalte getestet, ~337 MB Speicher-Peak) |
-| **Zusatztabellen** | via TCA-Flags / PHP-Code | **Deklarative YAML-Registry** – Redirects, Kategorien, News etc. ohne PHP |
-| **Dateien (FAL)** | Binärdaten in die Datei eingebettet | **FAL über Dateipfade** – schlanke Transferdatei, Assets per `rsync` |
-| **Integrität** | – | **Prüfsumme/Signatur** (optional `IMPEXPNL_SIGNING_KEY`) gegen Manipulation |
-| **Nebenläufigkeit** | – | **Cluster-weiter Import-Lock** (DB-basiert) |
-| **Sonstiges** | – | Workspace-Ziel-Import, Multi-Site-Slug-Regenerierung, PSR-14-Events, Kategorie-Pfad-Mapping |
+| **Transfer format** | T3D (serialized) / XML – opaque, not diffable | **JSON / JSONL / CSV** – readable, versionable, diff- and pipeline-capable |
+| **Operation** | primarily backend module (GUI) | **CLI-first**, headless, `--json` output + exit codes for CI/CD & GitOps |
+| **Repeated import** | creates duplicates | **Delta/idempotency mode** – detects already-imported records via the origin mapping (`tx_impexpnl_uid_map`), skips identical ones |
+| **Conflicts** | no detection | **Conflict detection + strategies** (overwrite / skip / ask) incl. field diff |
+| **Pre-check** | – | **Dry-run diff analysis** before every write |
+| **Roll back** | no targeted undo | **Logged rollback/undo** of every import + **automatic rollback on abort** (no half-written tree) |
+| **Large trees** | loads the entire structure into memory | **Batch/chunk processing** via DataHandler (tested with 10,000 pages / 20,000 content elements, ~337 MB peak memory) |
+| **Additional tables** | via TCA flags / PHP code | **Declarative YAML registry** – redirects, categories, news etc. without PHP |
+| **Files (FAL)** | binary data embedded in the file | **FAL via file paths** – lean transfer file, assets transferred via `rsync` |
+| **Integrity** | – | **Checksum/signature** (optional `IMPEXPNL_SIGNING_KEY`) against tampering |
+| **Concurrency** | – | **Cluster-wide import lock** (DB-based) |
+| **Other** | – | Workspace target import, multi-site slug regeneration, PSR-14 events, category path mapping |
 
-EXT:impexp kann UID-Remapping, Relationen und FAL durchaus – die Tabelle hebt die Punkte hervor, die ImpExpNL zusätzlich bzw. anders löst: Automatisierung, Idempotenz, Rollback und deklarative Erweiterbarkeit.
-
----
-
-## Grenzen & Nicht-Ziele
-
-Damit klar ist, wofür ImpExpNL **nicht** gedacht ist:
-
-- **Kein DB-Dump-Ersatz.** Übertragen werden Seiten, Inhalte und registrierte Tabellen –
-  nicht der gesamte Datenbankzustand (Sessions, Caches, Backend-User, Systemkonfiguration).
-  Für vollständige Klone ist ein DB-Dump das richtige Werkzeug.
-- **Kein generischer Import beliebiger Tabellen.** Über `pages`/`tt_content` hinausgehende
-  Tabellen müssen per YAML-Profil (Table-Registry) registriert sein. Ohne Profil werden sie
-  nicht angefasst.
-- **Kein Datei-Transfer.** Exportiert wird eine Asset-Liste, nicht die Binärdateien. Der
-  physische Transfer des `fileadmin` bleibt Sache von `rsync`/`rclone`/S3 o. Ä.
-- **Kein Merge-Tool.** Bei Konflikten wird pro Record entschieden (overwrite/skip/ask/abort),
-  nicht feldweise zusammengeführt. Es gibt keine Drei-Wege-Merges.
-- **Rollback ≠ Snapshot-Restore.** Der Rollback macht *einen protokollierten Import*
-  rückgängig (die dabei angelegten/aktualisierten Records), er stellt keinen früheren
-  Gesamtzustand der Instanz wieder her.
-- **Direkte MM-Importe umgehen den DataHandler bewusst.** MM-Beziehungen (z. B. Kategorien)
-  werden über Pfad-Mapping direkt geschrieben – das ist gewollt (Performance/Idempotenz),
-  bedeutet aber, dass DataHandler-Hooks für diese MM-Tabellen nicht greifen.
-- **Workspaces sind projektspezifisch.** Der Workspace-Ziel-Import nutzt die regulären
-  TYPO3-Mechanismen; Staging-/Freigabe-Workflows (z. B. im GSB 11) bleiben Sache des Projekts.
+EXT:impexp can certainly handle UID remapping, relations and FAL — the table highlights the points that ImpExpNL solves additionally or differently: automation, idempotency, rollback and declarative extensibility.
 
 ---
 
-## Systemvoraussetzungen
+## Scope & non-goals
 
-- PHP 8.2 oder höher
+To make clear what ImpExpNL is **not** intended for:
+
+- **Not a DB-dump replacement.** Pages, content and registered tables are transferred –
+  not the entire database state (sessions, caches, backend users, system configuration).
+  For complete clones, a DB dump is the right tool.
+- **No generic import of arbitrary tables.** Tables beyond `pages`/`tt_content` must be
+  registered via a YAML profile (table registry). Without a profile they are not touched.
+- **No file transfer.** An asset list is exported, not the binary files. The physical
+  transfer of `fileadmin` remains a job for `rsync`/`rclone`/S3 or similar.
+- **Not a merge tool.** On conflicts, a decision is made per record (overwrite/skip/ask/abort),
+  not merged field by field. There are no three-way merges.
+- **Rollback ≠ snapshot restore.** The rollback undoes *one logged import* (the records
+  created/updated by it); it does not restore an earlier overall state of the instance.
+- **Direct MM imports deliberately bypass the DataHandler.** MM relations (e.g. categories)
+  are written directly via path mapping – this is intentional (performance/idempotency),
+  but it means DataHandler hooks do not fire for these MM tables.
+- **Workspaces are project-specific.** The workspace target import uses the regular
+  TYPO3 mechanisms; staging/release workflows (e.g. in GSB 11) remain the project's responsibility.
+
+---
+
+## System requirements
+
+- PHP 8.2 or higher
 - TYPO3 14 LTS
-- Composer-basierte TYPO3-Installation
+- Composer-based TYPO3 installation
 
-> **Schnell ausprobieren:** Ein lauffähiges DDEV-Demo-Projekt (vanilla TYPO3 v14, Extension per Path-Repository) liegt unter [`Build/demo/`](Build/demo/README.md) — `ddev start` und loslegen.
+> **Quick try-out:** A ready-to-run DDEV demo project (vanilla TYPO3 v14, extension via path repository) is available under [`Build/demo/`](Build/demo/README.md) — run `ddev start` and go.
 
 ---
 
-## Versionen & Kompatibilität
+## Versions & compatibility
 
-ImpExpNL wird in zwei parallelen Linien gepflegt. Beim Composer-Install wird über die
-Versions-Constraints **automatisch** die passende Linie gewählt — manuelles Pinnen ist
-in der Regel nicht nötig.
+ImpExpNL is maintained in two parallel lines. When installing via Composer, the correct
+line is selected **automatically** through the version constraints — manual pinning is
+generally not necessary.
 
-| Extension | TYPO3 | PHP | Branch | Pflege |
+| Extension | TYPO3 | PHP | Branch | Maintenance |
 |-----------|-------|-----|--------|--------|
-| **2.x**   | v14 LTS    | 8.2 – 8.4 | [`main`](https://github.com/TheMightyNighty/ImpExpNL/tree/main) | aktiv (Features + Fixes) |
-| **1.x**   | v13.4 LTS (+ GSB 11) | 8.2 – 8.3 | [`13.x`](https://github.com/TheMightyNighty/ImpExpNL/tree/13.x) | Wartung (Fixes) |
+| **2.x**   | v14 LTS    | 8.2 – 8.4 | [`main`](https://github.com/TheMightyNighty/ImpExpNL/tree/main) | active (features + fixes) |
+| **1.x**   | v13.4 LTS (+ GSB 11) | 8.2 – 8.3 | [`13.x`](https://github.com/TheMightyNighty/ImpExpNL/tree/13.x) | maintenance (fixes) |
 
-- **`main`** ist die aktuelle v14-Entwicklungslinie (Releases `2.x`).
-- **`13.x`** pflegt die v13.4-Linie weiter (Releases `1.x`) — z. B. für GSB 11.
-- Fixes werden im ältesten betroffenen Branch entwickelt und nach `main` vorgemerged.
+- **`main`** is the current v14 development line (`2.x` releases).
+- **`13.x`** continues to maintain the v13.4 line (`1.x` releases) — e.g. for GSB 11.
+- Fixes are developed in the oldest affected branch and forward-merged into `main`.
 
-Beispiel für gezieltes Pinnen (nur falls nötig):
+Example for explicit pinning (only if needed):
 
 ```bash
 composer require themightynighty/impexpnl:"^2.0"   # TYPO3 v14
@@ -98,8 +98,8 @@ composer require themightynighty/impexpnl:"^1.0"   # TYPO3 v13.4
 
 ## Installation
 
-ImpExpNL ist eine Composer-Extension. **Empfohlener Weg ist Composer** – die passende
-Linie (v14 = `^2.0`, v13.4 = `^1.0`) wird über die Versions-Constraints automatisch gewählt.
+ImpExpNL is a Composer extension. **Composer is the recommended route** – the correct
+line (v14 = `^2.0`, v13.4 = `^1.0`) is chosen automatically via the version constraints.
 
 ```bash
 composer require themightynighty/impexpnl
@@ -109,61 +109,61 @@ vendor/bin/typo3 database:updateschema
 vendor/bin/typo3 cache:flush
 ```
 
-(In einem DDEV-Projekt den Befehlen `ddev composer …` bzw. `ddev exec vendor/bin/typo3 …`
-voranstellen.)
+(In a DDEV project, prefix the commands with `ddev composer …` or
+`ddev exec vendor/bin/typo3 …` respectively.)
 
-Durch `database:updateschema` werden die Tabellen `tx_impexpnl_import_log`, `tx_impexpnl_lock` und `tx_impexpnl_uid_map` angelegt. `tx_impexpnl_uid_map` hält das Herkunfts-Mapping (Quell-Record → Ziel-Record) zur Erkennung bereits importierter Records bei wiederholten Imports – Core-Tabellen (`pages`/`tt_content`) bleiben dabei unangetastet. Die Tabelle `tx_impexpnl_lock` realisiert den cluster-weiten Import-Lock. (Hinweis: Frühere Versionen nutzten ein Feld `tx_impexpnl_remote_uid` auf `pages`/`tt_content`; `impexpnl:migrate-legacy-schema` überführt es in die neue Tabelle.)
+`database:updateschema` creates the tables `tx_impexpnl_import_log`, `tx_impexpnl_lock` and `tx_impexpnl_uid_map`. `tx_impexpnl_uid_map` holds the origin mapping (source record → target record) to detect already-imported records on repeated imports – core tables (`pages`/`tt_content`) remain untouched by this. The table `tx_impexpnl_lock` implements the cluster-wide import lock. (Note: earlier versions used a field `tx_impexpnl_remote_uid` on `pages`/`tt_content`; `impexpnl:migrate-legacy-schema` migrates it into the new table.)
 
-Die Installation wird geprüft mit:
+The installation is verified with:
 
 ```bash
 vendor/bin/typo3 list impexpnl
 ```
 
-Es werden folgende Befehle ausgegeben: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock` und `impexpnl:migrate-legacy-schema`.
+The following commands are listed: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock` and `impexpnl:migrate-legacy-schema`.
 
-### Weitere Bezugswege
+### Other sources
 
-- **Entwicklung / noch nicht auf Packagist:** als Path- oder VCS-Repository einbinden.
-  Dazu in der `composer.json` des Projekts ein `repositories`-Eintrag auf das lokale
-  Verzeichnis bzw. das Git-Repo, dann `composer require themightynighty/impexpnl:@dev`.
-- **TER** (TYPO3 Extension Repository): optional, für Setups ohne Composer-Workflow.
-- **DDEV-Demo:** ein lauffähiges Beispielprojekt (vanilla TYPO3 v14, Extension per
-  Path-Repository) liegt unter [`Build/demo/`](Build/demo/README.md) – `ddev start` genügt.
-  Es dient zum Ausprobieren, **nicht** als Installationsweg für Produktivprojekte.
+- **Development / not yet on Packagist:** include it as a path or VCS repository.
+  Add a `repositories` entry to the project's `composer.json` pointing to the local
+  directory or the Git repo, then run `composer require themightynighty/impexpnl:@dev`.
+- **TER** (TYPO3 Extension Repository): optional, for setups without a Composer workflow.
+- **DDEV demo:** a ready-to-run example project (vanilla TYPO3 v14, extension via
+  path repository) is available under [`Build/demo/`](Build/demo/README.md) – `ddev start` is enough.
+  It is meant for trying things out, **not** as an installation route for production projects.
 
 ---
 
-## Arbeitsablauf
+## Workflow
 
-Ein Content-Transfer folgt einem festen Ablauf:
+A content transfer follows a fixed sequence:
 
-**1. Export auf dem Quellsystem.** Der Seitenbaum wird ausgehend von einer Start-PID rekursiv eingesammelt und als JSON-Datei gespeichert. Parallel wird eine Textdatei mit allen referenzierten Dateipfaden erzeugt.
+**1. Export on the source system.** The page tree is collected recursively starting from a start PID and saved as a JSON file. In parallel, a text file listing all referenced file paths is generated.
 
 ```bash
 ddev exec vendor/bin/typo3 impexpnl:export 123 /var/www/html/var/export.json
 ```
 
-**2. Dateitransfer.** Die physischen Bilder und Dokumente werden separat auf das Zielsystem übertragen. Die beim Export erzeugte Datei `impexpnl_assets.txt` dient als Eingabe für `rsync`:
+**2. File transfer.** The physical images and documents are transferred separately to the target system. The file `impexpnl_assets.txt` generated during export serves as input for `rsync`:
 
 ```bash
 rsync -avz --files-from=/var/www/html/var/impexpnl_assets.txt \
-  /var/www/html/fileadmin/ user@zielserver:/var/www/html/fileadmin/
+  /var/www/html/fileadmin/ user@targetserver:/var/www/html/fileadmin/
 ```
 
-**3. Testlauf.** Vor dem eigentlichen Import wird eine Differenzanalyse durchgeführt. Es werden keine Daten geschrieben.
+**3. Trial run.** Before the actual import, a diff analysis is performed. No data is written.
 
 ```bash
 ddev exec vendor/bin/typo3 impexpnl:import /var/www/html/var/export.json 456 --dry-run
 ```
 
-**4. Import.** Der eigentliche Import wird ausgeführt. Optional kann ein Workspace als Ziel angegeben werden.
+**4. Import.** The actual import is executed. Optionally, a workspace can be specified as the target.
 
 ```bash
 ddev exec vendor/bin/typo3 impexpnl:import /var/www/html/var/export.json 456 --target-workspace=1
 ```
 
-**5. Rollback.** Bei Bedarf wird der Import vollständig rückgängig gemacht.
+**5. Rollback.** If needed, the import can be rolled back completely.
 
 ```bash
 ddev exec vendor/bin/typo3 impexpnl:undo
@@ -174,118 +174,118 @@ ddev exec vendor/bin/typo3 impexpnl:undo
 ## Export
 
 ```bash
-ddev exec vendor/bin/typo3 impexpnl:export <Start-PID> <Zielpfad> [Optionen]
+ddev exec vendor/bin/typo3 impexpnl:export <start-PID> <target-path> [options]
 ```
 
-### Optionen
+### Options
 
-| Option | Beschreibung |
+| Option | Description |
 |---|---|
-| `--depth=N` | Begrenzung der Rekursionstiefe. Bei `0` (Standard) wird der gesamte Baum exportiert. Bei `--depth=1` werden nur die Startseite und deren direkte Kindseiten erfasst. |
-| `--include-hidden` | Einbeziehung versteckter und deaktivierter Records. Standardmäßig werden nur aktive Records exportiert. |
-| `--pages=1,2,3` | Export einzelner Seiten ohne Rekursion. Die angegebenen PIDs werden direkt exportiert, Kindseiten werden nicht einbezogen. |
-| `--exclude-pages=99,100` | Ausschluss bestimmter PIDs aus dem Export. Die Seiten und deren Inhalte werden übersprungen. |
-| `--since=2026-01-01` | Zeitbasierter Filter. Es werden nur Records exportiert, deren `tstamp` nach dem angegebenen Datum liegt. Damit wird die Datenmenge bei Delta-Transfers erheblich reduziert. |
-| `--content-types=text,textmedia` | Einschränkung auf bestimmte CTypes. Alle anderen Inhaltselemente werden nicht exportiert. |
-| `--csv` | Erzeugung zusätzlicher CSV-Dateien (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). Diese Dateien können in Tabellenkalkulationsprogrammen geöffnet werden, um die Exportdaten vor dem Import tabellarisch zu prüfen oder mit anderen Datenquellen abzugleichen. |
-| `--bundle-baseline=<manifest>` | Inkrementelles Bundle (nur mit `--transport=bundle`): Pfad zum Asset-Manifest des **Ziels** (`impexpnl_assets.json`, z. B. vorab per Schleuse geholt). Dateien, die dort bereits inhaltsgleich (sha256) gelistet sind, werden nicht eingepackt — das Bundle enthält nur neue/geänderte Assets. Fehlt eine übersprungene Datei auf dem Ziel wider Erwarten, meldet der Import das über den Asset-Preflight (Exit-Code `7`); es entsteht kein stiller Verlust. |
-| `--jsonl` | Zeilenweise geschriebenes JSONL-Format (ein JSON-Objekt pro Zeile) — kompakt und speicherschonend beim Export (kein einzelnes `json_encode` über den gesamten Block). Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. **Empfehlung: Für große Exporte (ab einigen tausend Records) JSONL verwenden** — nur dieses Format wird beim Import und Dry-Run-Diff records-weise gestreamt (konstanter Speicher); `.json` wird vollständig in den Speicher geparst. Siehe Abschnitt „Chunked Verarbeitung". |
+| `--depth=N` | Limits the recursion depth. At `0` (default) the entire tree is exported. At `--depth=1` only the start page and its direct child pages are captured. |
+| `--include-hidden` | Includes hidden and disabled records. By default only active records are exported. |
+| `--pages=1,2,3` | Exports individual pages without recursion. The given PIDs are exported directly, child pages are not included. |
+| `--exclude-pages=99,100` | Excludes specific PIDs from the export. Those pages and their content are skipped. |
+| `--since=2026-01-01` | Time-based filter. Only records whose `tstamp` is after the given date are exported. This significantly reduces the data volume for delta transfers. |
+| `--content-types=text,textmedia` | Restricts the export to specific CTypes. All other content elements are not exported. |
+| `--csv` | Generates additional CSV files (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). These files can be opened in spreadsheet programs to review the exported data in tabular form before import, or to reconcile it against other data sources. |
+| `--bundle-baseline=<manifest>` | Incremental bundle (only with `--transport=bundle`): path to the **target's** asset manifest (`impexpnl_assets.json`, e.g. fetched in advance via the data lock). Files already listed there with identical content (sha256) are not packed — the bundle only contains new/changed assets. If a skipped file unexpectedly turns out to be missing on the target, the import reports this via the asset preflight (exit code `7`); no silent loss occurs. |
+| `--jsonl` | JSONL format written line by line (one JSON object per line) — compact and memory-friendly during export (no single `json_encode` over the whole block). The target file should end in `.jsonl`; the import detects the format automatically. The default JSON format remains fully usable. **Recommendation: use JSONL for large exports (from a few thousand records)** — only this format is streamed record by record on import and dry-run diff (constant memory); `.json` is parsed entirely into memory. See the "Chunked processing" section. |
 
-### Erzeugte Dateien
+### Generated files
 
-Jeder Export erzeugt neben der JSON-Datei zwei Hilfsdateien:
+Every export produces two auxiliary files alongside the JSON file:
 
-**`impexpnl_assets.txt`** enthält eine Liste aller referenzierten Dateipfade (ein Pfad pro Zeile). Die Datei ist für die direkte Verwendung mit `rsync --files-from` formatiert. So werden nur die tatsächlich benötigten Dateien übertragen, nicht der gesamte `fileadmin`-Ordner.
+**`impexpnl_assets.txt`** contains a list of all referenced file paths (one path per line). The file is formatted for direct use with `rsync --files-from`. This way, only the files actually needed are transferred, not the entire `fileadmin` folder.
 
-**`impexpnl_broken_links.txt`** listet alle internen `t3://page?uid=`-Links auf, deren Zielseite nicht im Export enthalten ist. Diese Informationen ermöglichen eine Prüfung vor dem Import, welche Links auf dem Zielsystem ohne Ziel wären.
+**`impexpnl_broken_links.txt`** lists all internal `t3://page?uid=` links whose target page is not included in the export. This information allows a check before import of which links would have no target on the target system.
 
-### Integritätsprüfung
+### Integrity check
 
-Die JSON-Datei enthält einen `_meta`-Block mit Exportdatum, Quellsystem, TYPO3-Version und einer Prüfsumme über den gesamten Datenblock. Beim Import wird die Prüfsumme verifiziert. Falls die Datei nach dem Export beschädigt wurde, wird der Import abgebrochen. Mit konfiguriertem `IMPEXPNL_SIGNING_KEY` wird daraus ein HMAC-Signaturschutz (siehe Abschnitt „Sicherheitsfunktionen").
+The JSON file contains a `_meta` block with export date, source system, TYPO3 version and a checksum over the entire data block. On import, the checksum is verified. If the file was corrupted after export, the import is aborted. With a configured `IMPEXPNL_SIGNING_KEY`, this becomes HMAC signature protection (see the "Security features" section).
 
-### Multi-Site
+### Multi-site
 
-Die Site-Konfiguration des Quellsystems (Identifier, Basis-URL, Sprachen) wird im `_meta`-Block der JSON-Datei mitexportiert. Diese Information wird beim Import für die automatische Slug-Regenerierung verwendet.
+The site configuration of the source system (identifier, base URL, languages) is exported together with the JSON file's `_meta` block. This information is used on import for automatic slug regeneration.
 
 ---
 
 ## Import
 
 ```bash
-ddev exec vendor/bin/typo3 impexpnl:import <Datei> <Ziel-PID> [Optionen]
+ddev exec vendor/bin/typo3 impexpnl:import <file> <target-PID> [options]
 ```
 
-### Optionen
+### Options
 
-| Option | Beschreibung |
+| Option | Description |
 |---|---|
-| `--dry-run` / `-d` | Differenzanalyse ohne Datenänderung. Es wird kein Lock gesetzt und keine Datenbankoperation ausgeführt. |
-| `--delta` | Delta-Import. Jeder Record wird Feld-für-Feld mit dem bestehenden Record auf dem Zielsystem verglichen. Identische Records werden übersprungen, geänderte per DataHandler aktualisiert, neue angelegt. |
-| `--conflict=X` | Konflikt-Strategie für den Delta-Import: `overwrite` (Standard), `skip`, `ask`, `abort` (siehe unten). |
-| `--verbose` / `-v` | Erweiterte Ausgabe bei Änderungen. Für jeden geänderten Record werden die konkreten Feldunterschiede angezeigt (alter Wert, neuer Wert). |
-| `--target-workspace=N` | Import in einen TYPO3-Workspace. Bei `0` (Standard) werden die Inhalte direkt im Live-System angelegt. Bei `1` oder höher werden sie in einen Entwurfs-Workspace importiert und können dort geprüft und freigegeben werden. |
-| `--profile=name` | Laden eines Import-Profils. Alle anderen Argumente und Optionen werden aus dem Profil übernommen. |
+| `--dry-run` / `-d` | Diff analysis without data changes. No lock is set and no database operation is performed. |
+| `--delta` | Delta import. Every record is compared field-by-field with the existing record on the target system. Identical records are skipped, changed ones are updated via DataHandler, new ones are created. |
+| `--conflict=X` | Conflict strategy for the delta import: `overwrite` (default), `skip`, `ask`, `abort` (see below). |
+| `--verbose` / `-v` | Extended output for changes. For every changed record, the concrete field differences are shown (old value, new value). |
+| `--target-workspace=N` | Import into a TYPO3 workspace. At `0` (default) the content is created directly in the live system. At `1` or higher it is imported into a draft workspace where it can be reviewed and published. |
+| `--profile=name` | Loads an import profile. All other arguments and options are taken from the profile. |
 
-### Differenzanalyse (Dry-Run)
+### Diff analysis (dry run)
 
-Der Dry-Run vergleicht die Importdaten mit dem Bestand auf dem Zielsystem. Für jede Seite und jeden Inhalt wird ausgegeben, ob der Record neu ist, sich geändert hat oder identisch ist. Bei Verwendung von `--verbose` werden zusätzlich die konkreten Feldunterschiede aufgelistet.
+The dry run compares the import data with the existing records on the target system. For every page and content element, it reports whether the record is new, has changed, or is identical. When using `--verbose`, the concrete field differences are also listed.
 
 ```bash
 ddev exec vendor/bin/typo3 impexpnl:import var/export.json 456 --dry-run --verbose
 ```
 
-### Delta-Import
+### Delta import
 
-Beim wiederholten Import derselben oder einer aktualisierten JSON-Datei werden mit `--delta` nur die tatsächlichen Änderungen verarbeitet. Identische Records werden anhand eines Feld-für-Feld-Vergleichs erkannt und übersprungen. System-Felder (`uid`, `pid`, `tstamp`, `crdate`, `sorting`) werden bei diesem Vergleich nicht berücksichtigt.
+When re-importing the same or an updated JSON file, `--delta` processes only the actual changes. Identical records are detected via a field-by-field comparison and skipped. System fields (`uid`, `pid`, `tstamp`, `crdate`, `sorting`) are not considered in this comparison.
 
-### Konflikterkennung und -behandlung
+### Conflict detection and handling
 
-Ein Konflikt liegt vor, wenn ein Record auf dem Zielsystem einen neueren Zeitstempel hat als der entsprechende Record in der Export-Datei. Dies deutet darauf hin, dass der Record lokal nach dem Export bearbeitet wurde.
+A conflict occurs when a record on the target system has a newer timestamp than the corresponding record in the export file. This indicates that the record was edited locally after the export.
 
-| Strategie | Verhalten |
+| Strategy | Behavior |
 |---|---|
-| `--conflict=overwrite` | Der Export überschreibt die lokale Änderung. Dies ist das Standardverhalten. |
-| `--conflict=skip` | Records mit Konflikten werden übersprungen. Alle anderen Records werden normal importiert. |
-| `--conflict=ask` | Für jeden Konflikt wird interaktiv auf der Konsole abgefragt, ob überschrieben werden soll. |
-| `--conflict=abort` | Beim ersten Konflikt wird der gesamte Import abgebrochen (Exit-Code `5`). Bereits geschriebene Teil-Records werden – wie bei jedem Abbruch – automatisch zurückgerollt. Gedacht für unbeaufsichtigte CI/CD-Läufe, in denen ein Konflikt eine bewusste Entscheidung erzwingen soll. |
+| `--conflict=overwrite` | The export overwrites the local change. This is the default behavior. |
+| `--conflict=skip` | Records with conflicts are skipped. All other records are imported normally. |
+| `--conflict=ask` | For every conflict, the console interactively asks whether to overwrite. |
+| `--conflict=abort` | On the first conflict, the entire import is aborted (exit code `5`). Any records already written are — as with any abort — automatically rolled back. Intended for unattended CI/CD runs where a conflict should force a deliberate decision. |
 
-### Exit-Codes (CI/CD)
+### Exit codes (CI/CD)
 
-Konflikte mit `--conflict=abort` brechen den Import ab (Exit-Code `5`); ein unbeaufsichtigter
-Lauf kann so auf eine bewusste Entscheidung bestehen. Die vollständige Liste der
-differenzierten Exit-Codes steht im Abschnitt [Exit-Codes](#exit-codes).
+Conflicts with `--conflict=abort` abort the import (exit code `5`); an unattended
+run can thus insist on a deliberate decision. The complete list of differentiated
+exit codes is in the [Exit codes](#exit-codes) section.
 
-### Workspace-Import
+### Workspace import
 
-Der Import in einen Workspace (z.B. `--target-workspace=1`) nutzt den regulären TYPO3-Workspace-Freigabeprozess (im GSB 11 der Redaktions-Workflow). Die importierten Inhalte erscheinen nicht sofort auf der Live-Website, sondern werden als Workspace-Versionen abgelegt und über die regulären TYPO3-Workspace-Funktionen freigegeben. Beim Freigeben (Publish) werden die Versionen mit korrekt umgeschriebenen Links nach Live überführt. Ein noch nicht freigegebener Workspace-Import lässt sich mit `impexpnl:undo` rückstandsfrei zurücknehmen (siehe Abschnitt „Rollback").
+Import into a workspace (e.g. `--target-workspace=1`) uses the regular TYPO3 workspace release process (in GSB 11, the editorial workflow). The imported content does not appear immediately on the live site, but is stored as workspace versions and released via the regular TYPO3 workspace functions. On publish, the versions are moved to live with correctly rewritten links. A workspace import that has not yet been published can be undone without residue using `impexpnl:undo` (see the "Rollback" section).
 
-### Chunked Verarbeitung
+### Chunked processing
 
-Bei großen Seitenbäumen (mehrere tausend Records) werden die Daten automatisch in Batches à 500 Records verarbeitet. Seiten werden vor den Inhalten verarbeitet, damit die PID-Zuordnung beim Import der Inhalte bereits aufgelöst ist. Eine Fortschrittsanzeige gibt Rückmeldung über den Verarbeitungsstand.
+For large page trees (several thousand records), the data is automatically processed in batches of 500 records. Pages are processed before content elements so that the PID mapping is already resolved by the time content is imported. A progress bar reports on processing status.
 
-Die Prüfsummenberechnung erfolgt inkrementell pro Record. Beim **Export** schreibt das JSONL-Format (`--jsonl`) zeilenweise und vermeidet so ein einzelnes, sehr großes `json_encode` über den gesamten Datenblock.
+Checksum computation is done incrementally per record. On **export**, the JSONL format (`--jsonl`) writes line by line, avoiding a single, very large `json_encode` over the entire data block.
 
-Beim **Import** begrenzt `import.max_file_size_mb` (Standard: 512, `0` = unbegrenzt) die Dateigröße: Übergroße Dateien werden **vor** dem Parsen mit klarer Fehlermeldung abgewiesen, statt den Prozess in ein OOM zu laufen (im Container: Pod-Kill, hängender Lock bis zum Stale-Timeout).
+On **import**, `import.max_file_size_mb` (default: 512, `0` = unlimited) limits the file size: oversized files are rejected **before** parsing with a clear error message, instead of running the process into an OOM (in a container: pod kill, a stuck lock until the stale timeout).
 
-Der Speicherbedarf beim Import hängt vom Dateiformat ab:
+The memory demand of an import depends on the file format:
 
-- **JSONL** (`.jsonl`): `pages` und `tt_content` werden records-weise **gestreamt** — Import wie Dry-Run-Diff arbeiten batch-weise mit konstantem Speicher, unabhängig von der Dateigröße (gemessen: 180.000 Records / 43 MB, Peak 276 MB → 4 MB). **Für große Exporte ist JSONL daher das empfohlene Format.**
-- **JSON** (`.json`): Die Datei wird vollständig in den Speicher geparst; der Spitzenbedarf skaliert mit der Record-Zahl. Für kleine bis mittlere Transfers unproblematisch — bei großen Beständen JSONL verwenden statt das PHP-`memory_limit` hochzudrehen.
+- **JSONL** (`.jsonl`): `pages` and `tt_content` are **streamed** record by record — both the import and the dry-run diff work batch-wise with constant memory, independent of the file size (measured: 180,000 records / 43 MB, peak 276 MB → 4 MB). **JSONL is therefore the recommended format for large exports.**
+- **JSON** (`.json`): the file is parsed entirely into memory; the peak demand scales with the record count. Unproblematic for small to medium transfers — for large data sets, use JSONL instead of raising the PHP `memory_limit`.
 
-**Hinweis zu registrierten Record-Tabellen (Auxiliary-Daten):** Auch im JSONL-Pfad werden die *nicht* gestreamten Bereiche — registrierte Record-Tabellen (z.B. `sys_redirect`, `tx_news_domain_model_news`), `sys_file_reference`, IRRE-Relationen und das Asset-Manifest — einmalig vollständig materialisiert, weil sie relational verflochten und typischerweise klein sind. Der Speicher skaliert hier mit der Record-Zahl dieser Tabellen. Enthält eine registrierte Tabelle sehr viele Datensätze (Größenordnung ab ~100.000), stehen heute zwei Stellschrauben zur Verfügung: das PHP-`memory_limit` des CLI-Aufrufs erhöhen (grobe Faustregel: ~1 KB pro Record zzgl. Grundbedarf) oder den Transfer aufteilen — die große Tabelle in einem separaten Lauf mit eigenem, eingeschränktem Export übertragen (z.B. per `--since` zeitlich partitioniert). Ein streamender Pfad für Registry-Tabellen ist bei Bedarf eine mögliche Ausbaustufe.
+**Note on registered record tables (auxiliary data):** even on the JSONL path, the *non-streamed* areas — registered record tables (e.g. `sys_redirect`, `tx_news_domain_model_news`), `sys_file_reference`, IRRE relations, and the asset manifest — are materialized once in full, because they are relationally interwoven and typically small. Memory here scales with the record count of those tables. If a registered table contains very many records (on the order of ~100,000+), two levers are available today: raise the PHP `memory_limit` of the CLI call (rough rule of thumb: ~1 KB per record plus base demand) or split the transfer — move the large table in a separate run with its own restricted export (e.g. partitioned by time via `--since`). A streaming path for registry tables is a possible future enhancement if needed.
 
-### Slug-Regenerierung
+### Slug regeneration
 
-Nach dem Import werden die `slug`-Felder aller importierten Seiten automatisch über den TYPO3 SlugHelper regeneriert. Damit wird sichergestellt, dass die Slugs zur Site-Konfiguration des Zielsystems passen, insbesondere beim Transfer zwischen verschiedenen Sites.
+After import, the `slug` fields of all imported pages are automatically regenerated via the TYPO3 SlugHelper. This ensures the slugs match the site configuration of the target system, especially when transferring between different sites.
 
 ---
 
-## Import-Profile
+## Import profiles
 
-Wiederkehrende Import-Konfigurationen können als YAML-Dateien unter `var/impexpnl_profiles/` gespeichert werden.
+Recurring import configurations can be stored as YAML files under `var/impexpnl_profiles/`.
 
 ```yaml
-# var/impexpnl_profiles/dev_to_referenz.yaml
+# var/impexpnl_profiles/dev_to_staging.yaml
 source_file: /var/www/html/var/export_dev.json
 target_pid: 456
 workspace: 1
@@ -293,33 +293,33 @@ delta: true
 conflict: skip
 ```
 
-Der Aufruf erfolgt ohne weitere Argumente:
+The call is made without further arguments:
 
 ```bash
-ddev exec vendor/bin/typo3 impexpnl:import --profile=dev_to_referenz
+ddev exec vendor/bin/typo3 impexpnl:import --profile=dev_to_staging
 ```
 
-Das Profil liefert die Import-Konfiguration. Verfügbare Felder: `source_file`, `target_pid`, `workspace`, `delta`, `conflict`. Diese Profilwerte haben Vorrang vor den entsprechenden Kommandozeilen-Argumenten/-Optionen.
+The profile provides the import configuration. Available fields: `source_file`, `target_pid`, `workspace`, `delta`, `conflict`. These profile values take precedence over the corresponding command-line arguments/options.
 
-Die Laufzeit-Flags `--dry-run` und `--verbose` werden weiterhin über die Kommandozeile gesteuert und mit dem Profil kombiniert. So lässt sich ein Profil gefahrlos zuerst im Dry-Run prüfen:
+The runtime flags `--dry-run` and `--verbose` are still controlled via the command line and combined with the profile. This allows a profile to be safely tested with a dry run first:
 
 ```bash
-ddev exec vendor/bin/typo3 impexpnl:import --profile=dev_to_referenz --dry-run
+ddev exec vendor/bin/typo3 impexpnl:import --profile=dev_to_staging --dry-run
 ```
 
 ---
 
-## Transfer-Profile (Policy-Guardrails)
+## Transfer profiles (policy guardrails)
 
-Neben den Import-Profilen (Argument-Vorbelegung) gibt es **Transfer-Profile** in der YAML-Config (`transferProfiles`), die eine Umgebungs-Bindung und Policy-Leitplanken durchsetzen. Auswahl beim Import über `--transfer-profile=<name>`.
+In addition to import profiles (argument pre-population), there are **transfer profiles** in the YAML config (`transferProfiles`) that enforce environment binding and policy guardrails. Selected on import via `--transfer-profile=<name>`.
 
-| Feld | Wirkung |
+| Field | Effect |
 |---|---|
-| `transport` | Referenz auf einen `assetTransports`-Eintrag (`external`/`bundle`) |
-| `conflictStrategy` | Erzwungene Konflikt-Strategie (`overwrite`/`skip`/`ask`/`abort`) |
-| `allowedContext` | Erlaubte TYPO3-Application-Contexts — verhindert die Ausführung in der falschen Umgebung (z. B. Prod-Paket auf Dev) |
-| `requireDryRun` | `true` = Profil erlaubt nur Dry-Run-Läufe |
-| `allowedTables` | **Wirkbereichs-Allowlist** für den Registry-Import: nicht gesetzt = alle registrierten Tabellen, gesetzt = nur die genannten (leere Liste = keine). `pages`/`tt_content`/FAL sind davon unberührt. |
+| `transport` | Reference to an `assetTransports` entry (`external`/`bundle`) |
+| `conflictStrategy` | Enforced conflict strategy (`overwrite`/`skip`/`ask`/`abort`) |
+| `allowedContext` | Allowed TYPO3 application contexts — prevents execution in the wrong environment (e.g. a prod package on dev) |
+| `requireDryRun` | `true` = the profile only allows dry-run runs |
+| `allowedTables` | **Scope allowlist** for the registry import: not set = all registered tables, set = only the named ones (empty list = none). `pages`/`tt_content`/FAL are unaffected by this. |
 
 ```yaml
 transferProfiles:
@@ -330,90 +330,90 @@ transferProfiles:
     allowedTables: [sys_redirect, sys_category_record_mm]
 ```
 
-**PID-Containment.** Unabhängig vom Profil schreibt der Import Registry-Records und IRRE-Relationen nur noch auf Seiten, die dieser Import selbst angelegt bzw. gemappt hat. Records, deren Ziel-Seite nicht auflösbar ist, werden mit Warnung übersprungen — ein (manipulierter) Export kann damit keine Records an beliebige Stellen des Zielsystems schreiben.
+**PID containment.** Regardless of the profile, the import writes registry records and IRRE relations only to pages that this import itself created or mapped. Records whose target page cannot be resolved are skipped with a warning — a (manipulated) export therefore cannot write records to arbitrary locations on the target system.
 
 ---
 
 ## Rollback
 
-Jeder Import wird in der Datenbanktabelle `tx_impexpnl_import_log` protokolliert. Das Protokoll enthält die vollständige UID-Zuordnung zwischen Quell- und Ziel-UIDs.
+Every import is logged in the database table `tx_impexpnl_import_log`. The log contains the complete UID mapping between source and target UIDs.
 
 ```bash
-# Letzten Import rückgängig machen (mit Vorschau und Sicherheitsabfrage)
+# Roll back the last import (with preview and confirmation prompt)
 ddev exec vendor/bin/typo3 impexpnl:undo
 
-# Nur Vorschau, ohne zu löschen
+# Preview only, without deleting
 ddev exec vendor/bin/typo3 impexpnl:undo --dry-run
 
-# Bestimmten Import ohne Rückfrage rückgängig machen
+# Roll back a specific import without confirmation
 ddev exec vendor/bin/typo3 impexpnl:undo 20260329_142348_a1b2c3 --force
 ```
 
-Vor dem Löschen zeigt `undo` eine Vorschau (betroffene Anzahl, Quelldatei). Wurden importierte Records nach dem Import lokal bearbeitet (neuerer `tstamp` als der Import), **bricht der Rollback ab** und listet die betroffenen Records auf – damit lokale Änderungen nicht unbemerkt verloren gehen. Mit `--force` wird trotzdem gelöscht (der Auto-Rollback nach einem Importabbruch nutzt diesen Pfad intern für seine eigenen Records). Ohne `--force` wird zusätzlich interaktiv bestätigt; `--dry-run` zeigt nur die Vorschau.
+Before deleting, `undo` shows a preview (affected count, source file). If imported records were edited locally after the import (a newer `tstamp` than the import), the **rollback aborts** and lists the affected records – so that local changes are not lost unnoticed. `--force` deletes anyway (the auto-rollback after an aborted import uses this path internally for its own records). Without `--force`, an interactive confirmation is additionally required; `--dry-run` shows only the preview.
 
-Der Rollback entfernt in fester Reihenfolge:
+The rollback removes, in a fixed order:
 
-1. FAL-Referenzen (`sys_file_reference`) der importierten Records
-2. Alle über die Table-Registry importierten Daten (Kategorie-Zuordnungen, Redirects, etc.)
-3. Inhaltselemente (`tt_content`)
-4. Seiten (`pages`), in umgekehrter Reihenfolge (Kindseiten vor Elternseiten)
+1. FAL references (`sys_file_reference`) of the imported records
+2. All data imported via the table registry (category assignments, redirects, etc.)
+3. Content elements (`tt_content`)
+4. Pages (`pages`), in reverse order (child pages before parent pages)
 
-Das Import-Protokoll wird nach erfolgreichem Rollback aus der Datenbank entfernt. Der Rollback wird im Transaktionslog dokumentiert. Die Lösch-Operationen werden – wie der Import – in einer Datenbank-Transaktion gebündelt, sodass der Rollback in der Größenordnung des Imports bleibt (siehe [`Documentation/PERFORMANCE.md`](Documentation/PERFORMANCE.md)).
+The import log is removed from the database after a successful rollback. The rollback is documented in the transaction log. The delete operations are — like the import — bundled in a database transaction, so the rollback stays in the same order of magnitude as the import (see [`Documentation/PERFORMANCE.md`](Documentation/PERFORMANCE.md)).
 
-Der Rollback läuft im selben Workspace wie der ursprüngliche Import (die `workspace_id` steht im Protokoll). Ein Workspace-Import wird damit korrekt rückgängig gemacht – die im Workspace angelegten Versionen werden entfernt, das Live-System bleibt unberührt.
+The rollback runs in the same workspace as the original import (the `workspace_id` is stored in the log). A workspace import is thus correctly rolled back – the versions created in the workspace are removed, the live system remains untouched.
 
 ---
 
-## Status und Historie
+## Status and history
 
 ```bash
-# Aktueller Status: Lock, offene Imports, letzter Import
+# Current status: lock, open imports, last import
 ddev exec vendor/bin/typo3 impexpnl:status
 ddev exec vendor/bin/typo3 impexpnl:status --json
 
-# Import-Historie als Tabelle
+# Import history as a table
 ddev exec vendor/bin/typo3 impexpnl:list
 ddev exec vendor/bin/typo3 impexpnl:list --limit=50 --json
 
-# Hängenden Import-Lock lösen
+# Release a stuck import lock
 ddev exec vendor/bin/typo3 impexpnl:unlock
 ```
 
-Der Befehl `impexpnl:status` zeigt den DB-Lock (Inhaber, Alter, Stale-Status), die Anzahl rollback-fähiger Imports und die Details des letzten Imports. `impexpnl:list` gibt die Import-Historie tabellarisch aus (Import-ID, Datum, Modus, Workspace, Anzahl Records, Quelldatei). `impexpnl:unlock` löst einen hängenden Import-Lock (mit Bestätigung, `--force` ohne Rückfrage). Alle drei unterstützen `--json` für die maschinenlesbare Ausgabe.
+The command `impexpnl:status` shows the DB lock (owner, age, stale status), the number of rollback-capable imports, and the details of the last import. `impexpnl:list` outputs the import history as a table (import ID, date, mode, workspace, record count, source file). `impexpnl:unlock` releases a stuck import lock (with confirmation, `--force` without confirmation). All three support `--json` for machine-readable output.
 
 ---
 
-## Table-Registry
+## Table registry
 
-Die Table-Registry ermöglicht die Einbeziehung beliebiger Datenbanktabellen in den Export/Import-Prozess. Die Konfiguration erfolgt deklarativ über YAML-Dateien.
+The table registry allows arbitrary database tables to be included in the export/import process. Configuration is done declaratively via YAML files.
 
-### Konfigurationsquellen
+### Configuration sources
 
-ImpExpNL liest Tabellenkonfigurationen aus zwei Quellen:
+ImpExpNL reads table configurations from two sources:
 
-1. Die eigene `imp_exp_nl.yaml` im Extension-Ordner
-2. Alle geladenen TYPO3-Extensions, die eine Datei `Configuration/ImpExpNL.yaml` enthalten
+1. The extension's own `imp_exp_nl.yaml` in the extension folder
+2. All loaded TYPO3 extensions that contain a file `Configuration/ImpExpNL.yaml`
 
-Durch die zweite Quelle können fremde Extensions eigene Tabellen registrieren, ohne Änderungen an ImpExpNL vorzunehmen.
+The second source allows third-party extensions to register their own tables without changes to ImpExpNL.
 
-### Tabellentyp: record
+### Table type: record
 
-Record-Tabellen sind reguläre TYPO3-Tabellen mit `uid` und `pid`. Sie werden über den DataHandler importiert. UIDs werden gemapped, Links in konfigurierten Feldern umgeschrieben, und beim Rollback werden die Records gelöscht.
+Record tables are regular TYPO3 tables with `uid` and `pid`. They are imported via the DataHandler. UIDs are mapped, links in configured fields are rewritten, and on rollback the records are deleted.
 
 ```yaml
 impexpnl:
   tables:
     sys_redirect:
       type: record
-      pid_field: pid          # Feld für die Seitenzuordnung
-      uid_remap: true         # UID-Mapping aktivieren (erforderlich für Rollback)
-      rewrite_links:          # Felder mit t3://page-Links
+      pid_field: pid          # field for page assignment
+      uid_remap: true         # enable UID mapping (required for rollback)
+      rewrite_links:          # fields with t3://page links
         - target
 ```
 
-### Tabellentyp: mm
+### Table type: mm
 
-MM-Tabellen speichern Many-to-Many-Beziehungen ohne eigene UID. Der Import erfolgt über direktes Einfügen/Löschen in der Tabelle.
+MM tables store many-to-many relations without their own UID. Import is performed via direct insert/delete on the table.
 
 ```yaml
 impexpnl:
@@ -425,11 +425,11 @@ impexpnl:
       match_tables: [pages, tt_content]
 ```
 
-### Kategorie-Pfad-Mapping
+### Category path mapping
 
-Systemkategorien haben auf verschiedenen TYPO3-Instanzen unterschiedliche UIDs. Ein UID-basiertes Mapping führt daher zu falschen Zuordnungen.
+System categories have different UIDs on different TYPO3 instances. A UID-based mapping therefore leads to incorrect assignments.
 
-Mit der Option `category_match: path` werden Kategorien beim Export über ihren vollständigen Pfad identifiziert (z.B. „Themen > Digitalisierung > E-Government"). Beim Import wird dieser Pfad auf dem Zielsystem Segment für Segment aufgelöst. Falls eine Kategorie auf dem Zielsystem nicht existiert, wird sie automatisch angelegt.
+With the option `category_match: path`, categories are identified on export via their full path (e.g. "Topics > Digitalization > E-Government"). On import, this path is resolved segment by segment on the target system. If a category does not exist on the target system, it is created automatically.
 
 ```yaml
 impexpnl:
@@ -442,9 +442,9 @@ impexpnl:
       category_match: path
 ```
 
-### Beispiel: Extension-spezifische Tabellen registrieren
+### Example: registering extension-specific tables
 
-Die folgende Konfiguration wird in einer beliebigen Extension unter `Configuration/ImpExpNL.yaml` abgelegt. Sie registriert News-Beiträge, Tags und deren Kategorien:
+The following configuration is placed in any extension under `Configuration/ImpExpNL.yaml`. It registers news articles, tags and their categories:
 
 ```yaml
 # packages/my_sitepackage/Configuration/ImpExpNL.yaml
@@ -472,48 +472,48 @@ impexpnl:
       category_match: path
 ```
 
-### Mitgelieferte, contract-getestete Profile
+### Bundled, contract-tested profiles
 
-Zwei Profile liefert ImpExpNL bereits in der `imp_exp_nl.yaml` mit – sie gelten als
-*unterstützt*, weil sie einen vollständigen Functional-Contract bestehen (Export → Import
-→ Rollback, dazu profilspezifisch Link-Rewrite bzw. Delta-Idempotenz):
+ImpExpNL already ships two profiles in `imp_exp_nl.yaml` — they are considered
+*supported* because they pass a complete functional contract (export → import
+→ rollback, plus profile-specific link rewriting resp. delta idempotency):
 
-| Profil | Typ | Contract-Test | Geprüft |
+| Profile | Type | Contract test | Verified |
 |--------|-----|---------------|---------|
-| `sys_redirect` | record | `RedirectProfileContractTest` | Export, UID-Remapping, `t3://`-Rewrite im `target`, externes Ziel bleibt, Rollback |
-| `sys_category_record_mm` | mm | `CategoryProfileContractTest` | Export mit Pfaden, Pfad-Mapping auf neuen Inhalt, **Delta ohne Dublette**, Rollback |
+| `sys_redirect` | record | `RedirectProfileContractTest` | Export, UID remapping, `t3://` rewrite in `target`, external target remains, rollback |
+| `sys_category_record_mm` | mm | `CategoryProfileContractTest` | Export with paths, path mapping to new content, **delta without duplicates**, rollback |
 
-Diese Tests (`Tests/Functional/Profile/`) sind zugleich die **Vorlage für eigene Profile**:
-Wer eine weitere Tabelle „hart" machen will, kopiert einen dieser Tests, tauscht Fixture +
-Tabelle und stellt sicher, dass der Contract grün bleibt.
+These tests (`Tests/Functional/Profile/`) also serve as the **template for custom profiles**:
+anyone wanting to "harden" another table copies one of these tests, swaps in the fixture and
+table, and makes sure the contract stays green.
 
-> Hinweis: Registry-Tabellen vom Typ `record` (mit `uid_remap: true`) sind im
-> Delta-Modus **idempotent**: Bereits importierte Records werden über das
-> Herkunfts-Mapping (`tx_impexpnl_uid_map`, Multi-Source-fähig über `source_id`)
-> aufgelöst und bei Gleichheit übersprungen bzw. aktualisiert statt dupliziert.
-> MM-Tabellen mit `category_match: path` sind ebenfalls idempotent. Ohne
-> `uid_remap` gibt es kein persistiertes Mapping und damit kein Delta.
+> Note: Registry tables of type `record` (with `uid_remap: true`) are
+> **idempotent** in delta mode: already-imported records are resolved via the
+> origin mapping (`tx_impexpnl_uid_map`, multi-source-capable via `source_id`)
+> and skipped resp. updated instead of duplicated on match.
+> MM tables with `category_match: path` are also idempotent. Without
+> `uid_remap` there is no persisted mapping and thus no delta.
 
 ---
 
-## Konfiguration
+## Configuration
 
-Die Datei `imp_exp_nl.yaml` im Extension-Ordner enthält die Standardkonfiguration:
+The file `imp_exp_nl.yaml` in the extension folder contains the default configuration:
 
 ```yaml
 export:
   include:
-    file_references: true       # FAL-Referenzen mit Dateipfad exportieren
+    file_references: true       # export FAL references with file path
 
 import:
   include:
-    file_references: true       # FAL beim Import über Dateipfad auflösen
-  container_support: true       # b13/container-Layouts remappen
+    file_references: true       # resolve FAL on import via file path
+  container_support: true       # remap b13/container layouts
   link_rewrite:
-    fields:                     # Felder mit t3://page-Links
+    fields:                     # fields with t3://page links
       - bodytext
       - pi_flexform
-      # eigene/Extension-Felder ergänzen, z.B. bei GSB 11: tx_gsb_accordion_text
+      # add custom/extension fields, e.g. in GSB 11: tx_gsb_accordion_text
 
 impexpnl:
   tables:
@@ -533,19 +533,19 @@ impexpnl:
 
 ---
 
-## Sicherheitsfunktionen
+## Security features
 
-**Korruptionsschutz (Standard).** Jede JSON-Datei enthält eine SHA256-Prüfsumme über den **gesamten Datenblock** (alle Tabellen: `pages`, `tt_content`, `sys_file_reference`, IRRE-Relationen und alle Registry-Tabellen – nicht nur Seiten und Inhalte). Beim Import wird die Prüfsumme verifiziert; bei Abweichung wird der Import abgebrochen. Dies erkennt **versehentliche Beschädigung**. Es ist kein Schutz gegen gezielte Manipulation, da die reine Prüfsumme von jedem neu berechnet werden kann.
+**Corruption protection (default).** Every JSON file contains a SHA256 checksum over the **entire data block** (all tables: `pages`, `tt_content`, `sys_file_reference`, IRRE relations, and all registry tables – not just pages and content). On import, the checksum is verified; on mismatch, the import is aborted. This detects **accidental corruption**. It is not protection against deliberate tampering, since a plain checksum can be recomputed by anyone.
 
-**Manipulationsschutz (optional).** Ist ein geheimer Schlüssel konfiguriert, wird statt der SHA256-Prüfsumme ein **HMAC-SHA256** gebildet. Ohne Kenntnis des Schlüssels lässt sich die Signatur nach einer Veränderung nicht neu erzeugen – der Import einer manipulierten Datei schlägt fehl. Der Schlüssel wird auf Quell- und Zielsystem identisch gesetzt, entweder per Umgebungsvariable `IMPEXPNL_SIGNING_KEY` oder in `config/system/additional.php`:
+**Tamper protection (optional).** If a secret key is configured, an **HMAC-SHA256** is formed instead of the plain SHA256 checksum. Without knowledge of the key, the signature cannot be regenerated after a change – importing a tampered file fails. The key is set identically on the source and target systems, either via the environment variable `IMPEXPNL_SIGNING_KEY` or in `config/system/additional.php`:
 
 ```php
-$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] = 'ein-langes-geheimnis';
+$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] = 'a-long-secret';
 ```
 
-Wird eine signierte Datei auf einem System ohne (passenden) Schlüssel importiert, wird der Import abgewiesen. Ist auf dem Zielsystem ein Schlüssel konfiguriert, werden **nur noch HMAC-Signaturen akzeptiert** – ein Downgrade auf eine bloße `sha256:`-Prüfsumme (die jeder neu berechnen kann) wird abgelehnt.
+If a signed file is imported on a system without a (matching) key, the import is rejected. If a key is configured on the target system, **only HMAC signatures are accepted from then on** – a downgrade to a plain `sha256:` checksum (which anyone can recompute) is refused.
 
-**Signaturpflicht (`import.require_signature`).** Für Importe über ein Sicherheitsgefälle (z. B. aus einer niedriger eingestuften Zone) kann die Signatur verpflichtend gemacht werden:
+**Signature enforcement (`import.require_signature`).** For imports across a security boundary (e.g. from a lower-classified zone), the signature can be made mandatory:
 
 ```yaml
 # imp_exp_nl.yaml
@@ -553,118 +553,118 @@ import:
   require_signature: true
 ```
 
-Damit werden auch Dateien **ohne** `_meta.checksum` abgewiesen (Exit-Code `4`) – das Weglassen der Prüfsumme ist dann kein Umgehungsweg mehr. `impexpnl:check` warnt, wenn ein Signing-Key gesetzt ist, die Signaturpflicht aber fehlt.
+This also rejects files **without** `_meta.checksum` (exit code `4`) – omitting the checksum is then no longer a bypass. `impexpnl:check` warns if a signing key is set but signature enforcement is missing.
 
-**Bundle-Härtung.** Beim Import eines `.tar.gz`-Bundles werden die Asset-Dateien erst **nach** erfolgreicher Prüfsummen-/Signaturprüfung der Export-Datei platziert. Quelle ist ausschließlich das von der Signatur abgedeckte Asset-Manifest (`assets`-Block der Export-Datei); jede Datei wird vor der Übernahme gegen ihre signierte SHA256-Prüfsumme verifiziert, Identifier werden gegen Path-Traversal geprüft, und Bundles mit Link-Einträgen (Symlinks/Hardlinks) werden **bereits vor dem Entpacken** abgelehnt (Prüfung des tar-Inhaltsverzeichnisses; eine zweite Symlink-Prüfung nach der Extraktion deckt den PharData-Fallback ab).
+**Bundle hardening.** When importing a `.tar.gz` bundle, the asset files are placed only **after** the export file's checksum/signature check has succeeded. The source is exclusively the asset manifest covered by the signature (the `assets` block of the export file); every file is verified against its signed SHA256 checksum before being taken over, identifiers are checked against path traversal, and bundles containing link entries (symlinks/hardlinks) are rejected **before extraction** (inspection of the tar table of contents; a second symlink check after extraction covers the PharData fallback).
 
-**Cluster-weiter Concurrency-Lock.** Während eines Imports wird ein Lock in der Datenbanktabelle `tx_impexpnl_lock` gesetzt (wirkt über alle Pods/Knoten hinweg) und zusätzlich ein lokaler Datei-Lock. Ein paralleler Import-Versuch wird abgewiesen. Lang laufende Importe halten den Lock per Heartbeat frisch; bei einem Crash oder fataler Fehler wird der Lock über einen Shutdown-Handler bzw. nach einem konfigurierbaren Timeout automatisch freigegeben (Standard: 3600 s, einstellbar über `import.lock_stale_seconds` in der `imp_exp_nl.yaml`). Der Lock ist an ein zufälliges **Inhaber-Token** gebunden: Heartbeat und Freigabe wirken nur auf den eigenen Lock — wurde ein hängender Lock zwischenzeitlich freigeräumt und von einem anderen Import neu erworben, kann der alte Prozess diesen weder auffrischen noch löschen; er bricht stattdessen ab (Exit-Code 3). Der Dry-Run setzt keinen Lock.
+**Cluster-wide concurrency lock.** During an import, a lock is set in the database table `tx_impexpnl_lock` (effective across all pods/nodes) plus a local file lock. A concurrent import attempt is rejected. Long-running imports keep the lock fresh via a heartbeat; on a crash or fatal error, the lock is released automatically via a shutdown handler or after a configurable timeout (default: 3600 s, adjustable via `import.lock_stale_seconds` in `imp_exp_nl.yaml`). The lock is bound to a random **owner token**: the heartbeat and release only act on the lock's own owner — if a stuck lock has meanwhile been cleared and re-acquired by another import, the old process can neither refresh nor delete it; it aborts instead (exit code 3). A dry run does not set a lock.
 
-**Abbruchsicheres Rollback-Protokoll.** Bricht ein Import nach dem Anlegen erster Records ab (Fehler, Timeout), wird automatisch ein Notfall-Protokoll mit der bis dahin angelegten UID-Zuordnung geschrieben. Die Teil-Daten lassen sich damit per `impexpnl:undo <Import-ID>` vollständig entfernen – es entstehen keine nicht-rückrollbaren Geisterdaten.
+**Abort-safe rollback log.** If an import aborts after the first records have been created (error, timeout), an emergency log with the UID mapping created so far is written automatically. The partial data can thus be fully removed via `impexpnl:undo <import-id>` – no non-rollbackable ghost data remains.
 
-**Pfad-Begrenzung.** Sowohl der Export-Zielpfad als auch die Import-Quelldatei müssen innerhalb des Projektverzeichnisses liegen. Profilnamen werden gegen Path-Traversal abgesichert.
+**Path restriction.** Both the export target path and the import source file must lie within the project directory. Profile names are secured against path traversal.
 
-**CSV-Injection-Schutz.** Beim CSV-Export werden Werte mit führenden Formel-Triggern (`= + - @`) entschärft, sodass sie in Tabellenkalkulationen nicht als Formel ausgeführt werden.
+**CSV injection protection.** On CSV export, values with leading formula triggers (`= + - @`) are neutralized so that they are not executed as formulas in spreadsheet applications.
 
-**Konflikterkennung.** Im Delta-Modus werden Records mit lokal neuerem Zeitstempel als Konflikte erkannt. Die Behandlung ist über die Option `--conflict` konfigurierbar.
+**Conflict detection.** In delta mode, records with a locally newer timestamp are detected as conflicts. Handling is configurable via the `--conflict` option.
 
-**DataHandler-Fehlerprotokollierung.** Fehler des TYPO3 DataHandler werden einzeln über den PSR-3 Logger protokolliert.
+**DataHandler error logging.** Errors from the TYPO3 DataHandler are logged individually via the PSR-3 logger.
 
-### Schlüssel-Rotation (Key-ID)
+### Key rotation (key ID)
 
-Mit einer optionalen **Key-ID** wird die Signatur als `hmac-sha256:<key-id>:<hash>` geschrieben — der Schlüssel lässt sich damit wechseln, ohne dass Pakete aus der Übergangszeit ungültig werden:
+With an optional **key ID**, the signature is written as `hmac-sha256:<key-id>:<hash>` — the key can thus be rotated without invalidating packages from the transition period:
 
 ```php
-// Aktiver Schlüssel + Kennung (alternativ Env IMPEXPNL_SIGNING_KEY / IMPEXPNL_SIGNING_KEY_ID)
-$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] = 'neuer-schluessel';
+// Active key + identifier (alternatively env IMPEXPNL_SIGNING_KEY / IMPEXPNL_SIGNING_KEY_ID)
+$GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] = 'new-key';
 $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeyId'] = 'k2026';
 
-// Alt-Schlüssel für die Verifikation während der Übergangszeit
+// Old key for verification during the transition period
 $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys'] = [
-    'k2025' => 'alter-schluessel',
+    'k2025' => 'old-key',
 ];
 ```
 
-Beim Import wird der Schlüssel über die Key-ID aufgelöst; Signaturen ohne Key-ID werden gegen den aktiven und alle hinterlegten Alt-Schlüssel geprüft. Nach Ablauf der Übergangszeit den Alt-Schlüssel aus `signingKeys` entfernen. Der Downgrade-Schutz gilt unverändert: Sobald irgendein Schlüssel konfiguriert ist, werden nur HMAC-Signaturen akzeptiert.
+On import, the key is resolved via the key ID; signatures without a key ID are checked against the active key and all stored old keys. After the transition period ends, remove the old key from `signingKeys`. The downgrade protection applies unchanged: as soon as any key is configured, only HMAC signatures are accepted.
 
-> **Veraltet:** Das Legacy-Prüfsummenformat aus ImpExpNL 1.x (Export-Format 1, roher SHA256 nur über `pages`+`tt_content`) wird beim Import noch akzeptiert (mit Log-Warnung), aber **mit Version 3.0 entfernt**. Alte Exporte rechtzeitig neu erzeugen.
+> **Deprecated:** The legacy checksum format from ImpExpNL 1.x (export format 1, plain SHA256 over only `pages`+`tt_content`) is still accepted on import (with a log warning), but **will be removed in version 3.0**. Regenerate old exports in time.
 
 ---
 
-## Einsatz über ein Sicherheitsgefälle
+## Use across a security boundary
 
-Für den Transfer aus einer niedriger in eine höher eingestufte Zone (Behördenbetrieb, Zonenmodell) ist ImpExpNL bewusst datei-basiert: Es gibt keine Netzwerkverbindung zwischen den Instanzen — der Transportweg (Schleuse, Datendiode, geprüfter Austauschbereich) bleibt vollständig unter Kontrolle des Betriebs. Empfohlene Mindest-Konfiguration und Ablauf:
+For transfers from a lower- into a higher-classified zone (government operations, zone model), ImpExpNL is deliberately file-based: there is no network connection between the instances — the transport path (data lock, data diode, verified exchange area) remains entirely under operations' control. Recommended minimum configuration and workflow:
 
-**Konfiguration (beide Seiten):**
+**Configuration (both sides):**
 
-1. **Signing-Key setzen** — auf Quell- und Zielsystem identisch, als Secret bereitgestellt (Kubernetes-Secret als Env `IMPEXPNL_SIGNING_KEY` oder Mount). Den Schlüssel niemals ins Image oder Repository einbrennen; Key-ID (`IMPEXPNL_SIGNING_KEY_ID`) für spätere Rotation von Anfang an vergeben.
-2. **Signaturpflicht auf dem Zielsystem:** `import.require_signature: true` — unsignierte oder auf bloße Prüfsummen heruntergestufte Dateien werden abgewiesen (Exit-Code `4`).
-3. **Wirkbereich begrenzen:** Transfer-Profil mit `allowedContext` (nur die vorgesehene Umgebung), `allowedTables` (nur benötigte Registry-Tabellen) und ggf. `requireDryRun` für Prüf-Pipelines.
-4. **Limits:** `import.max_file_size_mb` an die getesteten Baumgrößen und das Pod-Memory anpassen.
+1. **Set a signing key** — identical on the source and target systems, provided as a secret (Kubernetes secret via env `IMPEXPNL_SIGNING_KEY` or mount). Never bake the key into the image or repository; assign a key ID (`IMPEXPNL_SIGNING_KEY_ID`) from the start for later rotation.
+2. **Signature enforcement on the target system:** `import.require_signature: true` — unsigned files, or files downgraded to a plain checksum, are rejected (exit code `4`).
+3. **Limit the scope:** transfer profile with `allowedContext` (only the intended environment), `allowedTables` (only the needed registry tables), and optionally `requireDryRun` for review pipelines.
+4. **Limits:** adjust `import.max_file_size_mb` to the tested tree sizes and the pod memory.
 
-**Ablauf pro Transfer (High-Side):**
+**Workflow per transfer (high side):**
 
-1. `impexpnl:check --json` — Voraussetzungen inkl. Signatur-Modus prüfen.
-2. Paket durch die Schleuse übernehmen; bei `bundle` genügt eine Datei, die enthaltenen Assets sind über das signierte Manifest SHA256-geprüft.
-3. `impexpnl:import <paket> <pid> --transfer-profile=<profil> --dry-run --json` — Gate: Diff und Asset-Preflight reviewen (bei Bedarf Vier-Augen-Prinzip auf dem Dry-Run-Ergebnis).
-4. Import ausführen; Exit-Code auswerten (`4` = Integrität, `5` = Konflikt, `6` = zurückgerollter Teilimport).
-5. Nachweis: Import-ID, `impexpnl:list --json` und `var/log/impexpnl_transactions.log` als Protokoll für die Revision; Rücknahme jederzeit per `impexpnl:undo <import-id>`.
+1. `impexpnl:check --json` — check prerequisites incl. signature mode.
+2. Take the package through the data lock; with `bundle`, a single file is enough, the contained assets are SHA256-verified via the signed manifest.
+3. `impexpnl:import <package> <pid> --transfer-profile=<profile> --dry-run --json` — gate: review diff and asset preflight (optionally a four-eyes check on the dry-run result).
+4. Run the import; evaluate the exit code (`4` = integrity, `5` = conflict, `6` = rolled-back partial import).
+5. Evidence: import ID, `impexpnl:list --json`, and `var/log/impexpnl_transactions.log` as an audit record; the import can be undone at any time via `impexpnl:undo <import-id>`.
 
-**Rollen:** Der Export (Low-Side) signiert; die Schleuse transportiert nur; das Zielsystem verifiziert und entscheidet (Dry-Run-Gate, Konflikt-Policy). Für High→Low-Exporte (z. B. Prod→Dev) zusätzlich `export.sanitize` mit `hash_key` aktivieren, damit personenbezogene Daten die höhere Zone nicht verlassen.
+**Roles:** The export (low side) signs; the data lock only transports; the target system verifies and decides (dry-run gate, conflict policy). For high-to-low exports (e.g. prod→dev), additionally enable `export.sanitize` with `hash_key` so that personal data does not leave the higher zone.
 
-### Ausgehender Transfer (`push`) und Inbox
+### Outbound transfer (`push`) and inbox
 
-Der Transport `push` legt das signierte Bundle **atomar** in ein konfiguriertes Outbox-Verzeichnis (z. B. eine gemountete Schleuse) ab — geschrieben wird zunächst nach `<outbox>/.incoming/<name>.part`, dann per `rename()` auf `<outbox>/<name>.tar.gz`. Ein Schleusenprozess sieht dadurch nie eine unvollständige Datei. ImpExpNL öffnet dabei **keinen** Netzwerk- oder Empfangskanal; der eigentliche Transfer über die Zonengrenze bleibt Sache des Betriebs (rsync/SFTP/Datendiode).
+The `push` transport places the signed bundle **atomically** into a configured outbox directory (e.g. a mounted data lock) — it is first written to `<outbox>/.incoming/<name>.part`, then moved to `<outbox>/<name>.tar.gz` via `rename()`. A data-lock process therefore never sees an incomplete file. ImpExpNL does not open **any** network or receiving channel; the actual transfer across the zone boundary remains operations' responsibility (rsync/SFTP/data diode).
 
 ```bash
-# Quelle: signiertes Bundle in die Outbox schieben
+# Source: push the signed bundle to the outbox
 vendor/bin/typo3 impexpnl:export 123 var/export.jsonl --transport=push
-# (Transport-Config: assetTransports.push_outbox.outbox in imp_exp_nl.yaml)
+# (transport config: assetTransports.push_outbox.outbox in imp_exp_nl.yaml)
 ```
 
-Auf der Zielseite listet `impexpnl:inbox` eingegangene Pakete — **read-only, ohne Auto-Import**:
+On the target side, `impexpnl:inbox` lists incoming packages — **read-only, no auto-import**:
 
 ```bash
-vendor/bin/typo3 impexpnl:inbox --json        # transfer.inbox_path aus der Config
-vendor/bin/typo3 impexpnl:inbox /pfad/inbox   # oder explizites Verzeichnis
+vendor/bin/typo3 impexpnl:inbox --json        # transfer.inbox_path from the config
+vendor/bin/typo3 impexpnl:inbox /path/inbox   # or an explicit directory
 ```
 
-**Empfang ≠ Anwendung:** Ein Paket in der Inbox löst nie selbsttätig einen Import aus. Der Import bleibt der bestehende explizite Schritt (`impexpnl:import <inbox>/<paket> <pid>`) mit voller Signatur-/Dry-Run-Prüfung — ein entfernter Akteur, der eine Datei in die Inbox legt, kann damit keine DB-Schreibzugriffe auslösen.
+**Receipt ≠ application:** A package arriving in the inbox never triggers an import on its own. The import remains the existing explicit step (`impexpnl:import <inbox>/<package> <pid>`) with full signature/dry-run checking — a remote actor placing a file in the inbox cannot thereby trigger DB write access.
 
 ---
 
-## Praxis-Szenarien
+## Practical scenarios
 
-ImpExpNL ist eine generische TYPO3-Extension und benötigt kein bestimmtes Sitepackage. Die folgenden Szenarien funktionieren auf normalem TYPO3 v14 ebenso wie auf **GSB 11** (Government Site Builder, TYPO3-13-basiert; dort über den `13.x`-Branch) — die GSB-Kompatibilität ist ein Bonus, keine Voraussetzung.
+ImpExpNL is a generic TYPO3 extension and does not require a specific sitepackage. The following scenarios work equally on plain TYPO3 v14 and on **GSB 11** (Government Site Builder, TYPO3-13-based; there via the `13.x` branch) — GSB compatibility is a bonus, not a requirement.
 
-**Container-Layouts.** Die `tx_container_parent`-Verknüpfungen des b13/container-Pakets werden beim Import auf die neuen UIDs umgeschrieben. Grid-Layouts, Akkordeons und Tabs bleiben nach dem Import intakt.
+**Container layouts.** The `tx_container_parent` links of the b13/container package are rewritten to the new UIDs on import. Grid layouts, accordions and tabs remain intact after import.
 
-**FAL.** Dateireferenzen werden über den Dateipfad (`identifier`) aufgelöst, nicht über die `sys_file.uid`. Das ermöglicht den Transfer zwischen Instanzen mit unterschiedlicher FAL-Indexierung.
+**FAL.** File references are resolved via the file path (`identifier`), not via `sys_file.uid`. This allows transfer between instances with different FAL indexing.
 
-**Workspaces.** Der Import in einen Entwurfs-Workspace nutzt den regulären TYPO3-Workspace-Freigabeprozess (z. B. den Redaktions-Workflow im GSB 11).
+**Workspaces.** Import into a draft workspace uses the regular TYPO3 workspace release process (e.g. the editorial workflow in GSB 11).
 
-**Redirects.** `sys_redirect`-Einträge werden über die Table-Registry exportiert, importiert und beim Rollback entfernt. Links im `target`-Feld werden automatisch umgeschrieben.
+**Redirects.** `sys_redirect` entries are exported, imported and removed on rollback via the table registry. Links in the `target` field are rewritten automatically.
 
-**Kategorien.** Pfad-basiertes Matching ermöglicht die korrekte Zuordnung über verschiedene Instanzen hinweg, unabhängig von der lokalen Kategorie-UID.
+**Categories.** Path-based matching allows correct assignment across different instances, independent of the local category UID.
 
-**Multi-Site.** Slugs werden nach dem Import für die Ziel-Site regeneriert.
+**Multi-site.** Slugs are regenerated for the target site after import.
 
-**Kubernetes/Air-Gap.** Das Import-Protokoll wird in der Datenbank gespeichert und überlebt Container-Neustarts.
+**Kubernetes/air-gap.** The import log is stored in the database and survives container restarts.
 
 ---
 
-## Protokollierung
+## Logging
 
-Alle Services loggen über den PSR-3 Logger unter dem Namespace `Robbi\ImpExpNL`. Die Extension konfiguriert in der `ext_localconf.php` einen eigenen FileWriter, der alle Meldungen ab Level INFO in eine separate Logdatei schreibt.
+All services log via the PSR-3 logger under the namespace `Robbi\ImpExpNL`. The extension configures its own FileWriter in `ext_localconf.php` that writes all messages from level INFO into a separate log file.
 
-| Ziel | Inhalt |
+| Destination | Content |
 |---|---|
-| `var/log/typo3_impexpnl_<hash>.log` | Alle ImpExpNL-Meldungen (eigener Logger-Channel) |
-| `var/log/impexpnl_transactions.log` | Menschenlesbare Import-/Rollback-Historie mit UID-Mappings |
-| `tx_impexpnl_import_log` (Datenbanktabelle) | UID-Map für den Rollback, persistent über Container-Neustarts |
+| `var/log/typo3_impexpnl_<hash>.log` | All ImpExpNL messages (own logger channel) |
+| `var/log/impexpnl_transactions.log` | Human-readable import/rollback history with UID mappings |
+| `tx_impexpnl_import_log` (database table) | UID map for the rollback, persistent across container restarts |
 
-### Log-Rotation
+### Log rotation
 
-Die Datei `var/log/impexpnl_transactions.log` wird fortlaufend ergänzt (Append) und nicht automatisch rotiert. Im Dauerbetrieb sollte sie über das System-`logrotate` einbezogen werden:
+The file `var/log/impexpnl_transactions.log` is appended to continuously and is not rotated automatically. In continuous operation it should be included in the system's `logrotate`:
 
 ```
 /var/www/html/var/log/impexpnl_transactions.log {
@@ -677,11 +677,11 @@ Die Datei `var/log/impexpnl_transactions.log` wird fortlaufend ergänzt (Append)
 }
 ```
 
-Der Logger-Channel (`typo3_impexpnl_<hash>.log`) wird über das TYPO3-Logging-Framework geschrieben; alternativ kann dort ein rotierender bzw. zentraler Writer konfiguriert werden (siehe unten). In Kubernetes-Umgebungen empfiehlt sich ohnehin ein stdout-/Syslog-Writer ohne lokale Dateien.
+The logger channel (`typo3_impexpnl_<hash>.log`) is written via the TYPO3 logging framework; alternatively, a rotating or central writer can be configured there (see below). In Kubernetes environments, a stdout/syslog writer without local files is generally recommended.
 
-### Logger-Konfiguration anpassen
+### Adjusting logger configuration
 
-Die Standard-Konfiguration schreibt in eine Datei. Für den Betrieb in Kubernetes oder mit einem zentralen Log-Aggregator (ELK, Graylog) kann der Writer in `config/system/additional.php` überschrieben werden:
+The default configuration writes to a file. For operation in Kubernetes or with a central log aggregator (ELK, Graylog), the writer can be overridden in `config/system/additional.php`:
 
 ```php
 $GLOBALS['TYPO3_CONF_VARS']['LOG']['Robbi']['ImpExpNL']['writerConfiguration'] = [
@@ -691,7 +691,7 @@ $GLOBALS['TYPO3_CONF_VARS']['LOG']['Robbi']['ImpExpNL']['writerConfiguration'] =
 ];
 ```
 
-In Kubernetes-Umgebungen, in denen Logs über stdout/stderr gesammelt werden, kann stattdessen der `PhpErrorLogWriter` verwendet werden:
+In Kubernetes environments where logs are collected via stdout/stderr, the `PhpErrorLogWriter` can be used instead:
 
 ```php
 $GLOBALS['TYPO3_CONF_VARS']['LOG']['Robbi']['ImpExpNL']['writerConfiguration'] = [
@@ -701,80 +701,80 @@ $GLOBALS['TYPO3_CONF_VARS']['LOG']['Robbi']['ImpExpNL']['writerConfiguration'] =
 ];
 ```
 
-### Log-Filterung
+### Log filtering
 
-Der Namespace `Robbi\ImpExpNL` wird vom TYPO3-Logging-Framework automatisch in den Pfad `Robbi.ImpExpNL` übersetzt. In ELK/Graylog kann nach diesem Pfad gefiltert werden, um ausschließlich ImpExpNL-Meldungen anzuzeigen.
+The namespace `Robbi\ImpExpNL` is automatically translated by the TYPO3 logging framework into the path `Robbi.ImpExpNL`. In ELK/Graylog, this path can be filtered on to show only ImpExpNL messages.
 
 ---
 
-## Systemprüfung
+## System check
 
-Der Befehl `impexpnl:check` prüft ob alle Voraussetzungen für den Betrieb erfüllt sind. Die Prüfung ist vor dem ersten Einsatz auf einem neuen System und nach einem TYPO3-Update vorgesehen.
+The command `impexpnl:check` checks whether all prerequisites for operation are met. The check is intended before first use on a new system and after a TYPO3 update.
 
 ```bash
 ddev exec vendor/bin/typo3 impexpnl:check
 ```
 
-Geprüft werden:
+Checked:
 
-- **Datenbankschema:** Existenz der Tabellen `tx_impexpnl_import_log`, `tx_impexpnl_lock` und `tx_impexpnl_uid_map`.
-- **Dateisystem:** Schreibrechte auf `var/` und `var/log/`. Existenz des Profil-Verzeichnisses `var/impexpnl_profiles/`.
-- **Registry-Validierung (Preflight):** `check` führt dieselbe Prüfung wie `impexpnl:validate-config` aus — registrierte Tabellen existieren, `pid_field`/`rewrite_links`/MM-Felder und `match_tables` referenzieren bekannte TCA-Tabellen, `type` gültig (inkl. Herkunfts-Angabe und „Did you mean?"-Vorschlägen bei Tippfehlern).
-- **Laufzeit-Checks:** FAL-Default-Storage erreichbar, Import-Lock-Status, Signing-Key-Modus (HMAC aktiv/inaktiv), Parsing der Profile inkl. Existenz des Ziel-Workspaces.
-- **Extension-Scan:** Erkennung aller geladenen Extensions, die eine eigene `Configuration/ImpExpNL.yaml` bereitstellen.
+- **Database schema:** existence of the tables `tx_impexpnl_import_log`, `tx_impexpnl_lock` and `tx_impexpnl_uid_map`.
+- **File system:** write permissions on `var/` and `var/log/`. Existence of the profile directory `var/impexpnl_profiles/`.
+- **Registry validation (preflight):** `check` runs the same check as `impexpnl:validate-config` — registered tables exist, `pid_field`/`rewrite_links`/MM fields and `match_tables` reference known TCA tables, `type` is valid (incl. origin information and "did you mean?" suggestions for typos).
+- **Runtime checks:** FAL default storage reachable, import lock status, signing key mode (HMAC active/inactive), profile parsing incl. existence of the target workspace.
+- **Extension scan:** detection of all loaded extensions that provide their own `Configuration/ImpExpNL.yaml`.
 
-Für die reine Konfigurationsprüfung ohne Laufzeit-Checks gibt es zusätzlich `impexpnl:validate-config`. Beide Befehle unterstützen `--json`.
+For a pure configuration check without runtime checks, there is also `impexpnl:validate-config`. Both commands support `--json`.
 
-Bei einem Fehler geben `check`/`validate-config` Exit-Code **`2`** (ungültige Konfiguration) zurück, sonst `0`; Warnungen allein führen nicht zum Fehlschlag. Die vollständige Liste der Exit-Codes steht im Abschnitt [Exit-Codes](#exit-codes). Das ermöglicht die Einbindung in Deployment-Skripte:
+On error, `check`/`validate-config` return exit code **`2`** (invalid configuration), otherwise `0`; warnings alone do not cause a failure. The complete list of exit codes is in the [Exit codes](#exit-codes) section. This allows integration into deployment scripts:
 
 ```bash
-vendor/bin/typo3 impexpnl:check || echo "ImpExpNL: Systemprüfung fehlgeschlagen (siehe Exit-Code)"
+vendor/bin/typo3 impexpnl:check || echo "ImpExpNL: system check failed (see exit code)"
 ```
 
 ---
 
-## Exit-Codes
+## Exit codes
 
-Alle CLI-Befehle geben differenzierte Exit-Codes zurück, damit Pipelines gezielt
-reagieren können (z. B. Lock → erneut versuchen, Konflikt → Review erzwingen). Mit
-`--json` steht der Code zusätzlich im Feld `exitCode`.
+All CLI commands return differentiated exit codes so that pipelines can react
+in a targeted way (e.g. lock → retry, conflict → force review). With
+`--json`, the code is additionally available in the `exitCode` field.
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| `0` | Erfolg |
-| `1` | Generischer/unerwarteter Fehler |
-| `2` | Ungültige Konfiguration oder Profil (`validate-config`/`check`, Profil-Parsing) |
-| `3` | Ein anderer Import hält den Lock (DB- oder Datei-Lock) |
-| `4` | Prüfsummen-/Signaturprüfung der Importdatei fehlgeschlagen |
-| `5` | Konflikte erkannt und `--conflict=abort` gesetzt |
-| `6` | Import mitten drin abgebrochen; Teilimport wurde (auto-)zurückgerollt |
-| `7` | Referenzierte Dateien/Assets fehlen *(reserviert für künftigen Strict-Asset-Modus; Standard überspringt fehlende Dateien)* |
+| `0` | Success |
+| `1` | Generic/unexpected error |
+| `2` | Invalid configuration or profile (`validate-config`/`check`, profile parsing) |
+| `3` | Another import holds the lock (DB or file lock) |
+| `4` | Checksum/signature check of the import file failed |
+| `5` | Conflicts detected and `--conflict=abort` set |
+| `6` | Import aborted mid-run; partial import was (auto-)rolled back |
+| `7` | Referenced files/assets missing *(reserved for a future strict asset mode; the default skips missing files)* |
 
-Die Exit-Codes ermöglichen die Einbindung in automatisierte Workflows und Monitoring:
+The exit codes allow integration into automated workflows and monitoring:
 
 ```bash
-# In einem Deployment-Skript
+# In a deployment script
 vendor/bin/typo3 impexpnl:import --profile=dev_to_live \
-  && echo "Import erfolgreich" \
-  || { echo "Import fehlgeschlagen"; exit 1; }
+  && echo "Import successful" \
+  || { echo "Import failed"; exit 1; }
 ```
 
 ```bash
-# Periodische Ausführung über cron mit Fehlerbenachrichtigung
+# Periodic execution via cron with failure notification
 0 6 * * 1 /var/www/html/vendor/bin/typo3 impexpnl:import --profile=weekly_sync 2>&1 | mail -s "ImpExpNL Sync" ops@example.com
 ```
 
 ---
 
-## CI/CD & Pipeline-Betrieb
+## CI/CD & pipeline operation
 
-ImpExpNL ist CLI-first und für unbeaufsichtigte GitOps-/Kubernetes-Pipelines ausgelegt.
+ImpExpNL is CLI-first and designed for unattended GitOps/Kubernetes pipelines.
 
-### Maschinenlesbare Ausgabe (`--json`)
+### Machine-readable output (`--json`)
 
-`import`, `export`, `check`, `status`, `list` und `undo` unterstützen `--json`. Die Ausgabe ist
-ein einzelnes JSON-Objekt mit `success` (bool) und befehlsspezifischen Feldern; Fortschrittsbalken
-und Titel werden unterdrückt.
+`import`, `export`, `check`, `status`, `list` and `undo` support `--json`. The output is
+a single JSON object with `success` (bool) and command-specific fields; progress bars
+and titles are suppressed.
 
 ```bash
 vendor/bin/typo3 impexpnl:import var/export.jsonl 42 --delta --json
@@ -782,94 +782,94 @@ vendor/bin/typo3 impexpnl:import var/export.jsonl 42 --delta --json
 #  "conflict_skipped":0,"errors":0},"durationMs":1840}
 ```
 
-Für Dashboards relevante Metriken: `stats.{new,updated,skipped,errors}` und `durationMs` (Import),
-`bytes`/`durationMs` (Export). Exit-Code `1` zeigt zusätzlich einen Fehlschlag an (auch bei
+Metrics relevant for dashboards: `stats.{new,updated,skipped,errors}` and `durationMs` (import),
+`bytes`/`durationMs` (export). Exit code `1` also indicates a failure (even with
 `stats.errors > 0`).
 
-### Idempotenz & Reproduzierbarkeit
+### Idempotency & reproducibility
 
-- **Delta-Modus** (`--delta`): identische Records werden übersprungen — wiederholte Läufe desselben
-  Pakets sind ein No-Op (sichere Retries).
-- **Stabiles UID-Mapping** über die Tabelle `tx_impexpnl_uid_map` (Quellsystem + Quell-UID → Ziel-UID):
-  ein Quell-Record landet bei jedem Lauf auf demselben Ziel-Record; mehrere Quellsysteme bleiben
-  über `source_id` unterscheidbar.
-- **Deterministischer Export** mit Integritäts-Prüfsumme (`sha256:`/`hmac-sha256:`) — das Paket ist
-  versionier- und review-bar (Content-as-Code im Git).
+- **Delta mode** (`--delta`): identical records are skipped — repeated runs of the same
+  package are a no-op (safe retries).
+- **Stable UID mapping** via the table `tx_impexpnl_uid_map` (source system + source UID → target UID):
+  a source record lands on the same target record on every run; multiple source systems remain
+  distinguishable via `source_id`.
+- **Deterministic export** with an integrity checksum (`sha256:`/`hmac-sha256:`) — the package
+  is versionable and reviewable (content-as-code in Git).
 
-### Pipeline-Muster (Kubernetes / GitOps)
+### Pipeline pattern (Kubernetes / GitOps)
 
-Empfohlene Job-Sequenz pro Ziel (Namespace mit eigener DB):
+Recommended job sequence per target (namespace with its own DB):
 
 ```bash
 set -euo pipefail
 
-# 1) Preflight: Voraussetzungen + Lock prüfen
+# 1) Preflight: check prerequisites + lock
 vendor/bin/typo3 impexpnl:check --json
-vendor/bin/typo3 impexpnl:status --json   # lock.active=true → ggf. abbrechen/warten
+vendor/bin/typo3 impexpnl:status --json   # lock.active=true → abort/wait if needed
 
-# 2) Gate: Dry-Run-Diff vor der echten Änderung (z. B. dev→prod)
+# 2) Gate: dry-run diff before the real change (e.g. dev→prod)
 vendor/bin/typo3 impexpnl:import "$PKG" "$PID" --delta --dry-run --json
 
-# 3) Import; bei Fehler automatisch zurückrollen
+# 3) Import; roll back automatically on error
 if ! vendor/bin/typo3 impexpnl:import "$PKG" "$PID" --delta --json; then
-    vendor/bin/typo3 impexpnl:undo --force --json   # letzten (Teil-)Import entfernen
+    vendor/bin/typo3 impexpnl:undo --force --json   # remove the last (partial) import
     exit 1
 fi
 ```
 
-**Pod-Kill-Resilienz (wichtig in Kubernetes):** Ein harter SIGKILL (OOM, Eviction, Timeout) umgeht
-den eingebauten Auto-Rollback. Der nächste Lauf erkennt den stehengebliebenen Lock
-(`impexpnl:status`) und das als „abgebrochen" markierte Import-Protokoll; dann gilt **undo-then-retry**
-statt blindem Neustart. Pod-Memory ausreichend dimensionieren (große Bäume) oder JSONL nutzen.
+**Pod-kill resilience (important in Kubernetes):** A hard SIGKILL (OOM, eviction, timeout) bypasses
+the built-in auto-rollback. The next run detects the stuck lock
+(`impexpnl:status`) and the import log marked as "aborted"; then **undo-then-retry** applies
+instead of a blind restart. Size pod memory adequately (large trees) or use JSONL.
 
-### Migration aus älteren Versionen
+### Migration from older versions
 
-`impexpnl:migrate-legacy-schema` überführt bestehende Installationen nach dem
-Schema-Update. Der Befehl erkennt beide Altstände automatisch:
+`impexpnl:migrate-legacy-schema` migrates existing installations after the
+schema update. The command detects both legacy states automatically:
 
-- **ImpExpNL 1.x → 2.0:** das Herkunfts-Feld `tx_impexpnl_remote_uid` auf
-  `pages`/`tt_content` wird in die neue Tabelle `tx_impexpnl_uid_map` überführt.
-- **Vorgänger-Extension „robbi_copy":** Daten aus `tx_robbicopy_*` werden übernommen.
+- **ImpExpNL 1.x → 2.0:** the origin field `tx_impexpnl_remote_uid` on
+  `pages`/`tt_content` is migrated into the new table `tx_impexpnl_uid_map`.
+- **Predecessor extension "robbi_copy":** data from `tx_robbicopy_*` is taken over.
 
 ```bash
-vendor/bin/typo3 extension:setup                        # neues Schema (tx_impexpnl_uid_map etc.) anlegen
-vendor/bin/typo3 impexpnl:migrate-legacy-schema         # Herkunfts-Mapping/Altdaten übernehmen
-vendor/bin/typo3 impexpnl:migrate-legacy-schema --drop-legacy   # optional: Alt-Spalten/-Tabellen entfernen
+vendor/bin/typo3 extension:setup                        # create the new schema (tx_impexpnl_uid_map etc.)
+vendor/bin/typo3 impexpnl:migrate-legacy-schema         # migrate origin mapping/legacy data
+vendor/bin/typo3 impexpnl:migrate-legacy-schema --drop-legacy   # optional: remove old columns/tables
 ```
 
-> **Reihenfolge wichtig:** erst migrieren, dann `--drop-legacy` – sonst geht das
-> Herkunfts-Mapping verloren. Der Befehl ist idempotent und pipeline-tauglich.
+> **Order matters:** migrate first, then `--drop-legacy` – otherwise the
+> origin mapping is lost. The command is idempotent and pipeline-friendly.
 
 ---
 
-## PSR-14 Events
+## PSR-14 events
 
-Für Anforderungen, die über die deklarative Table-Registry hinausgehen, stehen zwei PSR-14 Events zur Verfügung:
+For requirements that go beyond the declarative table registry, two PSR-14 events are available:
 
-- `ModifyExportDataEvent` — wird nach dem Sammeln aller Daten und vor dem Schreiben der JSON-Datei gefeuert
-- `ModifyImportDataEvent` — wird nach dem Import gefeuert; die vollständige UID-Map steht zur Verfügung
+- `ModifyExportDataEvent` — fired after collecting all data and before writing the JSON file
+- `ModifyImportDataEvent` — fired after the import; the complete UID map is available
 
 ---
 
-## Automatisierte Tests
+## Automated tests
 
-### Überblick
+### Overview
 
-Die Extension enthält eine Test-Suite aus Unit-Tests und Functional-Tests. Unit-Tests prüfen isolierte Logik-Bausteine ohne Datenbank. Functional-Tests führen vollständige Export/Import/Rollback-Zyklen mit einer dedizierten Testdatenbank durch.
+The extension contains a test suite of unit tests and functional tests. Unit tests check isolated logic building blocks without a database. Functional tests run complete export/import/rollback cycles with a dedicated test database.
 
-Die Testdatenbank wird pro Testlauf automatisch erstellt und nach Abschluss gelöscht. Die Produktivdatenbank wird nicht berührt.
+The test database is created automatically for each test run and deleted afterwards. The production database is never touched.
 
-### Voraussetzungen
+### Prerequisites
 
-Das `typo3/testing-framework` (`^9.3` für TYPO3 v14) ist bereits als `require-dev` in der `composer.json` eingetragen und wird durch `composer install` mitinstalliert. Bei Bedarf manuell:
+`typo3/testing-framework` (`^9.3` for TYPO3 v14) is already listed as `require-dev` in `composer.json` and is installed by `composer install`. Manually, if needed:
 
 ```bash
 ddev composer require --dev typo3/testing-framework:^9.3
 ```
 
-### Datenbank-Konfiguration
+### Database configuration
 
-Die Functional-Tests benötigen eine Datenbankverbindung. Standardmäßig ist in der `phpunit.functional.xml` die MariaDB-Verbindung der DDEV-Umgebung konfiguriert:
+The functional tests require a database connection. By default, `phpunit.functional.xml` is configured with the MariaDB connection of the DDEV environment:
 
 ```xml
 <env name="typo3DatabaseDriver" value="mysqli"/>
@@ -879,127 +879,127 @@ Die Functional-Tests benötigen eine Datenbankverbindung. Standardmäßig ist in
 <env name="typo3DatabasePassword" value="root"/>
 ```
 
-Das Testing Framework erstellt für jeden Test eine eigene Datenbank, führt den Test aus und löscht die Datenbank danach.
+The testing framework creates its own database for each test, runs the test, and deletes the database afterwards.
 
-Alternativ kann SQLite als Datenbank verwendet werden. Dabei wird kein Server benötigt, die Daten werden in einer temporären Datei gespeichert:
+Alternatively, SQLite can be used as the database. This requires no server; the data is stored in a temporary file:
 
 ```bash
 ddev exec typo3DatabaseDriver=pdo_sqlite vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.functional.xml
 ```
 
-Alle Werte sind über Umgebungsvariablen überschreibbar. Die Werte in der `phpunit.functional.xml` dienen als Defaults.
+All values can be overridden via environment variables. The values in `phpunit.functional.xml` serve as defaults.
 
-### Tests ausführen
+### Running tests
 
-Unit-Tests und Functional-Tests werden über separate Konfigurationsdateien gestartet. Die Trennung ist erforderlich, da beide einen unterschiedlichen Bootstrap benötigen.
+Unit tests and functional tests are started via separate configuration files. The separation is necessary because both require a different bootstrap.
 
-Welche Test-Stufe wann Pflicht ist (SQLite vs. MariaDB, Real-World-E2E), das Container-Setup der Testumgebung und das Release-Ritual sind in [`Documentation/DEVELOPMENT.md`](Documentation/DEVELOPMENT.md) beschrieben.
+Which test stage is mandatory when (SQLite vs. MariaDB, real-world E2E), the container setup of the test environment, and the release ritual are described in [`Documentation/DEVELOPMENT.md`](Documentation/DEVELOPMENT.md).
 
 ```bash
-# Unit-Tests (kein Datenbankzugriff, schnell)
+# Unit tests (no database access, fast)
 ddev exec vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.unit.xml
 
-# Functional-Tests (mit Datenbank)
+# Functional tests (with database)
 ddev exec vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.functional.xml
 
-# Einzelner Test
+# Single test
 ddev exec vendor/bin/phpunit -c packages/imp_exp_nl/phpunit.unit.xml --filter testDryRunDoesNotWriteToDatabase
 ```
 
-### Release-Pflichtläufe: MariaDB & Real-World-E2E
+### Mandatory release runs: MariaDB & real-world E2E
 
-Die Functional-Suite läuft in der Standard-CI häufig gegen SQLite. Der Real-World-Test (siehe `Prüfbericht.md`, Abschnitt 7) hat gezeigt, dass MySQL/MariaDB-spezifisches Verhalten dort unsichtbar bleibt (affected-rows-Semantik, implizite Commits durch `TRUNCATE`, Wert-Repräsentationen). **Vor jedem Release** sind deshalb zwei zusätzliche Läufe verpflichtend:
+The functional suite often runs against SQLite in the standard CI. The real-world test (see `Prüfbericht.md`, section 7) showed that MySQL/MariaDB-specific behavior remains invisible there (affected-rows semantics, implicit commits caused by `TRUNCATE`, value representations). **Before every release**, two additional runs are therefore mandatory:
 
 ```bash
-# 1) Functional-Suite gegen echtes MariaDB 11.4 (Docker; erstellt den DB-Container selbst)
+# 1) Functional suite against real MariaDB 11.4 (Docker; creates the DB container itself)
 Build/test-functional-mariadb.sh
 
-# 2) Kompletter Transfer-Lebenszyklus über zwei echte TYPO3-Instanzen
+# 2) Complete transfer lifecycle across two real TYPO3 instances
 Build/e2e/run.sh
-# skalierbar: PAGES=2000 ASSETS=2000 FILESIZE=204800 Build/e2e/run.sh
+# scalable: PAGES=2000 ASSETS=2000 FILESIZE=204800 Build/e2e/run.sh
 ```
 
-Das E2E-Skript (`Build/e2e/run.sh`) erwartet die Instanz-Container `impexpnl-src`/`impexpnl-tgt` (TYPO3 mit Extension als Path-Repository auf das Arbeitsverzeichnis) samt MariaDB-Sidecars `impexpnl-db-src`/`impexpnl-db-tgt` und prüft automatisiert: signierten Bundle-Export mit Key-ID, Schleusen-Transfer, Abweisung bei falschem Schlüssel (Exit 4), Dry-Run-Gate, Voll-Import mit Asset-Hash-Verifikation, Delta-No-Op-Idempotenz, SIGKILL mitten im Import mit undo-then-retry sowie Rollback auf die exakte Baseline. Exit-Code 0 = alle Prüfungen bestanden. Der Seed-Generator (`Build/e2e/seed_generate.php`) erzeugt dafür echte Bilddateien in konfigurierbarer Menge/Größe.
+The E2E script (`Build/e2e/run.sh`) expects the instance containers `impexpnl-src`/`impexpnl-tgt` (TYPO3 with the extension as a path repository on the working directory) along with MariaDB sidecars `impexpnl-db-src`/`impexpnl-db-tgt`, and automatically checks: signed bundle export with key ID, data-lock transfer, rejection on wrong key (exit 4), dry-run gate, full import with asset hash verification, delta no-op idempotency, SIGKILL mid-import with undo-then-retry, as well as rollback to the exact baseline. Exit code 0 = all checks passed. The seed generator (`Build/e2e/seed_generate.php`) creates real image files in configurable quantity/size for this.
 
-### Testdaten generieren
+### Generating test data
 
-Für Last- und Entwicklungstests ohne große Quell-Instanz erzeugt ein Dev-Werkzeug synthetische Importdateien beliebiger Größe (mit gültiger Prüfsumme):
+For load and development tests without a large source instance, a dev tool generates synthetic import files of any size (with a valid checksum):
 
 ```bash
 # JSON
 php Build/generate-testdata.php --pages=5000 --content-per-page=8 --out=var/big.json
-# JSONL (kompakter, speicherschonend)
+# JSONL (more compact, memory-friendly)
 php Build/generate-testdata.php --pages=20000 --content-per-page=5 --format=jsonl --out=var/big.jsonl
 ```
 
-Die erzeugte Datei wird wie ein regulärer Export importiert:
+The generated file is imported like a regular export:
 
 ```bash
-vendor/bin/typo3 impexpnl:import var/big.json <ziel-pid>
+vendor/bin/typo3 impexpnl:import var/big.json <target-pid>
 ```
 
-Der Functional-Test `LargeTreeImportTest` nutzt denselben Generator und ist über Umgebungsvariablen skalierbar (`IMPEXPNL_PERF_PAGES`, `IMPEXPNL_PERF_CONTENT`, `IMPEXPNL_PERF_FORMAT=jsonl`); er gibt Laufzeit und Speicher-Peak aus.
+The functional test `LargeTreeImportTest` uses the same generator and is scalable via environment variables (`IMPEXPNL_PERF_PAGES`, `IMPEXPNL_PERF_CONTENT`, `IMPEXPNL_PERF_FORMAT=jsonl`); it outputs runtime and peak memory.
 
-### Unit-Tests
+### Unit tests
 
-Die Unit-Tests prüfen die interne Logik der Service- und Domain-Klassen (Auswahl):
+The unit tests check the internal logic of the service and domain classes (selection):
 
-| Klasse | Schwerpunkt |
+| Class | Focus |
 |---|---|
-| `IntegrityServiceTest` | Prüfsumme/HMAC, Downgrade-Sperre, Key-Rotation (Key-ID, `signingKeys`), Legacy-Format |
-| `BundleImportServiceTest` | Bundle-Härtung: Path-Traversal-Schutz, signierte Asset-Prüfsummen |
-| `ConflictResolverTest` / `ImportServiceTest` | Feld-Vergleich (inkl. Leer-Äquivalenz), Konflikt-Zeitstempel, `buildRecordData` |
-| `ConfigurationServiceTest` | Defaults & Grenzen (Lock-Timeout, Dateigrößen-Limit, Signaturpflicht) |
-| `ExportServiceTest` | `parseSince`, Checksum, Asset-Extraktion, Broken-Link-Erkennung, Metadaten |
-| `TableRegistryServiceTest` / `ProfileServiceTest` | Link-Rewriting, Kategorie-Pfade; Profil-Validierung |
+| `IntegrityServiceTest` | Checksum/HMAC, downgrade lock, key rotation (key ID, `signingKeys`), legacy format |
+| `BundleImportServiceTest` | Bundle hardening: path traversal protection, signed asset checksums |
+| `ConflictResolverTest` / `ImportServiceTest` | Field comparison (incl. empty-value equivalence), conflict timestamps, `buildRecordData` |
+| `ConfigurationServiceTest` | Defaults & limits (lock timeout, file size limit, signature enforcement) |
+| `ExportServiceTest` | `parseSince`, checksum, asset extraction, broken-link detection, metadata |
+| `TableRegistryServiceTest` / `ProfileServiceTest` | Link rewriting, category paths; profile validation |
 | `Domain/*` | `ConflictStrategy`, `ExportManifest`, `PageLinkRewriter`, `UidMap` |
 
-### Functional-Tests
+### Functional tests
 
-Die Functional-Tests arbeiten mit einer echten Datenbank und prüfen den Gesamtablauf (Auswahl der ~40 Klassen):
+The functional tests work with a real database and check the overall flow (selection of ~40 classes):
 
-| Bereich | Szenarien |
+| Area | Scenarios |
 |---|---|
-| `ExportImportTest`, `JsonlRoundtripTest` | Export/Import-Roundtrips (JSON + JSONL), Hidden-Filter, Tiefenbegrenzung, Link-Rewriting, Sortierung |
-| `DeltaImportTest`, `DryRunMatchesImportTest` | Delta-Idempotenz, Konflikt-Strategien, Dry-Run schreibt nichts und stimmt mit echtem Import überein |
-| `RollbackTest`, `RollbackSafetyTest`, `FullRoundtripAbortTest` | Rollback vollständig & gezielt, Schutz lokal geänderter Records, Auto-Rollback nach Abbruch |
-| `ImportLockTest`, `ExitCodeTest` | Cluster-Lock inkl. Owner-Token/Stale-Reaping, differenzierte Exit-Codes |
-| `Profile/*ContractTest` | Contract je Registry-Profil: Export → Import → Rollback (Core, FAL, Redirects, Kategorien, News, tt_address) |
-| `Transport/Bundle*` | Bundle-Roundtrip inkl. Asset-Platzierung und Rollback-GC |
-| `RegistryContainmentTest`, `TransferProfileTest`, `SanitizeTest` | PID-Containment, `allowedTables`/Kontext-Bindung, PII-Scrubbing (HMAC) |
-| `Workspace*`, `Language*`, `Fal*` | Workspace-Import/-Publish, Übersetzungen, FAL-Randfälle |
-| `LargeTreeImportTest`, `PerformanceBaselineTest` | Skalierung und Performance-Regressionsschutz |
+| `ExportImportTest`, `JsonlRoundtripTest` | Export/import roundtrips (JSON + JSONL), hidden filter, depth limit, link rewriting, sorting |
+| `DeltaImportTest`, `DryRunMatchesImportTest` | Delta idempotency, conflict strategies, dry run writes nothing and matches a real import |
+| `RollbackTest`, `RollbackSafetyTest`, `FullRoundtripAbortTest` | Full & targeted rollback, protection of locally changed records, auto-rollback after abort |
+| `ImportLockTest`, `ExitCodeTest` | Cluster lock incl. owner token/stale reaping, differentiated exit codes |
+| `Profile/*ContractTest` | Contract per registry profile: export → import → rollback (core, FAL, redirects, categories, news, tt_address) |
+| `Transport/Bundle*` | Bundle roundtrip incl. asset placement and rollback GC |
+| `RegistryContainmentTest`, `TransferProfileTest`, `SanitizeTest` | PID containment, `allowedTables`/context binding, PII scrubbing (HMAC) |
+| `Workspace*`, `Language*`, `Fal*` | Workspace import/publish, translations, FAL edge cases |
+| `LargeTreeImportTest`, `PerformanceBaselineTest` | Scaling and performance regression protection |
 
-### Fixture-Daten
+### Fixture data
 
-Die Testdaten werden als CSV-Dateien unter `Tests/Functional/Fixtures/` bereitgestellt. Jede CSV-Datei entspricht einer Datenbanktabelle. Die erste Zeile enthält die Spaltennamen, jede weitere Zeile einen Record.
+The test data is provided as CSV files under `Tests/Functional/Fixtures/`. Each CSV file corresponds to a database table. The first line contains the column names, each further line a record.
 
-Mitgelieferte Fixtures:
+Bundled fixtures:
 
-| Datei | Inhalt |
+| File | Content |
 |---|---|
-| `pages.csv` | 6 Testseiten (Baumstruktur, versteckte Seite, Sprachversion) |
-| `tt_content.csv` | 5 Inhaltselemente (Text, Textmedia, interner Link, Sprachversion) |
-| `sys_category.csv` | 4 Kategorien (hierarchische Struktur) |
-| `sys_category_record_mm.csv` | 2 Kategorie-Zuordnungen |
+| `pages.csv` | 6 test pages (tree structure, hidden page, language version) |
+| `tt_content.csv` | 5 content elements (text, textmedia, internal link, language version) |
+| `sys_category.csv` | 4 categories (hierarchical structure) |
+| `sys_category_record_mm.csv` | 2 category assignments |
 
-### Eigene Tests hinzufügen
+### Adding custom tests
 
-**Unit-Test.** Eine bestehende Testmethode wird kopiert und mit geänderten Eingabedaten versehen:
+**Unit test.** An existing test method is copied and given changed input data:
 
 ```php
 #[Test]
 public function customFieldIsPreservedInBuildRecordData(): void
 {
-    $source = ['uid' => 1, 'title' => 'Test', 'tx_myext_field' => 'Wert'];
+    $source = ['uid' => 1, 'title' => 'Test', 'tx_myext_field' => 'Value'];
     $result = $this->callBuildRecordData($source);
 
     self::assertArrayHasKey('tx_myext_field', $result);
-    self::assertEquals('Wert', $result['tx_myext_field']);
+    self::assertEquals('Value', $result['tx_myext_field']);
 }
 ```
 
-**Functional-Test.** Eine Fixture-CSV wird erstellt, im Test geladen und das Ergebnis geprüft:
+**Functional test.** A fixture CSV is created, loaded in the test, and the result is checked:
 
 ```php
 #[Test]
@@ -1015,45 +1015,45 @@ public function gsbAccordionContentIsExported(): void
 }
 ```
 
-**Fixture-CSV.** Die Spaltennamen entsprechen den Datenbankfeldern:
+**Fixture CSV.** The column names correspond to the database fields:
 
 ```csv
 "uid","pid","CType","header","tx_gsb_accordion_text","sorting","hidden","deleted"
-100,2,"accordion","Titel","<p>Inhalt</p>",256,0,0
+100,2,"accordion","Title","<p>Content</p>",256,0,0
 ```
 
-### Teststruktur
+### Test structure
 
 ```
 Tests/
 ├── Unit/
-│   ├── ConfigurationSchemaTest.php        # YAML-Config gegen JSON-Schema
+│   ├── ConfigurationSchemaTest.php        # YAML config against JSON schema
 │   ├── Domain/                            # ConflictStrategy, ExportManifest,
-│   │                                      # ManifestReader (In-Memory/Streaming),
+│   │                                      # ManifestReader (in-memory/streaming),
 │   │                                      # PageLinkRewriter, UidMap
-│   └── Service/                           # BundleImport (Härtung), Configuration,
+│   └── Service/                           # BundleImport (hardening), Configuration,
 │                                          # ConflictResolver, Export, Import,
-│                                          # Integrity (inkl. Key-Rotation),
+│                                          # Integrity (incl. key rotation),
 │                                          # Profile, TableRegistry
 ├── Functional/
-│   ├── Command/                           # CLI-Smoke- und Status-Tests
-│   ├── Profile/                           # Contract-Tests der Registry-Profile
-│   │                                      # (Core, FAL, Redirects, Kategorien,
-│   │                                      # News, tt_address, deklarativ)
-│   ├── Service/                           # Export/Import/Delta/Rollback, Locks,
-│   │                                      # Workspaces, Sprachen, FAL, Assets,
-│   │                                      # Sanitize, Transfer-Profile,
-│   │                                      # Registry-Containment, Performance
-│   ├── Transport/                         # Bundle: Roundtrip, Transport, Asset-GC
-│   └── Fixtures/                          # CSV-Fixtures je Tabelle
-└── Build/                                 # Test-Bootstraps
+│   ├── Command/                           # CLI smoke and status tests
+│   ├── Profile/                           # Contract tests of the registry profiles
+│   │                                      # (core, FAL, redirects, categories,
+│   │                                      # news, tt_address, declarative)
+│   ├── Service/                           # Export/import/delta/rollback, locks,
+│   │                                      # workspaces, languages, FAL, assets,
+│   │                                      # sanitize, transfer profiles,
+│   │                                      # registry containment, performance
+│   ├── Transport/                         # Bundle: roundtrip, transport, asset GC
+│   └── Fixtures/                          # CSV fixtures per table
+└── Build/                                 # Test bootstraps
 ```
 
-Ergänzend unter `Build/`: `test-functional-mariadb.sh` (Functional-Suite gegen MariaDB), `e2e/run.sh` + `e2e/seed_generate.php` (Real-World-E2E über zwei Instanzen), `generate-testdata.php` (synthetische Importdateien).
+Additionally under `Build/`: `test-functional-mariadb.sh` (functional suite against MariaDB), `e2e/run.sh` + `e2e/seed_generate.php` (real-world E2E across two instances), `generate-testdata.php` (synthetic import files).
 
 ---
 
-## Verzeichnisstruktur
+## Directory structure
 
 ```
 imp_exp_nl/
@@ -1063,24 +1063,24 @@ imp_exp_nl/
 │   ├── Domain/           # ConflictStrategy, ExitCode, ExportManifest,
 │   │                     # PageLinkRewriter, SystemFields, TransferProfile, UidMap
 │   ├── Event/            # ModifyExportDataEvent, ModifyImportDataEvent (PSR-14)
-│   ├── Exception/        # typisierte Fehler mit Exit-Codes (Lock, Integrity, …)
-│   ├── Service/          # Export/Import/Rollback, ManifestLoader + JsonlStreamReader
-│   │                     # (streamender JSONL-Import), Integrity (HMAC/Key-Rotation),
-│   │                     # Locks, TableRegistry, AssetManifest, Sanitize, Configuration,
-│   │                     # RootlineCacheGuard, Repositories (ImportLog, UidMap)
-│   └── Transport/        # external/bundle/push-Transport + Factory
+│   ├── Exception/        # typed errors with exit codes (Lock, Integrity, …)
+│   ├── Service/          # Export/import/rollback, ManifestLoader + JsonlStreamReader
+│   │                     # (streaming JSONL import), Integrity (HMAC/key rotation),
+│   │                     # locks, TableRegistry, AssetManifest, Sanitize, Configuration,
+│   │                     # RootlineCacheGuard, repositories (ImportLog, UidMap)
+│   └── Transport/        # external/bundle/push transport + factory
 ├── Configuration/
 │   ├── Services.yaml
-│   └── Schema/ImpExpNL.schema.json    # JSON-Schema für YAML-Autocomplete/CI
+│   └── Schema/ImpExpNL.schema.json    # JSON schema for YAML autocomplete/CI
 ├── Build/
-│   ├── test-functional-mariadb.sh     # Release-Pflichtlauf gegen MariaDB
-│   ├── e2e/                           # Real-World-E2E (run.sh, seed_generate.php)
+│   ├── test-functional-mariadb.sh     # mandatory release run against MariaDB
+│   ├── e2e/                           # real-world E2E (run.sh, seed_generate.php)
 │   ├── generate-testdata.php
-│   └── demo/                          # DDEV-Demo-Projekt
+│   └── demo/                          # DDEV demo project
 ├── Documentation/
-│   ├── DEVELOPMENT.md                 # Test-Betrieb, Container-Setup, Release-Ritual
+│   ├── DEVELOPMENT.md                 # test operations, container setup, release ritual
 │   └── PERFORMANCE.md
-├── Tests/                             # siehe Teststruktur oben
+├── Tests/                             # see test structure above
 ├── composer.json
 ├── ext_emconf.php
 ├── ext_localconf.php
@@ -1088,36 +1088,35 @@ imp_exp_nl/
 ├── phpunit.unit.xml
 ├── phpunit.functional.xml
 ├── imp_exp_nl.yaml
-├── Prüfbericht.md                     # Sicherheits-Review + Real-World-Verifikation
+├── Prüfbericht.md                     # security review + real-world verification
 ├── CHANGELOG.md
 ├── LICENSE
 └── README.md
 ```
 
-## Lizenz
+## License
 
 Copyright © 2026 Robert Schleiermacher
 
-Diese Extension ist freie Software und wird unter der GNU General Public
-License in der Version 2 oder einer späteren Version (`GPL-2.0-or-later`)
-veröffentlicht. Der vollständige Lizenztext befindet sich in der Datei
-[`LICENSE`](LICENSE).
+This extension is free software and is released under the GNU General Public
+License, version 2 or later (`GPL-2.0-or-later`). The full license text is
+in the file [`LICENSE`](LICENSE).
 
-Die Lizenzwahl ergibt sich aus den Vorgaben von TYPO3: Der Core steht unter
-`GPL-2.0-or-later`, und eine Extension ist ein davon abgeleitetes Werk. Die
-GPL gewährt das Recht, die Software zu nutzen, zu verändern und weiterzugeben,
-sofern abgeleitete Werke unter denselben Bedingungen bereitgestellt werden.
+The license choice follows from TYPO3's requirements: the core is licensed
+under `GPL-2.0-or-later`, and an extension is a derivative work of it. The
+GPL grants the right to use, modify and redistribute the software, provided
+that derivative works are made available under the same terms.
 
-Die Veröffentlichung erfolgt in der Hoffnung, dass die Software nützlich ist,
-jedoch ohne jegliche Gewährleistung; auch ohne die implizite Gewährleistung
-der Marktreife oder der Eignung für einen bestimmten Zweck. Einzelheiten regelt
-die GNU General Public License.
+Publication is made in the hope that the software is useful, but without
+any warranty; without even the implied warranty of merchantability or
+fitness for a particular purpose. Details are governed by the GNU General
+Public License.
 
-### Weiterpflege durch Dritte
+### Continued maintenance by third parties
 
-Die `GPL-2.0-or-later` deckt sämtliche zur Nutzung und Weiterentwicklung
-erforderlichen Rechte ab; eine gesonderte Rechteübertragung ist für die
-Übernahme der Pflege nicht erforderlich. Wird die Urheberschaft dauerhaft auf
-eine andere Stelle übertragen, sind lediglich die Copyright-Vermerke in den
-Dateiköpfen (`Classes/**/*.php`) und in diesem Abschnitt anzupassen; der Inhalt
-der Datei `LICENSE` bleibt unverändert.
+The `GPL-2.0-or-later` covers all rights required for use and further
+development; a separate transfer of rights is not required to take over
+maintenance. If authorship is permanently transferred to another party,
+only the copyright notices in the file headers (`Classes/**/*.php`) and in
+this section need to be adjusted; the content of the `LICENSE` file remains
+unchanged.

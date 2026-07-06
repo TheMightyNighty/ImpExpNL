@@ -50,7 +50,7 @@ class ProfileService
         // Nur einfache Dateinamen zulassen (Path-Traversal-Schutz).
         if ($name !== basename($name) || str_contains($name, '..') || $name === '') {
             throw new \InvalidArgumentException(
-                "Ungültiger Profilname: '$name'. Nur einfache Dateinamen ohne Pfadanteile erlaubt."
+                "Invalid profile name: '$name'. Only simple filenames without path components are allowed."
             );
         }
 
@@ -61,20 +61,20 @@ class ProfileService
         $realDir = realpath($dir);
         if (file_exists($file) && ($realDir === false || !str_starts_with((string)realpath($file), rtrim($realDir, '/') . '/'))) {
             throw new \InvalidArgumentException(
-                'Ungültiger Profilpfad: Auflösung führt außerhalb des Profilverzeichnisses.'
+                'Invalid profile path: resolution leads outside the profile directory.'
             );
         }
 
         if (!file_exists($file)) {
             throw new ConfigException(
-                "Profil '$name' nicht gefunden. Erwartet: $file\n"
-                . 'Verfügbare Profile: ' . implode(', ', $this->listProfiles())
+                "Profile '$name' not found. Expected: $file\n"
+                . 'Available profiles: ' . implode(', ', $this->listProfiles())
             );
         }
 
         $content = \Symfony\Component\Yaml\Yaml::parse(file_get_contents($file));
         if (!is_array($content)) {
-            throw new ConfigException("Profil '$name' ist kein gültiges YAML.");
+            throw new ConfigException("Profile '$name' is not valid YAML.");
         }
 
         $profile = [
@@ -95,10 +95,10 @@ class ProfileService
         try {
             ConflictStrategy::fromInput($profile['conflict']);
         } catch (\InvalidArgumentException $e) {
-            throw new ConfigException("Profil '$name': " . $e->getMessage());
+            throw new ConfigException("Profile '$name': " . $e->getMessage());
         }
 
-        $this->logger->info('Profil geladen', ['name' => $name, 'config' => $profile]);
+        $this->logger->info('Profile loaded', ['name' => $name, 'config' => $profile]);
         return $profile;
     }
 

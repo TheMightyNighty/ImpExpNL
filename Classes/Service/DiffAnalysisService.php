@@ -45,7 +45,7 @@ class DiffAnalysisService
      */
     public function analyze(ManifestReader $manifest, bool $verbose): array
     {
-        $this->logger->info('=== DIFFERENZ-ANALYSE ===');
+        $this->logger->info('=== DIFF ANALYSIS ===');
         $sourceId = $manifest->getSourceId();
         $samples = [];
 
@@ -56,19 +56,19 @@ class DiffAnalysisService
                 if (!isset($samples['new'])) {
                     $samples['new'] = ['table' => 'pages', 'title' => (string)($p['title'] ?? ''), 'slug' => (string)($p['slug'] ?? '')];
                 }
-                $this->logger->info('<fg=green>+ NEU</>        | ' . ($p['title'] ?? ''));
+                $this->logger->info('<fg=green>+ NEW</>        | ' . ($p['title'] ?? ''));
             } elseif (!$this->conflictResolver->isRecordIdentical($p, $existing)) {
                 $uP++;
                 if (!isset($samples['changed'])) {
                     $samples['changed'] = ['table' => 'pages', 'uid' => (int)$p['uid'], 'field' => $this->firstChangedField($p, $existing)];
                 }
-                $this->logger->info('<fg=yellow>~ GEÄNDERT</>   | ' . ($p['title'] ?? ''));
+                $this->logger->info('<fg=yellow>~ CHANGED</>    | ' . ($p['title'] ?? ''));
                 if ($verbose) {
                     $this->conflictResolver->logFieldDiff($p, $existing, 'pages');
                 }
             } else {
                 $iP++;
-                $this->logger->info('<fg=blue>= IDENTISCH</>  | ' . ($p['title'] ?? ''));
+                $this->logger->info('<fg=blue>= IDENTICAL</>  | ' . ($p['title'] ?? ''));
             }
         });
 
@@ -88,10 +88,10 @@ class DiffAnalysisService
             }
         });
 
-        $this->logger->info(sprintf('Seiten:  %d neu, %d geändert, %d identisch.', $nP, $uP, $iP));
-        $this->logger->info(sprintf('Inhalte: %d neu, %d geändert, %d identisch.', $nC, $uC, $iC));
+        $this->logger->info(sprintf('Pages:   %d new, %d changed, %d identical.', $nP, $uP, $iP));
+        $this->logger->info(sprintf('Content: %d new, %d changed, %d identical.', $nC, $uC, $iC));
         if ($iP + $iC > 0) {
-            $this->logger->info('Tipp: Mit --delta werden identische Records übersprungen.');
+            $this->logger->info('Tip: use --delta to skip identical records.');
         }
 
         return [

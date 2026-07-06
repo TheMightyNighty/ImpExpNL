@@ -35,5 +35,5 @@ Eine Meldung sollte enthalten:
 
 Die sicherheitsrelevanten Betriebsfunktionen (HMAC-Signaturpflicht, Schlüssel-Rotation,
 Wirkbereichs-Begrenzung, Transfer über ein Sicherheitsgefälle) sind in der
-[README](README.md#sicherheitsfunktionen) dokumentiert. Interne Prüfungen und deren
+[README](README.md#security-features) dokumentiert. Interne Prüfungen und deren
 Ergebnisse: [Prüfbericht.md](Prüfbericht.md).

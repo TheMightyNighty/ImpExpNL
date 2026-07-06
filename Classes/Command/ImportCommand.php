@@ -33,7 +33,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-#[AsCommand(name: 'impexpnl:import', description: 'Importiert Seiten und Inhalte aus einer JSON-Datei.')]
+#[AsCommand(name: 'impexpnl:import', description: 'Imports pages and content from a JSON file.')]
 class ImportCommand extends Command
 {
     public function __construct(
@@ -47,15 +47,15 @@ class ImportCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('file', InputArgument::OPTIONAL, 'Pfad zur JSON-Datei (nicht nötig bei --profile)')
-            ->addArgument('targetPid', InputArgument::OPTIONAL, 'Ziel-PID (nicht nötig bei --profile)')
-            ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Nur Analyse, keine Datenänderung')
-            ->addOption('delta', null, InputOption::VALUE_NONE, 'Nur Änderungen importieren')
-            ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Konflikt-Strategie: overwrite, skip, ask, abort', 'overwrite')
-            ->addOption('target-workspace', 'w', InputOption::VALUE_OPTIONAL, 'Ziel-Workspace (0=Live)', 0)
-            ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Import-Profil laden (aus var/impexpnl_profiles/)')
-            ->addOption('transfer-profile', 't', InputOption::VALUE_OPTIONAL, 'Transfer-Profil aus der YAML-Config (Umgebungs-Bindung + Konflikt-Policy)')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+            ->addArgument('file', InputArgument::OPTIONAL, 'Path to the JSON file (not needed with --profile)')
+            ->addArgument('targetPid', InputArgument::OPTIONAL, 'Target PID (not needed with --profile)')
+            ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Analysis only, no data changes')
+            ->addOption('delta', null, InputOption::VALUE_NONE, 'Import only changes')
+            ->addOption('conflict', null, InputOption::VALUE_OPTIONAL, 'Conflict strategy: overwrite, skip, ask, abort', 'overwrite')
+            ->addOption('target-workspace', 'w', InputOption::VALUE_OPTIONAL, 'Target workspace (0=live)', 0)
+            ->addOption('profile', 'p', InputOption::VALUE_OPTIONAL, 'Load an import profile (from var/impexpnl_profiles/)')
+            ->addOption('transfer-profile', 't', InputOption::VALUE_OPTIONAL, 'Transfer profile from the YAML config (environment binding + conflict policy)')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -79,14 +79,14 @@ class ImportCommand extends Command
                 'deltaMode' => $profile['delta'],
                 'conflict' => $profile['conflict'],
             ];
-            $io->note("Profil '$profileName' geladen.");
+            $io->note("Profile '$profileName' loaded.");
         } else {
             $file = $input->getArgument('file');
             $targetPidArg = $input->getArgument('targetPid');
 
             // targetPid 0 (Wurzel) ist gültig – daher explizit auf null prüfen, nicht auf "falsy".
             if ($file === null || $targetPidArg === null) {
-                $io->error('Entweder --profile oder <file> und <targetPid> angeben.');
+                $io->error('Specify either --profile or <file> and <targetPid>.');
                 return Command::FAILURE;
             }
             $targetPid = (int)$targetPidArg;
@@ -114,8 +114,8 @@ class ImportCommand extends Command
             && (int)filesize($file) > ManifestLoaderService::LARGE_JSON_WARN_BYTES
         ) {
             $io->warning(sprintf(
-                'Große JSON-Importdatei (%d MB): .json wird vollständig in den Speicher geparst. '
-                . 'Für Exporte dieser Größe das streamende JSONL-Format verwenden (Export mit --jsonl).',
+                'Large JSON import file (%d MB): .json is parsed entirely into memory. '
+                . 'For exports of this size, use the streaming JSONL format (export with --jsonl).',
                 (int)round((int)filesize($file) / 1048576)
             ));
         }
@@ -143,28 +143,28 @@ class ImportCommand extends Command
         // Interaktiver Ask-Modus
         if ($options['conflict'] === ConflictStrategy::Ask) {
             $options['onConflictAsk'] = function (array $info) use ($io): bool {
-                return $io->confirm('Konflikt: ' . $info['message'] . ' Trotzdem überschreiben?', false);
+                return $io->confirm('Conflict: ' . $info['message'] . ' Overwrite anyway?', false);
             };
         }
 
         $progressBar = null;
         if (!$jsonOutput) {
-            $io->title('ImpExpNL: Import');
-            $io->text("Datei: $file | Ziel-PID: $targetPid");
+            $io->title('ImpExpNL: import');
+            $io->text("File: $file | Target PID: $targetPid");
             if ($options['dryRun']) {
-                $io->note('Dry-Run.');
+                $io->note('Dry run.');
             }
             if ($options['deltaMode']) {
-                $io->note('Delta-Modus.');
+                $io->note('Delta mode.');
             }
             if ($options['conflict'] !== ConflictStrategy::Overwrite) {
-                $io->note('Konflikt-Strategie: ' . $options['conflict']->value);
+                $io->note('Conflict strategy: ' . $options['conflict']->value);
             }
 
             if (!$options['dryRun']) {
                 $progressBar = new ProgressBar($output);
                 $progressBar->setFormat(' [%bar%] %message%');
-                $progressBar->setMessage('Starte...');
+                $progressBar->setMessage('Starting...');
                 $progressBar->start();
                 $options['onProgress'] = function (string $msg, int $cur, int $total) use ($progressBar) {
                     $progressBar->setMessage("$msg ($cur/$total)");
@@ -178,7 +178,7 @@ class ImportCommand extends Command
             $result = $this->importService->runImport($file, $targetPid, $options);
             $result['durationMs'] = (int)((microtime(true) - $startTime) * 1000);
             if ($progressBar) {
-                $progressBar->setMessage('Fertig!');
+                $progressBar->setMessage('Done!');
                 $progressBar->finish();
                 $output->writeln('');
             }
@@ -211,13 +211,13 @@ class ImportCommand extends Command
                     if (isset($result['assets'])) {
                         $this->previewRenderer->renderAssetPreflight($io, $result['assets']);
                     }
-                    $io->success('Dry-Run abgeschlossen — keine Änderungen geschrieben.');
+                    $io->success('Dry run completed — no changes written.');
                 } elseif ($errors > 0) {
-                    $io->warning(sprintf('Import abgeschlossen, aber %d DataHandler-Fehler aufgetreten (siehe Log).', $errors));
+                    $io->warning(sprintf('Import completed, but %d DataHandler error(s) occurred (see log).', $errors));
                 } elseif ($assetsMissing > 0) {
-                    $io->warning(sprintf('Import abgeschlossen, aber %d referenzierte Datei(en) fehlen auf dem Ziel.', $assetsMissing));
+                    $io->warning(sprintf('Import completed, but %d referenced file(s) are missing on the target.', $assetsMissing));
                 } else {
-                    $io->success('Import abgeschlossen.');
+                    $io->success('Import completed.');
                 }
                 if ($exitCode !== ExitCode::OK) {
                     $this->renderExitGuidance($io, $exitCode);
@@ -261,33 +261,33 @@ class ImportCommand extends Command
     {
         $hints = match ($exitCode) {
             ExitCode::INVALID_CONFIG => [
-                'Konfiguration/Profil prüfen: vendor/bin/typo3 impexpnl:validate-config',
-                'Konflikt-Strategie muss overwrite, skip, ask oder abort sein.',
+                'Check configuration/profile: vendor/bin/typo3 impexpnl:validate-config',
+                'Conflict strategy must be overwrite, skip, ask, or abort.',
             ],
             ExitCode::LOCK_ACTIVE => [
-                'Ein anderer Import hält den Lock. Läuft kein Import mehr, Lock lösen: vendor/bin/typo3 impexpnl:unlock',
+                'Another import holds the lock. If no import is running anymore, release it: vendor/bin/typo3 impexpnl:unlock',
             ],
             ExitCode::INTEGRITY => [
-                'Die Importdatei wurde verändert oder die Signatur ist ohne Schlüssel nicht prüfbar.',
-                'Datei neu exportieren oder IMPEXPNL_SIGNING_KEY passend zur Quelle setzen.',
+                'The import file was modified, or the signature cannot be verified without a key.',
+                'Re-export the file or set IMPEXPNL_SIGNING_KEY to match the source.',
             ],
             ExitCode::CONFLICTS => [
-                'Konflikte erkannt und conflict=abort. Mit --conflict=skip oder --conflict=overwrite erneut ausführen,',
-                'oder zunächst --dry-run -v für den Feld-Diff.',
+                'Conflicts detected and conflict=abort set. Re-run with --conflict=skip or --conflict=overwrite,',
+                'or first use --dry-run -v for the field diff.',
             ],
             ExitCode::PARTIAL_ROLLBACK => [
-                'Teilimport wurde automatisch zurückgerollt. Ursache im Log prüfen und Import wiederholen.',
-                'Falls kein Auto-Rollback: vendor/bin/typo3 impexpnl:undo <importId>.',
+                'Partial import was automatically rolled back. Check the cause in the log and retry the import.',
+                'If no auto-rollback occurred: vendor/bin/typo3 impexpnl:undo <importId>.',
             ],
             ExitCode::ASSETS_MISSING => [
-                'Referenzierte Dateien fehlen auf dem Ziel; die betroffenen FAL-Referenzen wurden übersprungen.',
-                'Dateien aus impexpnl_assets.txt übertragen (z. B. rsync) und den Import erneut ausführen –',
-                'oder den Transport "bundle" nutzen, der die Dateien selbst mitliefert.',
+                'Referenced files are missing on the target; the affected FAL references were skipped.',
+                'Transfer the files from impexpnl_assets.txt (e.g. via rsync) and re-run the import –',
+                'or use the "bundle" transport, which delivers the files itself.',
             ],
             default => [
-                'Details stehen im TYPO3-Log. Vorab mit --dry-run prüfen.',
+                'Details are in the TYPO3 log. Check beforehand with --dry-run.',
             ],
         };
-        $io->note(array_merge([sprintf('Nächste Schritte (Exit-Code %d):', $exitCode)], $hints));
+        $io->note(array_merge([sprintf('Next steps (exit code %d):', $exitCode)], $hints));
     }
 }

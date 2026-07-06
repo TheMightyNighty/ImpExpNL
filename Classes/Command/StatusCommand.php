@@ -29,7 +29,7 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
 
 #[AsCommand(
     name: 'impexpnl:status',
-    description: 'Zeigt den aktuellen Status: Offene Imports, Lock, letzte Aktivität.'
+    description: 'Shows the current status: open imports, lock, last activity.'
 )]
 class StatusCommand extends Command
 {
@@ -42,7 +42,7 @@ class StatusCommand extends Command
 
     protected function configure(): void
     {
-        $this->addOption('json', null, InputOption::VALUE_NONE, 'Status maschinenlesbar als JSON ausgeben');
+        $this->addOption('json', null, InputOption::VALUE_NONE, 'Output the status as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -55,7 +55,7 @@ class StatusCommand extends Command
             if ($input->getOption('json')) {
                 $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage()], JSON_PRETTY_PRINT));
             } else {
-                $io->error('Statusprüfung fehlgeschlagen: ' . $e->getMessage());
+                $io->error('Status check failed: ' . $e->getMessage());
             }
             return Command::FAILURE;
         }
@@ -120,37 +120,37 @@ class StatusCommand extends Command
 
     private function render(SymfonyStyle $io, array $status): void
     {
-        $io->title('ImpExpNL: Status');
+        $io->title('ImpExpNL: status');
 
         $lock = $status['lock'];
         if ($lock['active'] && $lock['stale']) {
             $io->warning(sprintf(
-                'Veralteter Import-Lock (Host %s, PID %s, Alter %ds). Mit impexpnl:unlock lösen.',
+                'Stale import lock (host %s, PID %s, age %ds). Release it with impexpnl:unlock.',
                 $lock['host'] ?? '?',
                 $lock['pid'] ?? '?',
                 (int)$lock['ageSeconds']
             ));
         } elseif ($lock['active']) {
-            $io->note(sprintf('Import-Lock aktiv (Host %s, PID %s, gestartet %s).', $lock['host'] ?? '?', $lock['pid'] ?? '?', $lock['started'] ?? '?'));
+            $io->note(sprintf('Import lock active (host %s, PID %s, started %s).', $lock['host'] ?? '?', $lock['pid'] ?? '?', $lock['started'] ?? '?'));
         } else {
-            $io->text('Kein aktiver Import-Lock.');
+            $io->text('No active import lock.');
         }
 
-        $io->text(sprintf('Rollback-fähige Imports: <info>%d</info>', $status['rollbackableImports']));
+        $io->text(sprintf('Rollback-capable imports: <info>%d</info>', $status['rollbackableImports']));
 
         if ($status['lastImport']) {
             $last = $status['lastImport'];
             $io->text(sprintf(
-                'Letzter Import: <info>%s</info> am %s (Workspace %d, %s)',
+                'Last import: <info>%s</info> on %s (workspace %d, %s)',
                 $last['importId'],
                 date('d.m.Y H:i', $last['tstamp']),
                 $last['workspaceId'],
-                $last['delta'] ? 'Delta' : 'Voll'
+                $last['delta'] ? 'delta' : 'full'
             ));
         }
 
         if ($status['transactionLog']) {
-            $io->text(sprintf('Transaktionslog: %s (%s)', $status['transactionLog']['path'], $this->formatBytes($status['transactionLog']['bytes'])));
+            $io->text(sprintf('Transaction log: %s (%s)', $status['transactionLog']['path'], $this->formatBytes($status['transactionLog']['bytes'])));
         }
     }
 

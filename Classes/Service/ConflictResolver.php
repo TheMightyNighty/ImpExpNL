@@ -113,7 +113,7 @@ class ConflictResolver
             }
         }
         if (!empty($diffs)) {
-            $this->logger->info("Feld-Diff $table uid=" . ($existing['uid'] ?? '?') . ":\n" . implode("\n", $diffs));
+            $this->logger->info("Field diff $table uid=" . ($existing['uid'] ?? '?') . ":\n" . implode("\n", $diffs));
         }
     }
 }

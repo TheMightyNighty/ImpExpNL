@@ -95,7 +95,7 @@ class BundleTransport implements TransportInterface
         // nur Fallback, wenn proc_open/tar nicht verfügbar sind (Hosting-Portabilität).
         $compressor = (string)($config['compressor'] ?? 'gzip');
         if ($compressor !== '' && !in_array($compressor, self::COMPRESSOR_ALLOWLIST, true)) {
-            $this->logger->warning('Bundle: Kompressor nicht in der Allowlist – nutze gzip.', [
+            $this->logger->warning('Bundle: compressor not in the allowlist – using gzip.', [
                 'requested' => $compressor,
                 'allowed' => self::COMPRESSOR_ALLOWLIST,
             ]);
@@ -109,25 +109,25 @@ class BundleTransport implements TransportInterface
 
         // Wie die übrigen Export-Artefakte: Besitzer-Rechte statt Prozess-umask.
         if (is_file($gzPath) && !@chmod($gzPath, 0600)) {
-            $this->logger->warning('Dateirechte konnten nicht beschränkt werden: ' . $gzPath);
+            $this->logger->warning('File permissions could not be restricted: ' . $gzPath);
         }
 
-        $message = sprintf('Bundle geschrieben → %s', basename($gzPath));
+        $message = sprintf('Bundle written → %s', basename($gzPath));
         if ($includeAssets) {
-            $details = [sprintf('%d Asset-Datei(en) enthalten', $bundled)];
+            $details = [sprintf('%d asset file(s) included', $bundled)];
             if ($skippedBaseline > 0) {
-                $details[] = sprintf('%d laut Baseline bereits auf dem Ziel', $skippedBaseline);
+                $details[] = sprintf('%d already on the target per baseline', $skippedBaseline);
             }
             if ($missing > 0) {
-                $details[] = sprintf('%d fehlend übersprungen', $missing);
+                $details[] = sprintf('%d missing and skipped', $missing);
             }
             $message .= ' (' . implode(', ', $details) . ').';
         } else {
-            $message .= ' (ohne Asset-Dateien).';
+            $message .= ' (without asset files).';
         }
         $message .= sprintf(' [%s]', $mode);
         if ($missing > 0) {
-            $this->logger->warning(sprintf('Bundle: %d Asset-Datei(en) nicht auffindbar und ausgelassen.', $missing));
+            $this->logger->warning(sprintf('Bundle: %d asset file(s) not found and omitted.', $missing));
         }
 
         return ['type' => 'bundle', 'artifact' => $gzPath, 'message' => $message];
@@ -184,7 +184,7 @@ class BundleTransport implements TransportInterface
             $exitCode = proc_close($process);
 
             if ($exitCode !== 0 || !is_file($gzPath)) {
-                $this->logger->warning('Bundle: natives tar fehlgeschlagen – Fallback auf PharData.', [
+                $this->logger->warning('Bundle: native tar failed – falling back to PharData.', [
                     'compressor' => $compressor,
                     'exitCode' => $exitCode,
                     'stderr' => trim((string)$stderr),
@@ -254,12 +254,12 @@ class BundleTransport implements TransportInterface
             return [];
         }
         if (!is_file($path)) {
-            $this->logger->warning('Bundle: Baseline-Manifest nicht gefunden – Bundle wird vollständig gepackt.', ['baseline' => $path]);
+            $this->logger->warning('Bundle: baseline manifest not found – bundle will be packed in full.', ['baseline' => $path]);
             return [];
         }
         $entries = json_decode((string)file_get_contents($path), true);
         if (!is_array($entries)) {
-            $this->logger->warning('Bundle: Baseline-Manifest nicht lesbar (kein JSON-Array) – Bundle wird vollständig gepackt.', ['baseline' => $path]);
+            $this->logger->warning('Bundle: baseline manifest not readable (not a JSON array) – bundle will be packed in full.', ['baseline' => $path]);
             return [];
         }
         $map = [];
@@ -290,7 +290,7 @@ class BundleTransport implements TransportInterface
             $path = $storageObject->getFile($identifier)->getForLocalProcessing(false);
             return is_file($path) ? $path : null;
         } catch (\Throwable $e) {
-            $this->logger->warning('Bundle: Datei nicht lesbar', ['storage' => $storage, 'identifier' => $identifier, 'error' => $e->getMessage()]);
+            $this->logger->warning('Bundle: file not readable', ['storage' => $storage, 'identifier' => $identifier, 'error' => $e->getMessage()]);
             return null;
         }
     }

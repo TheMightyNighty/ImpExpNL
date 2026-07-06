@@ -51,13 +51,13 @@ class RollbackService
 
         if (!$record) {
             throw new \RuntimeException($importId
-                ? "Import-Protokoll für ID '$importId' nicht gefunden."
-                : 'Keine Import-Protokolle gefunden.');
+                ? "Import log for ID '$importId' not found."
+                : 'No import logs found.');
         }
 
         $uidMap = json_decode($record['uid_map'], true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException('Fehler beim Parsen der UID-Map: ' . json_last_error_msg());
+            throw new \RuntimeException('Error parsing the UID map: ' . json_last_error_msg());
         }
 
         $importTstamp = (int)($record['tstamp'] ?? 0);
@@ -121,8 +121,8 @@ class RollbackService
 
         if (!$record) {
             throw new \RuntimeException($importId
-                ? "Import-Protokoll für ID '$importId' nicht gefunden."
-                : 'Keine Import-Protokolle gefunden.');
+                ? "Import log for ID '$importId' not found."
+                : 'No import logs found.');
         }
         $importId = $record['import_id'];
 
@@ -134,17 +134,17 @@ class RollbackService
         // Workspace-Versionen für den DataHandler unsichtbar und bleiben liegen.
         $this->bootstrapService->initializeBackendContext((int)($record['workspace_id'] ?? 0));
 
-        $this->logger->info('Lade Protokoll: ' . $importId);
+        $this->logger->info('Loading log: ' . $importId);
 
         $lastImport = json_decode($record['uid_map'], true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException('Fehler beim Parsen der UID-Map: ' . json_last_error_msg());
+            throw new \RuntimeException('Error parsing the UID map: ' . json_last_error_msg());
         }
 
         $placedFiles = array_map('intval', $lastImport['_placed_files'] ?? []);
 
         if (empty($lastImport['pages']) && empty($lastImport['tt_content']) && $placedFiles === []) {
-            $this->logger->warning('Protokolldaten sind leer.');
+            $this->logger->warning('Log data is empty.');
             $this->importLogRepository->delete($importId);
             return;
         }
@@ -154,12 +154,12 @@ class RollbackService
         if ($modified !== []) {
             if (!$force) {
                 throw new \RuntimeException(
-                    'Rollback abgebrochen: ' . count($modified) . ' Ziel-Record(s) wurden nach dem Import lokal '
-                    . "geändert und würden gelöscht. Mit --force trotzdem ausführen.\n - " . implode("\n - ", $modified)
+                    'Rollback aborted: ' . count($modified) . ' target record(s) were edited locally after the import '
+                    . "and would be deleted. Run with --force to proceed anyway.\n - " . implode("\n - ", $modified)
                 );
             }
             $this->logger->warning(sprintf(
-                'Rollback mit --force: %d lokal geänderte Record(s) werden trotzdem entfernt.',
+                'Rollback with --force: %d locally changed record(s) will be removed anyway.',
                 count($modified)
             ));
         }
@@ -237,7 +237,7 @@ class RollbackService
         $this->writeRollbackLog($importId, $stats);
 
         $this->logger->info(sprintf(
-            'Rollback %s: %d Seiten, %d Inhalte, %d FAL, %d Registry-Einträge, %d Asset-Datei(en) gelöscht.',
+            'Rollback %s: %d pages, %d content elements, %d FAL, %d registry entries, %d asset file(s) deleted.',
             $importId,
             $stats['pages'],
             $stats['tt_content'],
@@ -277,7 +277,7 @@ class RollbackService
                 $this->resourceFactory->getFileObject($fileUid)->delete();
                 $deleted++;
             } catch (\Throwable $e) {
-                $this->logger->warning('Rollback: platziertes Asset konnte nicht entfernt werden.', [
+                $this->logger->warning('Rollback: placed asset could not be removed.', [
                     'fileUid' => $fileUid,
                     'error' => $e->getMessage(),
                 ]);
@@ -297,11 +297,11 @@ class RollbackService
             str_repeat('=', 72),
             sprintf('[%s] ROLLBACK %s', date('Y-m-d H:i:s'), $importId),
             str_repeat('-', 72),
-            sprintf('Seiten gelöscht:         %d', $stats['pages']),
-            sprintf('Inhalte gelöscht:        %d', $stats['tt_content']),
-            sprintf('FAL-Referenzen:          %d', $stats['sys_file_reference']),
-            sprintf('Registry-Einträge:       %d', $stats['registry']),
-            sprintf('Asset-Dateien gelöscht:  %d', $stats['assets'] ?? 0),
+            sprintf('Pages deleted:           %d', $stats['pages']),
+            sprintf('Content deleted:         %d', $stats['tt_content']),
+            sprintf('FAL references:          %d', $stats['sys_file_reference']),
+            sprintf('Registry entries:        %d', $stats['registry']),
+            sprintf('Asset files deleted:     %d', $stats['assets'] ?? 0),
             str_repeat('=', 72),
             '',
         ];

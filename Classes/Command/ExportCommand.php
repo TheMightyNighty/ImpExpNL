@@ -31,7 +31,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use TYPO3\CMS\Core\Core\Environment;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
-#[AsCommand(name: 'impexpnl:export', description: 'Exportiert einen Seitenbaum als JSON-Datei.')]
+#[AsCommand(name: 'impexpnl:export', description: 'Exports a page tree as a JSON file.')]
 class ExportCommand extends Command
 {
     public function __construct(private readonly ExportService $exportService)
@@ -42,20 +42,20 @@ class ExportCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addArgument('startPid', InputArgument::REQUIRED, 'Start-PID des Seitenbaums')
-            ->addArgument('outputFile', InputArgument::REQUIRED, 'Zielpfad für die JSON-Datei')
-            ->addOption('depth', null, InputOption::VALUE_OPTIONAL, 'Maximale Tiefe (0 = unbegrenzt)', 0)
-            ->addOption('include-hidden', null, InputOption::VALUE_NONE, 'Versteckte/deaktivierte Records einschließen')
-            ->addOption('pages', null, InputOption::VALUE_OPTIONAL, 'Nur bestimmte PIDs exportieren (komma-separiert)')
-            ->addOption('exclude-pages', null, InputOption::VALUE_OPTIONAL, 'PIDs ausschließen (komma-separiert)')
-            ->addOption('since', null, InputOption::VALUE_OPTIONAL, 'Nur seit Datum geänderte Records (Y-m-d)')
-            ->addOption('content-types', null, InputOption::VALUE_OPTIONAL, 'Nur bestimmte CTypes (komma-separiert)')
-            ->addOption('csv', null, InputOption::VALUE_NONE, 'Zusätzlich CSV-Dateien für Tabellenvergleich erzeugen')
-            ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Speicherschonendes JSONL-Format (eine Record-Zeile pro Eintrag)')
-            ->addOption('transport', null, InputOption::VALUE_OPTIONAL, 'Asset-Transport: external (Standard) oder bundle (self-contained .tar.gz)', 'external')
-            ->addOption('bundle-baseline', null, InputOption::VALUE_OPTIONAL, 'Inkrementelles Bundle: Asset-Manifest des Ziels (impexpnl_assets.json) – dort bereits inhaltsgleich vorhandene Dateien werden nicht eingepackt')
-            ->addOption('outbox', null, InputOption::VALUE_OPTIONAL, 'Zielverzeichnis für --transport=push (überschreibt assetTransports.<name>.outbox aus der Config)')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+            ->addArgument('startPid', InputArgument::REQUIRED, 'Start PID of the page tree')
+            ->addArgument('outputFile', InputArgument::REQUIRED, 'Target path for the JSON file')
+            ->addOption('depth', null, InputOption::VALUE_OPTIONAL, 'Maximum depth (0 = unlimited)', 0)
+            ->addOption('include-hidden', null, InputOption::VALUE_NONE, 'Include hidden/disabled records')
+            ->addOption('pages', null, InputOption::VALUE_OPTIONAL, 'Export only specific PIDs (comma-separated)')
+            ->addOption('exclude-pages', null, InputOption::VALUE_OPTIONAL, 'Exclude PIDs (comma-separated)')
+            ->addOption('since', null, InputOption::VALUE_OPTIONAL, 'Only records changed since a date (Y-m-d)')
+            ->addOption('content-types', null, InputOption::VALUE_OPTIONAL, 'Only specific CTypes (comma-separated)')
+            ->addOption('csv', null, InputOption::VALUE_NONE, 'Additionally generate CSV files for table comparison')
+            ->addOption('jsonl', null, InputOption::VALUE_NONE, 'Memory-friendly JSONL format (one record line per entry)')
+            ->addOption('transport', null, InputOption::VALUE_OPTIONAL, 'Asset transport: external (default) or bundle (self-contained .tar.gz)', 'external')
+            ->addOption('bundle-baseline', null, InputOption::VALUE_OPTIONAL, 'Incremental bundle: asset manifest of the target (impexpnl_assets.json) – files already identical in content there are not packed')
+            ->addOption('outbox', null, InputOption::VALUE_OPTIONAL, 'Target directory for --transport=push (overrides assetTransports.<name>.outbox from the config)')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -94,12 +94,12 @@ class ExportCommand extends Command
 
         $progressBar = null;
         if (!$jsonOutput) {
-            $io->title('ImpExpNL: Export');
-            $io->text("Start-PID: $startPid");
+            $io->title('ImpExpNL: export');
+            $io->text("Start PID: $startPid");
 
             $progressBar = new ProgressBar($output);
             $progressBar->setFormat(' [%bar%] %message%');
-            $progressBar->setMessage('Starte...');
+            $progressBar->setMessage('Starting...');
             $progressBar->start();
 
             $options['onProgress'] = function (string $msg, int $cur, int $total) use ($progressBar) {
@@ -121,9 +121,9 @@ class ExportCommand extends Command
             $projectBase = rtrim($projectPath, '/');
             if ($resolvedDir === false || ($resolvedDir !== $projectBase && !str_starts_with($resolvedDir, $projectBase . '/'))) {
                 if ($jsonOutput) {
-                    $output->writeln((string)json_encode(['success' => false, 'error' => "Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile"], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                    $output->writeln((string)json_encode(['success' => false, 'error' => "Target path lies outside the project directory: $outputFile"], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                 } else {
-                    $io->error("Zielpfad liegt außerhalb des Projektverzeichnisses: $outputFile");
+                    $io->error("Target path lies outside the project directory: $outputFile");
                 }
                 return Command::FAILURE;
             }
@@ -133,7 +133,7 @@ class ExportCommand extends Command
             $durationMs = (int)((microtime(true) - $startTime) * 1000);
 
             if ($progressBar) {
-                $progressBar->setMessage('Fertig!');
+                $progressBar->setMessage('Done!');
                 $progressBar->finish();
                 $output->writeln('');
             }
@@ -148,7 +148,7 @@ class ExportCommand extends Command
                     'transport' => $transportResult,
                 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
-                $io->success(sprintf('Export geschrieben → %s', $outputFile));
+                $io->success(sprintf('Export written → %s', $outputFile));
                 $io->text($transportResult['message']);
             }
 

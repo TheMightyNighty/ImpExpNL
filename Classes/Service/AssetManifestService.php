@@ -81,7 +81,7 @@ class AssetManifestService
         try {
             $storageObject = $this->storageRepository->getStorageObject($storage);
             if (!$storageObject->hasFile($identifier)) {
-                $this->logger->warning('Asset-Manifest: Datei nicht gefunden', ['storage' => $storage, 'identifier' => $identifier]);
+                $this->logger->warning('Asset manifest: file not found', ['storage' => $storage, 'identifier' => $identifier]);
                 return [0, null];
             }
             $file = $storageObject->getFile($identifier);
@@ -89,7 +89,7 @@ class AssetManifestService
 
             return [$size, $this->sha256Of($file)];
         } catch (\Throwable $e) {
-            $this->logger->warning('Asset-Manifest: Metadaten nicht ermittelbar', [
+            $this->logger->warning('Asset manifest: metadata could not be determined', [
                 'storage' => $storage,
                 'identifier' => $identifier,
                 'error' => $e->getMessage(),
@@ -132,7 +132,7 @@ class AssetManifestService
                     $issues[] = ['storage' => $storage, 'identifier' => $identifier, 'reason' => 'mismatch', 'expected' => $expected, 'actual' => $actual];
                 }
             } catch (\Throwable $e) {
-                $this->logger->warning('Asset-Integritätsprüfung fehlgeschlagen', [
+                $this->logger->warning('Asset integrity check failed', [
                     'storage' => $storage,
                     'identifier' => $identifier,
                     'error' => $e->getMessage(),

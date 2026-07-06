@@ -27,7 +27,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'impexpnl:unlock',
-    description: 'Löst einen hängenden Import-Lock.'
+    description: 'Releases a stuck import lock.'
 )]
 class UnlockCommand extends Command
 {
@@ -40,8 +40,8 @@ class UnlockCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Ohne Rückfrage lösen')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Release without confirmation')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -55,7 +55,7 @@ class UnlockCommand extends Command
                 $output->writeln((string)json_encode(['success' => true, 'released' => false, 'lock' => null], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
                 return Command::SUCCESS;
             }
-            $io->success('Kein aktiver Import-Lock vorhanden.');
+            $io->success('No active import lock present.');
             return Command::SUCCESS;
         }
 
@@ -72,21 +72,21 @@ class UnlockCommand extends Command
         }
 
         $io->text(sprintf(
-            'Aktiver Lock: Host %s, PID %s, gestartet %s, Alter %ds%s.',
+            'Active lock: host %s, PID %s, started %s, age %ds%s.',
             $lock['info']['host'] ?? '?',
             $lock['info']['pid'] ?? '?',
             $lock['info']['started'] ?? '?',
             $lock['age'],
-            $lock['stale'] ? ' (veraltet)' : ''
+            $lock['stale'] ? ' (stale)' : ''
         ));
 
-        if (!$input->getOption('force') && !$io->confirm('Lock jetzt lösen?', false)) {
-            $io->note('Abgebrochen.');
+        if (!$input->getOption('force') && !$io->confirm('Release the lock now?', false)) {
+            $io->note('Aborted.');
             return Command::SUCCESS;
         }
 
         $this->importLock->forceReleaseDbLock();
-        $io->success('Import-Lock gelöst.');
+        $io->success('Import lock released.');
         return Command::SUCCESS;
     }
 }

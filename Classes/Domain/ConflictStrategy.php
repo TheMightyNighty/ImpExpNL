@@ -52,7 +52,7 @@ enum ConflictStrategy: string
         $strategy = self::tryFrom($value);
         if ($strategy === null) {
             throw new \InvalidArgumentException(sprintf(
-                "Ungültige Konflikt-Strategie '%s'. Erlaubt: %s.",
+                "Invalid conflict strategy '%s'. Allowed: %s.",
                 $value,
                 implode(', ', array_map(static fn(self $c) => $c->value, self::cases()))
             ));

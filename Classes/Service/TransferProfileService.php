@@ -53,9 +53,9 @@ class TransferProfileService
         $profiles = $config['transferProfiles'] ?? [];
         if (!isset($profiles[$name]) || !is_array($profiles[$name])) {
             throw new ConfigException(sprintf(
-                "Transfer-Profil '%s' nicht gefunden. Verfügbar: %s",
+                "Transfer profile '%s' not found. Available: %s",
                 $name,
-                $this->list() === [] ? '(keine)' : implode(', ', $this->list())
+                $this->list() === [] ? '(none)' : implode(', ', $this->list())
             ));
         }
         $profile = $profiles[$name];
@@ -69,7 +69,7 @@ class TransferProfileService
         try {
             $conflictStrategy = ConflictStrategy::fromInput($profile['conflictStrategy'] ?? null);
         } catch (\InvalidArgumentException $e) {
-            throw new ConfigException(sprintf("Transfer-Profil '%s': %s", $name, $e->getMessage()));
+            throw new ConfigException(sprintf("Transfer profile '%s': %s", $name, $e->getMessage()));
         }
 
         // allowedTables: nicht gesetzt = alle registrierten Tabellen (null);
@@ -105,7 +105,7 @@ class TransferProfileService
             }
         }
         throw new ConfigException(sprintf(
-            "Transfer-Profil '%s' ist nur für Kontext [%s] vorgesehen; aktueller TYPO3-Kontext ist '%s'. Abbruch.",
+            "Transfer profile '%s' is only intended for context [%s]; current TYPO3 context is '%s'. Aborting.",
             $profile->name,
             implode(', ', $profile->allowedContext),
             $current

@@ -69,7 +69,7 @@ class ExportService
         if (empty($cfg['enabled']) || empty($cfg['rules']) || !is_array($cfg['rules'])) {
             return $data;
         }
-        $this->logger->info('PII-Sanitizing aktiv', ['tables' => array_keys($cfg['rules'])]);
+        $this->logger->info('PII sanitizing active', ['tables' => array_keys($cfg['rules'])]);
         return $this->sanitizeService->sanitize($data, $cfg['rules'], $this->resolveSanitizeHashKey($cfg));
     }
 
@@ -194,7 +194,7 @@ class ExportService
         }
 
         if (empty($pageUids)) {
-            $this->logger->warning('Keine Seiten gefunden');
+            $this->logger->warning('No pages found');
             return $data;
         }
 
@@ -384,7 +384,7 @@ class ExportService
             }
             return array_values($sites);
         } catch (\Exception $e) {
-            $this->logger->warning('Site-Konfiguration konnte nicht exportiert werden: ' . $e->getMessage());
+            $this->logger->warning('Site configuration could not be exported: ' . $e->getMessage());
             return [];
         }
     }
@@ -440,7 +440,7 @@ class ExportService
                         $relations[] = ['table' => $foreignTable, 'foreign_field' => $foreignField, 'parent_field' => $fieldName, 'record' => $child];
                     }
                 } catch (\Exception $e) {
-                    $this->logger->debug("IRRE-Tabelle '$foreignTable' nicht verfügbar: " . $e->getMessage());
+                    $this->logger->debug("IRRE table '$foreignTable' not available: " . $e->getMessage());
                 }
             }
         }
@@ -518,7 +518,7 @@ class ExportService
             ->where($qb->expr()->in('pid', $qb->createNamedParameter($pageUids, Connection::PARAM_INT_ARRAY)))
             ->executeQuery()->fetchOne();
         if ($c > 0) {
-            $this->logger->warning('FAL-Dependency: ' . $c . ' Referenzen');
+            $this->logger->warning('FAL dependency: ' . $c . ' reference(s)');
         }
     }
 }

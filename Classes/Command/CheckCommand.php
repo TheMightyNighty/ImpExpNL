@@ -35,7 +35,7 @@ use TYPO3\CMS\Core\Resource\StorageRepository;
 
 #[AsCommand(
     name: 'impexpnl:check',
-    description: 'Prüft ob alle Voraussetzungen für ImpExpNL erfüllt sind.'
+    description: 'Checks whether all prerequisites for ImpExpNL are met.'
 )]
 class CheckCommand extends Command
 {
@@ -58,7 +58,7 @@ class CheckCommand extends Command
 
     protected function configure(): void
     {
-        $this->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+        $this->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -103,92 +103,92 @@ class CheckCommand extends Command
 
     private function checkDatabase(): void
     {
-        $section = 'Datenbank';
+        $section = 'Database';
         try {
             $schemaManager = $this->connectionPool->getConnectionForTable('tx_impexpnl_import_log')->createSchemaManager();
             foreach (['tx_impexpnl_import_log', 'tx_impexpnl_lock', 'tx_impexpnl_uid_map'] as $requiredTable) {
                 if ($schemaManager->tableExists($requiredTable)) {
-                    $this->record($section, 'ok', "Tabelle $requiredTable vorhanden.");
+                    $this->record($section, 'ok', "Table $requiredTable present.");
                 } else {
-                    $this->record($section, 'error', "Tabelle $requiredTable fehlt. vendor/bin/typo3 database:updateschema ausführen.");
+                    $this->record($section, 'error', "Table $requiredTable missing. Run vendor/bin/typo3 database:updateschema.");
                 }
             }
         } catch (\Exception $e) {
-            $this->record($section, 'error', 'Datenbankprüfung fehlgeschlagen: ' . $e->getMessage());
+            $this->record($section, 'error', 'Database check failed: ' . $e->getMessage());
         }
     }
 
     private function checkFilesystem(): void
     {
-        $section = 'Dateisystem';
+        $section = 'Filesystem';
         $varPath = Environment::getVarPath();
 
         if (is_writable($varPath)) {
-            $this->record($section, 'ok', 'var/-Verzeichnis beschreibbar: ' . $varPath);
+            $this->record($section, 'ok', 'var/ directory writable: ' . $varPath);
         } else {
-            $this->record($section, 'error', 'var/-Verzeichnis nicht beschreibbar: ' . $varPath);
+            $this->record($section, 'error', 'var/ directory not writable: ' . $varPath);
         }
 
         $logDir = $varPath . '/log';
         if (is_dir($logDir) && is_writable($logDir)) {
-            $this->record($section, 'ok', 'Log-Verzeichnis beschreibbar: ' . $logDir);
+            $this->record($section, 'ok', 'Log directory writable: ' . $logDir);
         } elseif (!is_dir($logDir)) {
-            $this->record($section, 'warning', 'Log-Verzeichnis existiert noch nicht (wird beim ersten Import erstellt): ' . $logDir);
+            $this->record($section, 'warning', 'Log directory does not exist yet (created on first import): ' . $logDir);
         } else {
-            $this->record($section, 'error', 'Log-Verzeichnis nicht beschreibbar: ' . $logDir);
+            $this->record($section, 'error', 'Log directory not writable: ' . $logDir);
         }
 
         $profileDir = $varPath . '/impexpnl_profiles';
         if (is_dir($profileDir)) {
             $profiles = glob($profileDir . '/*.yaml');
-            $this->record($section, 'ok', 'Profil-Verzeichnis vorhanden: ' . count($profiles ?: []) . ' Profile gefunden.');
+            $this->record($section, 'ok', 'Profile directory present: ' . count($profiles ?: []) . ' profile(s) found.');
         } else {
-            $this->record($section, 'info', 'Profil-Verzeichnis nicht vorhanden (optional): ' . $profileDir);
+            $this->record($section, 'info', 'Profile directory does not exist (optional): ' . $profileDir);
         }
     }
 
     private function checkConfiguration(): void
     {
-        $section = 'Konfiguration';
+        $section = 'Configuration';
         try {
             $config = $this->configurationService->getConfig();
             if (!empty($config)) {
-                $this->record($section, 'ok', 'imp_exp_nl.yaml geladen.');
+                $this->record($section, 'ok', 'imp_exp_nl.yaml loaded.');
             } else {
-                $this->record($section, 'warning', 'imp_exp_nl.yaml ist leer.');
+                $this->record($section, 'warning', 'imp_exp_nl.yaml is empty.');
             }
 
             $tables = $this->configurationService->getRegisteredTables();
             if (!empty($tables)) {
-                $this->record($section, 'ok', 'Table-Registry: ' . count($tables) . ' Tabellen registriert.');
+                $this->record($section, 'ok', 'Table registry: ' . count($tables) . ' table(s) registered.');
                 foreach ($tables as $tableName => $tableConfig) {
                     foreach ($this->validateTableConfig((string)$tableName, $tableConfig) as $problem) {
                         $this->record($section, 'error', $problem);
                     }
                 }
             } else {
-                $this->record($section, 'info', 'Keine Tabellen in der Registry (optional).');
+                $this->record($section, 'info', 'No tables in the registry (optional).');
             }
 
             $linkFields = $config['import']['link_rewrite']['fields'] ?? [];
             if (!empty($linkFields)) {
-                $this->record($section, 'ok', 'Link-Rewriting aktiv für: ' . implode(', ', $linkFields));
+                $this->record($section, 'ok', 'Link rewriting active for: ' . implode(', ', $linkFields));
             }
         } catch (\Exception $e) {
-            $this->record($section, 'error', 'YAML-Konfiguration fehlerhaft: ' . $e->getMessage());
+            $this->record($section, 'error', 'Invalid YAML configuration: ' . $e->getMessage());
         }
     }
 
     private function checkExtensionScan(): void
     {
-        $section = 'Extension-Scan';
+        $section = 'Extension scan';
         $extConfigs = $this->configurationService->getExtensionConfigFiles();
         if (!empty($extConfigs)) {
             foreach ($extConfigs as $packageKey => $file) {
-                $this->record($section, 'ok', $packageKey . ' liefert Configuration/ImpExpNL.yaml');
+                $this->record($section, 'ok', $packageKey . ' provides Configuration/ImpExpNL.yaml');
             }
         } else {
-            $this->record($section, 'info', 'Keine Extensions mit eigener ImpExpNL.yaml gefunden (optional).');
+            $this->record($section, 'info', 'No extensions with their own ImpExpNL.yaml found (optional).');
         }
     }
 
@@ -198,7 +198,7 @@ class CheckCommand extends Command
      */
     private function checkRegistry(): void
     {
-        $section = 'Registry-Validierung';
+        $section = 'Registry validation';
         try {
             $config = $this->configurationService->getConfig();
             $issues = array_merge(
@@ -214,14 +214,14 @@ class CheckCommand extends Command
                 )
             );
             if ($issues === []) {
-                $this->record($section, 'ok', 'Alle registrierten Tabellen und Felder existieren im Schema.');
+                $this->record($section, 'ok', 'All registered tables and fields exist in the schema.');
                 return;
             }
             foreach ($issues as $issue) {
                 $this->record($section, $issue['level'], $issue['message']);
             }
         } catch (\Throwable $e) {
-            $this->record($section, 'error', 'Registry-Validierung fehlgeschlagen: ' . $e->getMessage());
+            $this->record($section, 'error', 'Registry validation failed: ' . $e->getMessage());
         }
     }
 
@@ -230,42 +230,42 @@ class CheckCommand extends Command
      */
     private function checkRuntime(): void
     {
-        $section = 'Laufzeit';
+        $section = 'Runtime';
 
         $storageId = $this->configurationService->getFalStorageId();
         try {
             $storage = $this->storageRepository->findByUid($storageId);
             if ($storage === null) {
-                $this->record($section, 'error', "FAL-Default-Storage (uid $storageId) nicht gefunden.");
+                $this->record($section, 'error', "FAL default storage (uid $storageId) not found.");
             } elseif (!$storage->isOnline()) {
-                $this->record($section, 'warning', "FAL-Default-Storage (uid $storageId) ist offline.");
+                $this->record($section, 'warning', "FAL default storage (uid $storageId) is offline.");
             } else {
-                $this->record($section, 'ok', "FAL-Default-Storage (uid $storageId) verfügbar.");
+                $this->record($section, 'ok', "FAL default storage (uid $storageId) available.");
             }
         } catch (\Throwable $e) {
-            $this->record($section, 'error', "FAL-Default-Storage (uid $storageId) nicht prüfbar: " . $e->getMessage());
+            $this->record($section, 'error', "FAL default storage (uid $storageId) could not be checked: " . $e->getMessage());
         }
 
         try {
             if ($this->importLock->getActiveLock() === null) {
-                $this->record($section, 'ok', 'Kein aktiver Import-Lock.');
+                $this->record($section, 'ok', 'No active import lock.');
             } else {
-                $this->record($section, 'warning', 'Aktiver Import-Lock vorhanden – ein Import läuft oder wurde nicht sauber beendet (siehe impexpnl:status / impexpnl:unlock).');
+                $this->record($section, 'warning', 'Active import lock present – an import is running or was not shut down cleanly (see impexpnl:status / impexpnl:unlock).');
             }
         } catch (\Throwable $e) {
-            $this->record($section, 'warning', 'Lock-Status nicht ermittelbar: ' . $e->getMessage());
+            $this->record($section, 'warning', 'Lock status could not be determined: ' . $e->getMessage());
         }
 
         $hasKey = $this->integrityService->hasSigningKey();
         $requireSignature = $this->configurationService->isSignatureRequired();
         if ($hasKey && $requireSignature) {
-            $this->record($section, 'ok', 'Signing-Key + import.require_signature aktiv – nur HMAC-signierte Importdateien werden akzeptiert.');
+            $this->record($section, 'ok', 'Signing key + import.require_signature active – only HMAC-signed import files are accepted.');
         } elseif ($hasKey) {
-            $this->record($section, 'warning', 'Signing-Key konfiguriert, aber import.require_signature ist nicht aktiv – Dateien OHNE Prüfsumme würden ungeprüft importiert. Empfehlung: import.require_signature: true.');
+            $this->record($section, 'warning', 'Signing key configured, but import.require_signature is not active – files WITHOUT a checksum would be imported unchecked. Recommendation: import.require_signature: true.');
         } elseif ($requireSignature) {
-            $this->record($section, 'error', 'import.require_signature ist aktiv, aber kein Signing-Key konfiguriert – jeder Import schlägt fehl. IMPEXPNL_SIGNING_KEY setzen.');
+            $this->record($section, 'error', 'import.require_signature is active, but no signing key is configured – every import will fail. Set IMPEXPNL_SIGNING_KEY.');
         } else {
-            $this->record($section, 'info', 'Kein Signing-Key – Integrität nur per Prüfsumme (ohne Signatur).');
+            $this->record($section, 'info', 'No signing key – integrity via checksum only (no signature).');
         }
     }
 
@@ -275,23 +275,23 @@ class CheckCommand extends Command
      */
     private function checkProfiles(): void
     {
-        $section = 'Profile';
+        $section = 'Profiles';
         $names = $this->profileService->listProfiles();
         if ($names === []) {
-            $this->record($section, 'info', 'Keine Import-Profile vorhanden (optional).');
+            $this->record($section, 'info', 'No import profiles present (optional).');
             return;
         }
 
         foreach ($names as $name) {
             try {
                 $profile = $this->profileService->loadProfile($name);
-                $this->record($section, 'ok', "Profil '$name' ist gültig.");
+                $this->record($section, 'ok', "Profile '$name' is valid.");
                 $workspace = $profile['workspace'];
                 if ($workspace > 0 && !$this->workspaceExists($workspace)) {
-                    $this->record($section, 'error', "Profil '$name': Ziel-Workspace $workspace existiert nicht.");
+                    $this->record($section, 'error', "Profile '$name': target workspace $workspace does not exist.");
                 }
             } catch (\Throwable $e) {
-                $this->record($section, 'error', "Profil '$name' ungültig: " . $e->getMessage());
+                $this->record($section, 'error', "Profile '$name' invalid: " . $e->getMessage());
             }
         }
     }
@@ -312,7 +312,7 @@ class CheckCommand extends Command
 
     private function render(SymfonyStyle $io): void
     {
-        $io->title('ImpExpNL: Systemprüfung');
+        $io->title('ImpExpNL: system check');
 
         $currentSection = null;
         foreach ($this->checks as $check) {
@@ -328,13 +328,13 @@ class CheckCommand extends Command
             };
         }
 
-        $io->section('Ergebnis');
+        $io->section('Result');
         if ($this->errors === 0 && $this->warnings === 0) {
-            $io->success('Alle Prüfungen bestanden. ImpExpNL ist einsatzbereit.');
+            $io->success('All checks passed. ImpExpNL is ready to use.');
         } elseif ($this->errors === 0) {
-            $io->warning("$this->warnings Hinweise, keine Fehler. ImpExpNL ist funktionsfähig.");
+            $io->warning("$this->warnings notice(s), no errors. ImpExpNL is functional.");
         } else {
-            $io->error("$this->errors Fehler, $this->warnings Hinweise. Die Fehler müssen vor dem Einsatz behoben werden.");
+            $io->error("$this->errors error(s), $this->warnings notice(s). The errors must be fixed before use.");
         }
     }
 
@@ -350,23 +350,23 @@ class CheckCommand extends Command
         $type = $config['type'] ?? 'record';
 
         if (!in_array($type, ['mm', 'record'], true)) {
-            $problems[] = "Registry '$tableName': ungültiger type '$type' (erlaubt: mm, record).";
+            $problems[] = "Registry '$tableName': invalid type '$type' (allowed: mm, record).";
             return $problems;
         }
 
         if ($type === 'mm') {
             if (isset($config['match_tables']) && !is_array($config['match_tables'])) {
-                $problems[] = "Registry '$tableName': match_tables muss eine Liste sein.";
+                $problems[] = "Registry '$tableName': match_tables must be a list.";
             }
             if (isset($config['category_match']) && $config['category_match'] !== 'path') {
-                $problems[] = "Registry '$tableName': category_match unterstützt nur 'path'.";
+                $problems[] = "Registry '$tableName': category_match only supports 'path'.";
             }
         } else {
             if (isset($config['rewrite_links']) && !is_array($config['rewrite_links'])) {
-                $problems[] = "Registry '$tableName': rewrite_links muss eine Liste sein.";
+                $problems[] = "Registry '$tableName': rewrite_links must be a list.";
             }
             if (isset($config['uid_remap']) && !is_bool($config['uid_remap'])) {
-                $problems[] = "Registry '$tableName': uid_remap muss true/false sein.";
+                $problems[] = "Registry '$tableName': uid_remap must be true/false.";
             }
         }
 

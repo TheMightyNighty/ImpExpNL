@@ -161,8 +161,8 @@ class IntegrityService
         // Auslaufend: wird mit Version 3.0 entfernt (deckt Registry-Tabellen,
         // FAL-Referenzen und IRRE-Relationen nicht ab).
         $this->logger?->warning(
-            'Legacy-Prüfsumme (Export-Format 1) akzeptiert – dieses Format ist veraltet und wird '
-            . 'in ImpExpNL 3.0 entfernt. Datei auf dem Quellsystem neu exportieren.'
+            'Legacy checksum (export format 1) accepted – this format is deprecated and will '
+            . 'be removed in ImpExpNL 3.0. Re-export the file on the source system.'
         );
         return hash_equals($expected, $legacyHash());
     }

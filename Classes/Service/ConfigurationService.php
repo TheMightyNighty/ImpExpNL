@@ -54,7 +54,7 @@ class ConfigurationService
         try {
             $this->configCache = $this->yamlFileLoader->load(self::MAIN_CONFIG);
         } catch (\Exception $e) {
-            $this->logger->warning('imp_exp_nl.yaml konnte nicht geladen werden: ' . $e->getMessage());
+            $this->logger->warning('imp_exp_nl.yaml could not be loaded: ' . $e->getMessage());
             $this->configCache = [];
         }
         return $this->configCache;
@@ -195,7 +195,7 @@ class ConfigurationService
                     }
                 }
             } catch (\Exception $e) {
-                $this->logger->warning('ImpExpNL.yaml fehlerhaft', ['ext' => $packageKey, 'error' => $e->getMessage()]);
+                $this->logger->warning('ImpExpNL.yaml invalid', ['ext' => $packageKey, 'error' => $e->getMessage()]);
             }
         }
 
@@ -234,7 +234,7 @@ class ConfigurationService
                 }
             }
         } catch (\Exception $e) {
-            $this->logger->warning('Extension-Scan fehlgeschlagen: ' . $e->getMessage());
+            $this->logger->warning('Extension scan failed: ' . $e->getMessage());
         }
         return $files;
     }

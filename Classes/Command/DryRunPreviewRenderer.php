@@ -51,8 +51,8 @@ class DryRunPreviewRenderer
 
         // Nicht-dekoriert (CI/Pipe/--no-ansi): schlichte Tabelle, keine Balken/Farben.
         if (!$output->isDecorated()) {
-            $io->section('Dry-Run – Diff-Vorschau');
-            $io->table(['', 'Anzahl'], [
+            $io->section('Dry run – diff preview');
+            $io->table(['', 'Count'], [
                 ['new', $new],
                 ['updated', $updated],
                 ['unchanged', $unchanged],
@@ -88,9 +88,9 @@ class DryRunPreviewRenderer
         if (!empty($preview['checksum'])) {
             $this->okLine($output, 'checksum verified', '<fg=gray>' . $this->shortHash((string)$preview['checksum']) . '</>');
         } else {
-            $this->okLine($output, 'checksum', '<fg=gray>keine Signatur</>');
+            $this->okLine($output, 'checksum', '<fg=gray>no signature</>');
         }
-        $this->okLine($output, 'import lock', !empty($preview['lockFree']) ? 'frei' : '<fg=red>aktiv</>');
+        $this->okLine($output, 'import lock', !empty($preview['lockFree']) ? 'free' : '<fg=red>active</>');
         $this->okLine($output, 'mode', 'dry-run' . (!empty($preview['delta']) ? ' + delta' : ''));
 
         $io->newLine();
@@ -122,7 +122,7 @@ class DryRunPreviewRenderer
         }
         if ($assetTotal > 0) {
             $output->writeln(sprintf(
-                '  <fg=black;bg=blue> ASSET </> %-9s <fg=gray>referenziert im Manifest</>',
+                '  <fg=black;bg=blue> ASSET </> %-9s <fg=gray>referenced in manifest</>',
                 $assetTotal . ' files'
             ));
         }
@@ -144,15 +144,15 @@ class DryRunPreviewRenderer
         $mismatch = $assets['mismatch'];
 
         if ($missing === [] && $mismatch === []) {
-            $io->text(sprintf('Asset-Preflight: %d Datei(en) im Manifest, alle auf dem Ziel vorhanden und inhaltsgleich.', $total));
+            $io->text(sprintf('Asset preflight: %d file(s) in the manifest, all present on the target and identical in content.', $total));
             return;
         }
         if ($missing !== []) {
-            $io->warning(sprintf('%d von %d Asset-Datei(en) fehlen auf dem Ziel — vor dem Import übertragen (z. B. via rsync):', count($missing), $total));
+            $io->warning(sprintf('%d of %d asset file(s) are missing on the target — transfer them before the import (e.g. via rsync):', count($missing), $total));
             $io->listing(array_slice($missing, 0, 20));
         }
         if ($mismatch !== []) {
-            $io->note(sprintf('%d Asset-Datei(en) haben auf dem Ziel abweichenden Inhalt — die bestehende Datei bleibt beim Import erhalten:', count($mismatch)));
+            $io->note(sprintf('%d asset file(s) have different content on the target — the existing file is left unchanged during import:', count($mismatch)));
             $io->listing(array_slice($mismatch, 0, 20));
         }
     }

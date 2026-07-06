@@ -59,13 +59,13 @@ class ConfigValidationService
             if (!$this->tableExists($table)) {
                 // Warnung statt Fehler: Die mitgelieferten Profile registrieren optionale
                 // Ziel-Extensions; Export/Import überspringen fehlende Tabellen.
-                $issues[] = $this->warning("Tabelle \"$table\" ist registriert, existiert aber nicht in der Datenbank – wird beim Export/Import übersprungen (Extension nicht installiert?).", $source);
+                $issues[] = $this->warning("Table \"$table\" is registered but does not exist in the database – will be skipped on export/import (extension not installed?).", $source);
                 continue;
             }
 
             $type = (string)($config['type'] ?? '');
             if (!in_array($type, self::VALID_TYPES, true)) {
-                $issues[] = $this->error("Tabelle \"$table\": ungültiger oder fehlender type \"$type\" (erlaubt: " . implode(', ', self::VALID_TYPES) . ').', $source);
+                $issues[] = $this->error("Table \"$table\": invalid or missing type \"$type\" (allowed: " . implode(', ', self::VALID_TYPES) . ').', $source);
                 continue;
             }
 
@@ -81,7 +81,7 @@ class ConfigValidationService
             $field = (string)$field;
             if ($this->tableExists($linkRewriteTable) && !$this->columnExists($linkRewriteTable, $field)) {
                 $issues[] = $this->error(
-                    "link_rewrite: Feld \"$field\" existiert nicht in Tabelle \"$linkRewriteTable\"." . $this->didYouMean($linkRewriteTable, $field)
+                    "link_rewrite: field \"$field\" does not exist in table \"$linkRewriteTable\"." . $this->didYouMean($linkRewriteTable, $field)
                 );
             }
         }
@@ -104,7 +104,7 @@ class ConfigValidationService
             $type = is_array($config) ? (string)($config['type'] ?? '') : '';
             if (!in_array($type, self::VALID_TRANSPORT_TYPES, true)) {
                 $issues[] = $this->error(sprintf(
-                    'assetTransport "%s": ungültiger type "%s" (erlaubt: %s).',
+                    'assetTransport "%s": invalid type "%s" (allowed: %s).',
                     $name,
                     $type,
                     implode(', ', self::VALID_TRANSPORT_TYPES)
@@ -114,13 +114,13 @@ class ConfigValidationService
 
         foreach ($profiles as $name => $config) {
             if (!is_array($config)) {
-                $issues[] = $this->error("transferProfile \"$name\": ungültige Definition (erwartet wird eine Abbildung).");
+                $issues[] = $this->error("transferProfile \"$name\": invalid definition (a mapping is expected).");
                 continue;
             }
             $transport = (string)($config['transport'] ?? 'external');
             if (!isset($transports[$transport]) && !in_array($transport, self::VALID_TRANSPORT_TYPES, true)) {
                 $issues[] = $this->error(sprintf(
-                    'transferProfile "%s": Transport "%s" ist weder ein definierter assetTransport noch ein bekannter Typ (%s).',
+                    'transferProfile "%s": transport "%s" is neither a defined assetTransport nor a known type (%s).',
                     $name,
                     $transport,
                     implode(', ', self::VALID_TRANSPORT_TYPES)
@@ -135,7 +135,7 @@ class ConfigValidationService
             }
             $context = $config['allowedContext'] ?? [];
             if (!is_array($context) || $context === []) {
-                $issues[] = $this->warning("transferProfile \"$name\": \"allowedContext\" ist leer – das Profil ist in jeder Umgebung ausführbar (keine dev/prod-Bindung).");
+                $issues[] = $this->warning("transferProfile \"$name\": \"allowedContext\" is empty – the profile is runnable in every environment (no dev/prod binding).");
             }
         }
 
@@ -152,21 +152,21 @@ class ConfigValidationService
 
         $pidField = (string)($config['pid_field'] ?? '');
         if ($pidField === '') {
-            $issues[] = $this->error("Tabelle \"$table\" (record): \"pid_field\" fehlt.", $source);
+            $issues[] = $this->error("Table \"$table\" (record): \"pid_field\" is missing.", $source);
         } elseif (!$this->columnExists($table, $pidField)) {
-            $issues[] = $this->error("Tabelle \"$table\" (record): pid_field \"$pidField\" existiert nicht." . $this->didYouMean($table, $pidField), $source);
+            $issues[] = $this->error("Table \"$table\" (record): pid_field \"$pidField\" does not exist." . $this->didYouMean($table, $pidField), $source);
         }
 
         foreach ((array)($config['rewrite_links'] ?? []) as $field) {
             $field = (string)$field;
             if (!$this->columnExists($table, $field)) {
-                $issues[] = $this->error("Tabelle \"$table\" (record): rewrite_links-Feld \"$field\" existiert nicht." . $this->didYouMean($table, $field), $source);
+                $issues[] = $this->error("Table \"$table\" (record): rewrite_links field \"$field\" does not exist." . $this->didYouMean($table, $field), $source);
             }
         }
 
         // Ohne uid_remap kennt der Rollback die erzeugten UIDs nicht.
         if (empty($config['uid_remap'])) {
-            $issues[] = $this->warning("Tabelle \"$table\" (record): \"uid_remap\" ist nicht aktiv – Records dieser Tabelle werden beim Rollback nicht erfasst.", $source);
+            $issues[] = $this->warning("Table \"$table\" (record): \"uid_remap\" is not active – records in this table will not be captured on rollback.", $source);
         }
 
         return $issues;
@@ -185,23 +185,23 @@ class ConfigValidationService
             if ($field === '') {
                 // match_tablenames_field ist optional, match_field nicht.
                 if ($key === 'match_field') {
-                    $issues[] = $this->error("Tabelle \"$table\" (mm): \"match_field\" fehlt.", $source);
+                    $issues[] = $this->error("Table \"$table\" (mm): \"match_field\" is missing.", $source);
                 }
                 continue;
             }
             if (!$this->columnExists($table, $field)) {
-                $issues[] = $this->error("Tabelle \"$table\" (mm): $key \"$field\" existiert nicht." . $this->didYouMean($table, $field), $source);
+                $issues[] = $this->error("Table \"$table\" (mm): $key \"$field\" does not exist." . $this->didYouMean($table, $field), $source);
             }
         }
 
         $matchTables = (array)($config['match_tables'] ?? []);
         if ($matchTables === []) {
-            $issues[] = $this->warning("Tabelle \"$table\" (mm): \"match_tables\" ist leer – das MM-Matching greift dann für keine Tabelle.", $source);
+            $issues[] = $this->warning("Table \"$table\" (mm): \"match_tables\" is empty – MM matching will then apply to no table.", $source);
         }
         foreach ($matchTables as $matchTable) {
             if (!$this->tcaSchemaFactory->has((string)$matchTable)) {
                 // Warnung statt Fehler: match_tables kann optionale Extension-Tabellen nennen.
-                $issues[] = $this->warning("Tabelle \"$table\" (mm): match_tables-Eintrag \"$matchTable\" ist keine bekannte TCA-Tabelle – wird beim Matching ignoriert (Extension nicht installiert?).", $source);
+                $issues[] = $this->warning("Table \"$table\" (mm): match_tables entry \"$matchTable\" is not a known TCA table – ignored during matching (extension not installed?).", $source);
             }
         }
 

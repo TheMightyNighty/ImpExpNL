@@ -27,7 +27,7 @@ use TYPO3\CMS\Core\Database\ConnectionPool;
 
 #[AsCommand(
     name: 'impexpnl:list',
-    description: 'Zeigt die Import-Historie (rollback-fähige Imports).'
+    description: 'Shows the import history (rollback-capable imports).'
 )]
 class ListCommand extends Command
 {
@@ -40,8 +40,8 @@ class ListCommand extends Command
     protected function configure(): void
     {
         $this
-            ->addOption('limit', 'l', InputOption::VALUE_OPTIONAL, 'Anzahl der Einträge', 20)
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Historie maschinenlesbar als JSON ausgeben');
+            ->addOption('limit', 'l', InputOption::VALUE_OPTIONAL, 'Number of entries', 20)
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output the history as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -78,23 +78,23 @@ class ListCommand extends Command
         }
 
         if (empty($imports)) {
-            $io->text('Keine Imports vorhanden.');
+            $io->text('No imports present.');
             return Command::SUCCESS;
         }
 
-        $io->title('ImpExpNL: Import-Historie');
+        $io->title('ImpExpNL: import history');
         $io->table(
-            ['Import-ID', 'Datum', 'Modus', 'Workspace', 'Records', 'Datei'],
+            ['Import ID', 'Date', 'Mode', 'Workspace', 'Records', 'File'],
             array_map(static fn(array $i): array => [
                 $i['importId'],
                 date('d.m.Y H:i', $i['tstamp']),
-                $i['delta'] ? 'Delta' : 'Voll',
+                $i['delta'] ? 'Delta' : 'Full',
                 'WS ' . $i['workspaceId'],
-                $i['pages'] . ' S / ' . $i['tt_content'] . ' I',
+                $i['pages'] . ' P / ' . $i['tt_content'] . ' C',
                 basename($i['sourceFile']),
             ], $imports)
         );
-        $io->text('Rollback: ddev exec vendor/bin/typo3 impexpnl:undo <Import-ID>');
+        $io->text('Rollback: ddev exec vendor/bin/typo3 impexpnl:undo <import-id>');
 
         return Command::SUCCESS;
     }

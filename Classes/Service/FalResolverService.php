@@ -85,7 +85,7 @@ class FalResolverService
                     }
                 }
             } catch (\Throwable $e) {
-                $this->logger->warning('FAL-Referenz übersprungen, Datei nicht auflösbar.', [
+                $this->logger->warning('FAL reference skipped, file could not be resolved.', [
                     'identifier' => $identifier,
                     'storageId' => $storageId,
                     'error' => $e->getMessage(),
@@ -94,7 +94,7 @@ class FalResolverService
             }
 
             if ($liveSysFileUid === null) {
-                $this->logger->warning('FAL-Referenz übersprungen, Datei auf Zielsystem nicht vorhanden.', [
+                $this->logger->warning('FAL reference skipped, file does not exist on the target system.', [
                     'identifier' => $identifier,
                     'storageId' => $storageId,
                 ]);

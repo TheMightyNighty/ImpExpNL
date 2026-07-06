@@ -114,10 +114,10 @@ class TableRegistryService
                 $result[$table] = $records;
                 $uidSets[$table] = array_column($records, 'uid');
                 if (!empty($records)) {
-                    $this->logger->info("Registry-Export: $table", ['count' => count($records)]);
+                    $this->logger->info("Registry export: $table", ['count' => count($records)]);
                 }
             } catch (\Exception $e) {
-                $this->logger->warning("Registry-Export fehlgeschlagen: $table", ['error' => $e->getMessage()]);
+                $this->logger->warning("Registry export failed: $table", ['error' => $e->getMessage()]);
             }
         }
 
@@ -132,10 +132,10 @@ class TableRegistryService
                 $key = $isPath ? $table . '_with_paths' : $table;
                 $result[$key] = $isPath ? $this->enrichMmWithCategoryPaths($records, $config) : $records;
                 if (!empty($result[$key])) {
-                    $this->logger->info("Registry-Export: $table", ['count' => count($result[$key])]);
+                    $this->logger->info("Registry export: $table", ['count' => count($result[$key])]);
                 }
             } catch (\Exception $e) {
-                $this->logger->warning("Registry-Export fehlgeschlagen: $table", ['error' => $e->getMessage()]);
+                $this->logger->warning("Registry export failed: $table", ['error' => $e->getMessage()]);
             }
         }
         return $result;
@@ -177,7 +177,7 @@ class TableRegistryService
             try {
                 $errors += $this->importRecordTable($table, $config, $exportedData[$table], $uidMap, $sourceId, $deltaMode, $createdMap);
             } catch (\Exception $e) {
-                $this->logger->warning("Registry-Import fehlgeschlagen: $table", ['error' => $e->getMessage()]);
+                $this->logger->warning("Registry import failed: $table", ['error' => $e->getMessage()]);
             }
         }
 
@@ -201,7 +201,7 @@ class TableRegistryService
                     $this->importMmTable($table, $config, $exportedData[$dataKey], $uidMap);
                 }
             } catch (\Exception $e) {
-                $this->logger->warning("Registry-Import fehlgeschlagen: $table", ['error' => $e->getMessage()]);
+                $this->logger->warning("Registry import failed: $table", ['error' => $e->getMessage()]);
             }
         }
         return $errors;
@@ -218,7 +218,7 @@ class TableRegistryService
         if (in_array($table, $allowedTables, true)) {
             return true;
         }
-        $this->logger->warning("Registry-Import übersprungen: '$table' ist im Transfer-Profil nicht freigegeben (allowedTables).");
+        $this->logger->warning("Registry import skipped: '$table' is not allowed by the transfer profile (allowedTables).");
         return false;
     }
 
@@ -246,7 +246,7 @@ class TableRegistryService
                     $total += $this->rollbackRecordTable($table, $config, $uidMap);
                 }
             } catch (\Exception $e) {
-                $this->logger->warning("Registry-Rollback: $table", ['error' => $e->getMessage()]);
+                $this->logger->warning("Registry rollback: $table", ['error' => $e->getMessage()]);
             }
         }
         return $total;
@@ -360,7 +360,7 @@ class TableRegistryService
                 if ($parentUid === 0) {
                     return null;
                 }
-                $this->logger->info("Kategorie angelegt: $segment (uid=$parentUid, parent=$parentUid)");
+                $this->logger->info("Category created: $segment (uid=$parentUid, parent=$parentUid)");
             }
         }
 
@@ -399,7 +399,7 @@ class TableRegistryService
 
         $imported = $this->bulkInsertRows($table, $rows);
         if ($imported > 0) {
-            $this->logger->info("MM-Import: $table", ['imported' => $imported]);
+            $this->logger->info("MM import: $table", ['imported' => $imported]);
         }
     }
 
@@ -453,7 +453,7 @@ class TableRegistryService
             }
             $newCategoryUid = $pathCache[$path];
             if ($newCategoryUid === null) {
-                $this->logger->warning("Kategorie-Pfad nicht auflösbar: $path");
+                $this->logger->warning("Category path could not be resolved: $path");
                 continue;
             }
 
@@ -472,7 +472,7 @@ class TableRegistryService
 
         $imported = $this->bulkInsertRows($table, $rows);
         if ($imported > 0) {
-            $this->logger->info("MM-Import (Pfad): $table", ['imported' => $imported]);
+            $this->logger->info("MM import (path): $table", ['imported' => $imported]);
         }
     }
 
@@ -635,11 +635,11 @@ class TableRegistryService
             }
         }
         if ($unmappable > 0) {
-            $this->logger->warning("Record-Import: $table – Records ohne auflösbare Ziel-Seite übersprungen (PID-Containment).", [
+            $this->logger->warning("Record import: $table – records without a resolvable target page skipped (PID containment).", [
                 'skipped' => $unmappable,
             ]);
         }
-        $this->logger->info("Record-Import: $table", [
+        $this->logger->info("Record import: $table", [
             'new' => count($createdMap[$table]),
             'updated' => $updated,
             'skipped_identical' => $skipped,

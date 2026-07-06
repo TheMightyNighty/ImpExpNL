@@ -89,7 +89,7 @@ class BundleImportServiceTest extends TestCase
         $bundle = $this->createBundleWithSymlinkMember();
 
         $this->expectException(IntegrityException::class);
-        $this->expectExceptionMessageMatches('/Link-Member/');
+        $this->expectExceptionMessageMatches('/link member/');
         try {
             $this->subject->extract($bundle);
         } finally {

@@ -31,7 +31,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 #[AsCommand(
     name: 'impexpnl:undo',
-    description: 'Macht einen Import vollständig rückgängig.'
+    description: 'Fully rolls back an import.'
 )]
 class UndoCommand extends Command
 {
@@ -64,11 +64,11 @@ class UndoCommand extends Command
             ->addArgument(
                 'importId',
                 InputArgument::OPTIONAL,
-                'Die ID des Imports (z. B. 20260326_123000_a1b2c3). Wenn leer, wird der letzte Import rückgängig gemacht.'
+                'The ID of the import (e.g. 20260326_123000_a1b2c3). If empty, the last import is rolled back.'
             )
-            ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Nur Vorschau, kein Löschen')
-            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Ohne Sicherheitsabfrage ausführen')
-            ->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+            ->addOption('dry-run', 'd', InputOption::VALUE_NONE, 'Preview only, no deletion')
+            ->addOption('force', 'f', InputOption::VALUE_NONE, 'Run without a confirmation prompt')
+            ->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -92,42 +92,42 @@ class UndoCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $io->title('ImpExpNL: Rollback');
-            $io->text(sprintf('Import:     %s (%s)', $preview['importId'], $preview['date']));
-            $io->text(sprintf('Quelldatei: %s', $preview['sourceFile']));
+            $io->title('ImpExpNL: rollback');
+            $io->text(sprintf('Import:      %s (%s)', $preview['importId'], $preview['date']));
+            $io->text(sprintf('Source file: %s', $preview['sourceFile']));
             $io->text(sprintf(
-                'Entfernt:   %d Seiten, %d Inhalte (zzgl. FAL- und Registry-Einträge)',
+                'Removes:     %d pages, %d content elements (plus FAL and registry entries)',
                 $preview['counts']['pages'],
                 $preview['counts']['tt_content']
             ));
 
             if (!empty($preview['modified'])) {
                 $io->warning(sprintf(
-                    '%d Record(s) wurden nach dem Import lokal bearbeitet. Diese Änderungen gehen beim Rollback verloren:',
+                    '%d record(s) were edited locally after the import. These changes will be lost on rollback:',
                     count($preview['modified'])
                 ));
                 $io->listing($preview['modified']);
             }
 
             if ($dryRun) {
-                $io->note('Dry-Run: Es wurde nichts gelöscht.');
+                $io->note('Dry run: nothing was deleted.');
                 return Command::SUCCESS;
             }
 
-            if (!$force && !$io->confirm('Rollback jetzt ausführen?', false)) {
-                $io->note('Abgebrochen.');
+            if (!$force && !$io->confirm('Run the rollback now?', false)) {
+                $io->note('Aborted.');
                 return Command::SUCCESS;
             }
 
             $this->runRollbackLocked($preview['importId'], $force);
-            $io->success('Rollback erfolgreich abgeschlossen.');
+            $io->success('Rollback completed successfully.');
             return Command::SUCCESS;
         } catch (\Throwable $e) {
             $exitCode = $e instanceof ImpExpException ? $e->getExitCode() : ExitCode::GENERIC;
             if ($jsonOutput) {
                 $output->writeln((string)json_encode(['success' => false, 'error' => $e->getMessage(), 'exitCode' => $exitCode], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
-                $io->error('Fehler beim Rollback: ' . $e->getMessage());
+                $io->error('Rollback error: ' . $e->getMessage());
             }
             return $exitCode;
         }

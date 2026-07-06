@@ -65,7 +65,7 @@ class BundleImportService
     public function extract(string $bundlePath): string
     {
         if (!is_file($bundlePath)) {
-            throw new \RuntimeException("Bundle nicht gefunden: $bundlePath");
+            throw new \RuntimeException("Bundle not found: $bundlePath");
         }
 
         // Link-Member (Symlinks/Hardlinks) VOR dem Entpacken ablehnen: ein Archiv,
@@ -89,11 +89,11 @@ class BundleImportService
 
         $exportFile = $this->findExportFile($targetDir);
         if ($exportFile === null) {
-            throw new \RuntimeException('Bundle enthält keine Export-Datei (JSON/JSONL).');
+            throw new \RuntimeException('Bundle contains no export file (JSON/JSONL).');
         }
 
         $this->placedFileUids = [];
-        $this->logger->info('Bundle entpackt', ['export' => basename($exportFile)]);
+        $this->logger->info('Bundle extracted', ['export' => basename($exportFile)]);
 
         return $exportFile;
     }
@@ -137,7 +137,7 @@ class BundleImportService
         if ($onAssetsPlaced !== null && $this->placedFileUids !== []) {
             $onAssetsPlaced($this->placedFileUids);
         }
-        $this->logger->info('Bundle-Assets platziert', ['assetsPlaced' => count($this->placedFileUids)]);
+        $this->logger->info('Bundle assets placed', ['assetsPlaced' => count($this->placedFileUids)]);
     }
 
     /**
@@ -195,7 +195,7 @@ class BundleImportService
         $exitCode = proc_close($process);
 
         if ($exitCode !== 0) {
-            $this->logger->warning('Bundle: natives tar (extract) fehlgeschlagen – Fallback auf PharData.', [
+            $this->logger->warning('Bundle: native tar (extract) failed – falling back to PharData.', [
                 'exitCode' => $exitCode,
                 'stderr' => trim((string)$stderr),
             ]);
@@ -213,7 +213,7 @@ class BundleImportService
     {
         $workCopy = $targetDir . '.' . pathinfo($bundlePath, PATHINFO_BASENAME);
         if (!copy($bundlePath, $workCopy)) {
-            throw new \RuntimeException("Bundle nicht lesbar: $bundlePath");
+            throw new \RuntimeException("Bundle not readable: $bundlePath");
         }
         try {
             $phar = new \PharData($workCopy);
@@ -260,7 +260,7 @@ class BundleImportService
 
         if ($offender !== null) {
             throw new IntegrityException(sprintf(
-                'Bundle enthält ein Link-Member (Symlink/Hardlink) und wird abgelehnt: %s [%s]',
+                'Bundle contains a link member (symlink/hardlink) and is rejected: %s [%s]',
                 basename($bundlePath),
                 $offender
             ));
@@ -268,7 +268,7 @@ class BundleImportService
         if ($exitCode !== 0) {
             // Listing fehlgeschlagen (defektes/fremdes Archiv): nicht hier raten –
             // die Extraktion liefert die aussagekräftige Fehlermeldung.
-            $this->logger->warning('Bundle: tar-Listing (Vorab-Check auf Link-Member) fehlgeschlagen.', [
+            $this->logger->warning('Bundle: tar listing (pre-extraction link-member check) failed.', [
                 'bundle' => basename($bundlePath),
                 'exitCode' => $exitCode,
             ]);
@@ -290,7 +290,7 @@ class BundleImportService
         foreach ($iterator as $item) {
             if ($item->isLink()) {
                 throw new IntegrityException(sprintf(
-                    'Bundle enthält einen Symlink (%s) – Archiv wird abgelehnt: %s',
+                    'Bundle contains a symlink (%s) – archive is rejected: %s',
                     $item->getPathname(),
                     basename($bundlePath)
                 ));
@@ -339,7 +339,7 @@ class BundleImportService
     private function placeAsset(string $bundleDir, int $storage, string $identifier, ?string $expectedSha256): ?int
     {
         if (!$this->isSafeIdentifier($identifier)) {
-            $this->logger->warning('Bundle: unsicherer Asset-Identifier übersprungen', ['identifier' => $identifier]);
+            $this->logger->warning('Bundle: unsafe asset identifier skipped', ['identifier' => $identifier]);
             return null;
         }
         $filesBase = $bundleDir . '/files';
@@ -351,17 +351,17 @@ class BundleImportService
         $real = realpath($localFile);
         $realBase = realpath($filesBase);
         if ($real === false || $realBase === false || !str_starts_with($real, $realBase . '/')) {
-            $this->logger->warning('Bundle: Asset-Pfad außerhalb des Bundles übersprungen', ['identifier' => $identifier]);
+            $this->logger->warning('Bundle: asset path outside the bundle skipped', ['identifier' => $identifier]);
             return null;
         }
         if ($expectedSha256 === null) {
-            $this->logger->warning('Bundle: Asset ohne signierte Prüfsumme übersprungen', ['identifier' => $identifier]);
+            $this->logger->warning('Bundle: asset without a signed checksum skipped', ['identifier' => $identifier]);
             return null;
         }
         $actual = hash_file('sha256', $real);
         if ($actual === false || !hash_equals($expectedSha256, $actual)) {
             throw new IntegrityException(sprintf(
-                'Bundle-Asset weicht von der signierten Prüfsumme ab: %s (Bundle manipuliert oder beschädigt).',
+                'Bundle asset differs from the signed checksum: %s (bundle tampered with or corrupted).',
                 $identifier
             ));
         }
@@ -381,7 +381,7 @@ class BundleImportService
             $file = $storageObject->addFile($localFile, $folder, basename($identifier), DuplicationBehavior::REPLACE, true);
             return (int)$file->getUid();
         } catch (\Throwable $e) {
-            $this->logger->warning('Bundle: Asset konnte nicht platziert werden', [
+            $this->logger->warning('Bundle: asset could not be placed', [
                 'storage' => $storage,
                 'identifier' => $identifier,
                 'error' => $e->getMessage(),

@@ -40,7 +40,7 @@ class ExportWriter
         } else {
             $json = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
             if (file_put_contents($filePath, $json) === false) {
-                throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
+                throw new \RuntimeException("Export file could not be written: $filePath");
             }
         }
 
@@ -64,7 +64,7 @@ class ExportWriter
             $baseDir . '/impexpnl_tt_content.csv'
         );
 
-        $this->logger->info('Export abgeschlossen', [
+        $this->logger->info('Export completed', [
             'pages' => count($data['pages'] ?? []),
             'tt_content' => count($data['tt_content'] ?? []),
             'file' => $filePath,
@@ -81,7 +81,7 @@ class ExportWriter
     {
         $handle = fopen($filePath, 'w');
         if ($handle === false) {
-            throw new \RuntimeException("Export-Datei konnte nicht geschrieben werden: $filePath");
+            throw new \RuntimeException("Export file could not be written: $filePath");
         }
         try {
             fwrite($handle, (string)json_encode(['_meta' => $data['_meta'] ?? []], JSON_UNESCAPED_UNICODE) . "\n");
@@ -106,7 +106,7 @@ class ExportWriter
         $ids = array_unique(array_filter(array_map(fn($r) => ltrim($r['identifier'] ?? '', '/'), $data['sys_file_reference'] ?? [])));
         sort($ids);
         if (file_put_contents($dir . '/impexpnl_assets.txt', implode("\n", $ids) . "\n") === false) {
-            $this->logger->warning('Asset-Liste konnte nicht geschrieben werden: ' . $dir . '/impexpnl_assets.txt');
+            $this->logger->warning('Asset list could not be written: ' . $dir . '/impexpnl_assets.txt');
         }
     }
 
@@ -123,7 +123,7 @@ class ExportWriter
         }
         $json = json_encode($data['assets'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         if ($json === false || file_put_contents($dir . '/impexpnl_assets.json', $json . "\n") === false) {
-            $this->logger->warning('Asset-Manifest konnte nicht geschrieben werden: ' . $dir . '/impexpnl_assets.json');
+            $this->logger->warning('Asset manifest could not be written: ' . $dir . '/impexpnl_assets.json');
         }
     }
 
@@ -172,14 +172,14 @@ class ExportWriter
             }
             fclose($fp);
         }
-        $this->logger->info('CSV-Export geschrieben', ['dir' => $baseDir]);
+        $this->logger->info('CSV export written', ['dir' => $baseDir]);
     }
 
     private function restrictPermissions(string ...$files): void
     {
         foreach ($files as $file) {
             if (is_file($file) && !@chmod($file, 0600)) {
-                $this->logger->warning('Dateirechte konnten nicht beschränkt werden: ' . $file);
+                $this->logger->warning('File permissions could not be restricted: ' . $file);
             }
         }
     }

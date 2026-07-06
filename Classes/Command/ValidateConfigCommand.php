@@ -33,7 +33,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  */
 #[AsCommand(
     name: 'impexpnl:validate-config',
-    description: 'Validiert die Table-Registry (inkl. Extension-Profile) gegen das DB-/TCA-Schema.'
+    description: 'Validates the table registry (incl. extension profiles) against the DB/TCA schema.'
 )]
 class ValidateConfigCommand extends Command
 {
@@ -46,7 +46,7 @@ class ValidateConfigCommand extends Command
 
     protected function configure(): void
     {
-        $this->addOption('json', null, InputOption::VALUE_NONE, 'Ergebnis maschinenlesbar als JSON ausgeben');
+        $this->addOption('json', null, InputOption::VALUE_NONE, 'Output the result as machine-readable JSON');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -80,10 +80,10 @@ class ValidateConfigCommand extends Command
         }
 
         $io = new SymfonyStyle($input, $output);
-        $io->title('ImpExpNL: Konfigurationsprüfung');
-        $io->text(sprintf('%d Tabelle(n) registriert.', count($tables)));
+        $io->title('ImpExpNL: configuration check');
+        $io->text(sprintf('%d table(s) registered.', count($tables)));
         if ($extensionFiles !== []) {
-            $io->text('Extension-Profile: ' . implode(', ', array_keys($extensionFiles)));
+            $io->text('Extension profiles: ' . implode(', ', array_keys($extensionFiles)));
         }
 
         if ($warnings !== []) {
@@ -94,7 +94,7 @@ class ValidateConfigCommand extends Command
             return ExitCode::INVALID_CONFIG;
         }
 
-        $io->success('Konfiguration gültig – alle registrierten Tabellen und Felder existieren.');
+        $io->success('Configuration valid – all registered tables and fields exist.');
         return Command::SUCCESS;
     }
 }

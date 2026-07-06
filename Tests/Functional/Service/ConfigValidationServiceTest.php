@@ -172,7 +172,7 @@ class ConfigValidationServiceTest extends FunctionalTestCase
             ['weird' => ['type' => 'ftp']]
         );
         $messages = $this->errorMessages($issues);
-        self::assertStringContainsString('ungültiger type "ftp"', $messages);
+        self::assertStringContainsString('invalid type "ftp"', $messages);
         self::assertStringContainsString('nope', $messages);
     }
 

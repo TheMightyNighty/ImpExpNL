@@ -135,7 +135,7 @@ class JsonlStreamReader
     {
         $handle = fopen($path, 'r');
         if ($handle === false) {
-            throw new \RuntimeException("Datei nicht lesbar: $path");
+            throw new \RuntimeException("File not readable: $path");
         }
         try {
             while (($line = fgets($handle)) !== false) {
@@ -145,7 +145,7 @@ class JsonlStreamReader
                 }
                 $obj = json_decode($line, true);
                 if (json_last_error() !== JSON_ERROR_NONE || !is_array($obj)) {
-                    throw new \RuntimeException('JSONL-Fehler: ungültige Zeile.');
+                    throw new \RuntimeException('JSONL error: invalid line.');
                 }
                 yield $obj;
             }

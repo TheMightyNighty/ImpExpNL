@@ -59,7 +59,7 @@ class SlugRegenerationService
             }
             $slugHelper = GeneralUtility::makeInstance(SlugHelper::class, 'pages', 'slug', $slugConfig);
         } catch (\Exception $e) {
-            $this->logger->warning('Slug-Regenerierung übersprungen, SlugHelper nicht verfügbar: ' . $e->getMessage());
+            $this->logger->warning('Slug regeneration skipped, SlugHelper not available: ' . $e->getMessage());
             return 0;
         }
 

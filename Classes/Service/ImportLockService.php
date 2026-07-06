@@ -68,12 +68,12 @@ class ImportLockService
             // Der DB-Lock trägt die Concurrency-Garantie allein weiter – aber ein
             // nicht anlegbarer Datei-Lock (z. B. read-only Filesystem im Container)
             // darf nicht unbemerkt bleiben.
-            $this->logger->warning('Datei-Lock konnte nicht angelegt werden – nur DB-Lock aktiv: ' . $lockFile);
+            $this->logger->warning('File lock could not be created – only the DB lock is active: ' . $lockFile);
         }
         if ($handle && !flock($handle, LOCK_EX | LOCK_NB)) {
             fclose($handle);
             $this->releaseDbLock();
-            throw new LockException('Ein anderer Import läuft (Datei-Lock): ' . $lockFile);
+            throw new LockException('Another import is running (file lock): ' . $lockFile);
         }
         if ($handle) {
             ftruncate($handle, 0);
@@ -126,14 +126,14 @@ class ImportLockService
             }
         } catch (\Throwable $e) {
             // Transienter DB-Fehler: nicht abbrechen, nächster Heartbeat versucht es erneut.
-            $this->logger->warning('DB-Lock-Heartbeat fehlgeschlagen: ' . $e->getMessage());
+            $this->logger->warning('DB lock heartbeat failed: ' . $e->getMessage());
             return;
         }
         if ((int)$affected === 0) {
             $this->dbLockHeld = false;
             throw new LockException(
-                'Import-Lock verloren: Die eigene Lock-Zeile existiert nicht mehr (Stale-Timeout oder '
-                . 'manuelles unlock). Import wird abgebrochen, um nicht parallel zu einem anderen Import zu schreiben.'
+                'Import lock lost: our own lock row no longer exists (stale timeout or '
+                . 'manual unlock). Aborting the import to avoid writing in parallel with another import.'
             );
         }
     }
@@ -171,7 +171,7 @@ class ImportLockService
                 'created' => time(),
             ]);
         } catch (UniqueConstraintViolationException $e) {
-            throw new LockException('Ein anderer Import läuft bereits (DB-Lock aktiv). Bei einem Crash wird der Lock nach ' . $staleSeconds . 's automatisch freigegeben.');
+            throw new LockException('Another import is already running (DB lock active). On a crash, the lock is released automatically after ' . $staleSeconds . 's.');
         }
 
         $this->dbLockHeld = true;
@@ -187,7 +187,7 @@ class ImportLockService
             $this->connectionPool->getConnectionForTable(self::TABLE)
                 ->delete(self::TABLE, ['lock_id' => self::LOCK_ID, 'owner' => $this->ownerToken]);
         } catch (\Throwable $e) {
-            $this->logger->warning('DB-Lock konnte nicht freigegeben werden: ' . $e->getMessage());
+            $this->logger->warning('DB lock could not be released: ' . $e->getMessage());
         }
     }
 
@@ -231,7 +231,7 @@ class ImportLockService
             $this->connectionPool->getConnectionForTable(self::TABLE)
                 ->delete(self::TABLE, ['lock_id' => self::LOCK_ID]);
         } catch (\Throwable $e) {
-            $this->logger->warning('DB-Lock konnte nicht freigegeben werden: ' . $e->getMessage());
+            $this->logger->warning('DB lock could not be released: ' . $e->getMessage());
         }
         return $existed;
     }

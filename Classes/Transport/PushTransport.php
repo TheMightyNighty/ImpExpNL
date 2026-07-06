@@ -51,38 +51,38 @@ class PushTransport implements TransportInterface
     {
         $outbox = rtrim((string)($config['outbox'] ?? ''), '/');
         if ($outbox === '') {
-            throw new ConfigException('Transport "push": "outbox" ist nicht konfiguriert (Zielverzeichnis für das Bundle).');
+            throw new ConfigException('Transport "push": "outbox" is not configured (target directory for the bundle).');
         }
-        // Das Verzeichnis darf bewusst außerhalb des Projektverzeichnisses liegen
-        // (gemountete Schleuse) – daher kein Projekt-Containment, aber es muss
-        // existieren und beschreibbar sein. Es wird NICHT angelegt.
+        // The directory may deliberately lie outside the project directory
+        // (mounted data lock) – so no project containment, but it must
+        // exist and be writable. It is NOT created.
         if (!is_dir($outbox) || !is_writable($outbox)) {
             throw new ConfigException(sprintf(
-                'Transport "push": Outbox "%s" existiert nicht oder ist nicht beschreibbar.',
+                'Transport "push": outbox "%s" does not exist or is not writable.',
                 $outbox
             ));
         }
 
-        // 1) Signiertes Bundle erzeugen (BundleTransport schreibt es neben die Export-Datei).
+        // 1) Generate the signed bundle (BundleTransport writes it next to the export file).
         $bundleResult = $this->bundleTransport->package($exportFile, $assets, $config);
         $bundlePath = (string)($bundleResult['artifact'] ?? '');
         if ($bundlePath === '' || !is_file($bundlePath)) {
-            throw new ConfigException('Transport "push": Bundle-Erzeugung lieferte kein Artefakt.');
+            throw new ConfigException('Transport "push": bundle generation did not produce an artifact.');
         }
 
-        // 2) Atomar in die Outbox ablegen: temporär in .incoming/ schreiben, dann rename().
+        // 2) Place it atomically into the outbox: write to .incoming/ first, then rename().
         $target = $outbox . '/' . basename($bundlePath);
         $stagingDir = $outbox . '/.incoming';
         if (!is_dir($stagingDir) && !@mkdir($stagingDir, 0700, true) && !is_dir($stagingDir)) {
-            throw new ConfigException(sprintf('Transport "push": Staging-Verzeichnis "%s" nicht anlegbar.', $stagingDir));
+            throw new ConfigException(sprintf('Transport "push": staging directory "%s" could not be created.', $stagingDir));
         }
         $staging = $stagingDir . '/' . basename($bundlePath) . '.part';
 
-        // Verschieben statt Kopieren, wenn möglich (gleiches Dateisystem → rename).
-        // Sonst copy in die Staging-Datei, dann rename in die Outbox (atomar auf dem Ziel-FS).
+        // Move instead of copy where possible (same filesystem → rename).
+        // Otherwise copy into the staging file, then rename into the outbox (atomic on the target FS).
         if (!@rename($bundlePath, $staging)) {
             if (!@copy($bundlePath, $staging)) {
-                throw new ConfigException(sprintf('Transport "push": Bundle konnte nicht nach "%s" übertragen werden.', $staging));
+                throw new ConfigException(sprintf('Transport "push": bundle could not be transferred to "%s".', $staging));
             }
             @unlink($bundlePath);
         }
@@ -90,11 +90,11 @@ class PushTransport implements TransportInterface
 
         if (!@rename($staging, $target)) {
             @unlink($staging);
-            throw new ConfigException(sprintf('Transport "push": finale Ablage nach "%s" fehlgeschlagen.', $target));
+            throw new ConfigException(sprintf('Transport "push": final placement to "%s" failed.', $target));
         }
 
-        $message = sprintf('Bundle in Outbox abgelegt → %s. %s', $target, (string)$bundleResult['message']);
-        $this->logger->info('Push-Transport: Bundle abgelegt', ['target' => $target]);
+        $message = sprintf('Bundle placed in outbox → %s. %s', $target, (string)$bundleResult['message']);
+        $this->logger->info('Push transport: bundle placed', ['target' => $target]);
 
         return ['type' => 'push', 'artifact' => $target, 'message' => trim($message)];
     }

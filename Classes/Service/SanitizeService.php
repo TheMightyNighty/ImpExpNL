@@ -102,9 +102,9 @@ class SanitizeService
         if (!$this->missingKeyWarned) {
             $this->missingKeyWarned = true;
             $this->logger->warning(
-                'Sanitize: hash-Strategie ohne Schlüssel – ungesalzenes SHA256 ist bei ratbaren Werten '
-                . '(z. B. E-Mail-Adressen) per Wörterbuch re-identifizierbar. export.sanitize.hash_key '
-                . 'oder IMPEXPNL_SANITIZE_KEY setzen.'
+                'Sanitize: hash strategy without a key – unsalted SHA256 is re-identifiable for guessable '
+                . 'values (e.g. email addresses) via dictionary attack. Set export.sanitize.hash_key '
+                . 'or IMPEXPNL_SANITIZE_KEY.'
             );
         }
         return hash('sha256', $value);

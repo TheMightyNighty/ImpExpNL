@@ -53,7 +53,7 @@ class BootstrapService
 
         if (empty($GLOBALS['BE_USER']->user['uid'])) {
             throw new \RuntimeException(
-                'Backend-Authentifizierung fehlgeschlagen: Es konnte kein CLI-Backend-User (_cli_) authentifiziert werden.'
+                'Backend authentication failed: no CLI backend user (_cli_) could be authenticated.'
             );
         }
 

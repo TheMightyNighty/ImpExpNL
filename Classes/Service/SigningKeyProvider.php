@@ -71,7 +71,7 @@ class SigningKeyProvider
             return null;
         }
         if (preg_match('/^[A-Za-z0-9._-]+$/', $id) !== 1) {
-            $this->logger?->warning("Signing-Key-ID '$id' enthält unzulässige Zeichen und wird ignoriert (erlaubt: A-Z a-z 0-9 . _ -).");
+            $this->logger?->warning("Signing key ID '$id' contains disallowed characters and is ignored (allowed: A-Z a-z 0-9 . _ -).");
             return null;
         }
         return $id;

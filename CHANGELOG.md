@@ -17,6 +17,11 @@
   voll; Hinweis zu Auxiliary-Tabellen inkl. Stellschrauben).
 
 ### Neu
+- **Englische README** als Vorbereitung der TER-Veröffentlichung: `README.md` ist jetzt
+  die englische Fassung, die bisherige deutsche Fassung liegt unverändert unter
+  `README.de.md` (Sprach-Hinweis oben in beiden Dateien).
+- **Englische CLI-/Log-Meldungen:** Konsolen-Ausgaben, Exception- und Logger-Texte in
+  `Classes/**` sind jetzt englisch; Code-Kommentare bleiben unverändert deutsch.
 - **reST-Handbuch für docs.typo3.org** (`Documentation/` mit `guides.xml`, englisch):
   Introduction, Installation, Quick start, Commands, Configuration, Security.
   Mit dem offiziellen `render-guides`-Container fehlerfrei gerendert.

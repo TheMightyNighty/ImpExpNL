@@ -61,21 +61,21 @@ class ManifestLoaderService
     public function load(string $jsonPath): ManifestReader
     {
         if (!file_exists($jsonPath)) {
-            throw new \RuntimeException("Datei nicht gefunden: $jsonPath");
+            throw new \RuntimeException("File not found: $jsonPath");
         }
 
         // Schutz vor Symlink-/Path-Traversal.
         $realPath = realpath($jsonPath);
         $isJsonl = $realPath !== false && str_ends_with($realPath, '.jsonl');
         if ($realPath === false || (!str_ends_with($realPath, '.json') && !$isJsonl)) {
-            throw new \RuntimeException("Ungültiger Dateipfad oder keine JSON/JSONL-Datei: $jsonPath");
+            throw new \RuntimeException("Invalid file path or not a JSON/JSONL file: $jsonPath");
         }
 
         // Mit Verzeichnistrenner vergleichen, damit Nachbarpfade mit gleichem
         // Präfix (/var/www/html-anderes) nicht als "innerhalb" durchgehen.
         $projectPath = Environment::getProjectPath();
         if ($projectPath !== '' && !str_starts_with($realPath, rtrim($projectPath, '/') . '/')) {
-            throw new \RuntimeException("Importdatei liegt außerhalb des Projektverzeichnisses: $jsonPath");
+            throw new \RuntimeException("Import file lies outside the project directory: $jsonPath");
         }
 
         // Dateigrößen-Limit als DoS-Guard (auch der streamende Pfad soll nicht
@@ -84,8 +84,8 @@ class ManifestLoaderService
         $fileSize = (int)filesize($realPath);
         if ($maxBytes > 0 && $fileSize > $maxBytes) {
             throw new ImpExpException(sprintf(
-                'Importdatei zu groß: %d MB (Limit: %d MB, konfigurierbar über import.max_file_size_mb; 0 = unbegrenzt). '
-                . 'Datei prüfen, Limit erhöhen oder den Export aufteilen (--pages/--since).',
+                'Import file too large: %d MB (limit: %d MB, configurable via import.max_file_size_mb; 0 = unlimited). '
+                . 'Check the file, increase the limit, or split the export (--pages/--since).',
                 (int)round($fileSize / 1048576),
                 (int)round($maxBytes / 1048576)
             ));
@@ -102,8 +102,8 @@ class ManifestLoaderService
         // werden komplett geparst; der streamende JSONL-Pfad wäre der richtige Weg.
         if ($fileSize > self::LARGE_JSON_WARN_BYTES) {
             $this->logger->warning(sprintf(
-                'Große JSON-Importdatei (%d MB) wird vollständig in den Speicher geparst. '
-                . 'Für Exporte dieser Größe das streamende JSONL-Format verwenden (Export mit --jsonl).',
+                'Large JSON import file (%d MB) is parsed entirely into memory. '
+                . 'For exports of this size, use the streaming JSONL format (export with --jsonl).',
                 (int)round($fileSize / 1048576)
             ));
         }
@@ -116,7 +116,7 @@ class ManifestLoaderService
 
         $manifest = ExportManifest::fromArray($this->parseJsonFile($realPath));
         if (!$manifest->hasPages()) {
-            throw new \RuntimeException('"pages" muss ein nicht-leeres Array sein.');
+            throw new \RuntimeException('"pages" must be a non-empty array.');
         }
 
         $checksum = $manifest->getChecksum();
@@ -133,7 +133,7 @@ class ManifestLoaderService
         $meta = $this->jsonlReader->readMeta($realPath);
         $reader = new StreamingManifestReader($this->jsonlReader, $realPath, $meta);
         if (!$reader->hasPages()) {
-            throw new \RuntimeException('"pages" muss ein nicht-leeres Array sein.');
+            throw new \RuntimeException('"pages" must be a non-empty array.');
         }
 
         $checksum = $reader->getChecksum();
@@ -177,15 +177,15 @@ class ManifestLoaderService
         }
         if (!$this->integrityService->hasSigningKey()) {
             throw new IntegrityException(
-                'import.require_signature ist aktiv, aber es ist kein Signing-Key konfiguriert '
-                . '(IMPEXPNL_SIGNING_KEY bzw. EXTENSIONS/imp_exp_nl/signingKey). Import nicht möglich.'
+                'import.require_signature is active, but no signing key is configured '
+                . '(IMPEXPNL_SIGNING_KEY resp. EXTENSIONS/imp_exp_nl/signingKey). Import not possible.'
             );
         }
         if (!$this->integrityService->isHmacSignature($checksum)) {
             throw new IntegrityException(
-                'Signaturpflicht aktiv (import.require_signature): Die Importdatei trägt keine '
-                . 'HMAC-Signatur (hmac-sha256:). Datei auf dem Quellsystem mit identischem '
-                . 'Signing-Key neu exportieren.'
+                'Signature enforcement active (import.require_signature): the import file does not carry an '
+                . 'HMAC signature (hmac-sha256:). Re-export the file on the source system with the '
+                . 'identical signing key.'
             );
         }
     }
@@ -193,8 +193,8 @@ class ManifestLoaderService
     private function integrityFailed(): IntegrityException
     {
         return new IntegrityException(
-            'Integritätsprüfung fehlgeschlagen: JSON wurde verändert oder die Signatur kann ohne '
-            . 'konfigurierten Schlüssel (IMPEXPNL_SIGNING_KEY) nicht verifiziert werden.'
+            'Integrity check failed: the JSON was modified, or the signature cannot be verified without a '
+            . 'configured key (IMPEXPNL_SIGNING_KEY).'
         );
     }
 
@@ -213,9 +213,9 @@ class ManifestLoaderService
         $estimated = memory_get_usage(true) + $fileSize * self::MEMORY_FACTOR;
         if ($estimated > $limit) {
             throw new ImpExpException(sprintf(
-                'PHP memory_limit (%s) reicht voraussichtlich nicht für das Parsen der %d-MB-Importdatei '
-                . '(geschätzter Bedarf ~%d MB). memory_limit erhöhen (z. B. php -d memory_limit=1G vendor/bin/typo3 …) '
-                . 'oder den Export aufteilen (--pages/--since).',
+                'PHP memory_limit (%s) is likely insufficient for parsing the %d MB import file '
+                . '(estimated requirement ~%d MB). Increase memory_limit (e.g. php -d memory_limit=1G vendor/bin/typo3 …) '
+                . 'or split the export (--pages/--since).',
                 (string)ini_get('memory_limit'),
                 (int)round($fileSize / 1048576),
                 (int)round($estimated / 1048576)
@@ -246,7 +246,7 @@ class ManifestLoaderService
     {
         $data = json_decode((string)file_get_contents($path), true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \RuntimeException('JSON-Fehler: ' . json_last_error_msg());
+            throw new \RuntimeException('JSON error: ' . json_last_error_msg());
         }
         return is_array($data) ? $data : [];
     }

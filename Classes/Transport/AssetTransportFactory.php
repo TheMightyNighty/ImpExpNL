@@ -39,7 +39,7 @@ class AssetTransportFactory
             'bundle' => $this->bundle,
             'push' => $this->push,
             default => throw new ConfigException(sprintf(
-                "Unbekannter Asset-Transport '%s'. Erlaubt: external, bundle, push.",
+                "Unknown asset transport '%s'. Allowed: external, bundle, push.",
                 $type
             )),
         };
