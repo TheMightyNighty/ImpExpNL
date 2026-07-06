@@ -17,13 +17,13 @@ declare(strict_types=1);
 
 namespace Robbi\ImpExpNL\Service;
 
+use Psr\Log\LoggerInterface;
 use Robbi\ImpExpNL\Domain\ExportManifest;
 use Robbi\ImpExpNL\Domain\InMemoryManifestReader;
 use Robbi\ImpExpNL\Domain\ManifestReader;
 use Robbi\ImpExpNL\Domain\StreamingManifestReader;
 use Robbi\ImpExpNL\Exception\ImpExpException;
 use Robbi\ImpExpNL\Exception\IntegrityException;
-use Psr\Log\LoggerInterface;
 use TYPO3\CMS\Core\Core\Environment;
 
 /**

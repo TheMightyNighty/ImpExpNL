@@ -2,7 +2,28 @@
 
 ## Unveröffentlicht
 
+### Sicherheit
+- **Bundle: Link-Member werden vor der Extraktion abgelehnt.** Archive mit
+  Symlink-/Hardlink-Einträgen (`l`/`h` im tar-Inhaltsverzeichnis) werden per
+  `tar -tvf`-Vorab-Check abgewiesen, bevor entpackt wird — bisher griff die
+  Symlink-Prüfung erst nach der Extraktion. Die nachgelagerte Prüfung bleibt
+  als zweite Verteidigungslinie für den PharData-Fallback bestehen.
+
+### Geändert
+- **Warnung bei großen `.json`-Importdateien:** ab 16 MB warnen Import-Konsole und
+  Log vor dem Vollparse und empfehlen das streamende JSONL-Format (`--jsonl`).
+  Der harte memory_limit-Guard bleibt unverändert. README-Abschnitt „Chunked
+  Verarbeitung" auf den Stand nach 2.3.0 gebracht (JSONL streamt, `.json` parst
+  voll; Hinweis zu Auxiliary-Tabellen inkl. Stellschrauben).
+
 ### Intern
+- **`SigningKeyProvider` extrahiert:** die Beschaffung des Signatur-Schlüsselmaterials
+  (ExtConf/Umgebung) ist aus `IntegrityService` in eine eigene, abhängigkeitsfreie
+  Klasse gewandert — der einzige rohe `$GLOBALS`/`getenv()`-Konfig-Zugriff ist damit
+  gekapselt. Keine Verhaltensänderung.
+- **`DryRunPreviewRenderer` extrahiert:** die Dry-Run-Präsentation (Diff-Vorschau,
+  Asset-Preflight) ist aus `ImportCommand` (452 → 293 Zeilen) in einen eigenen
+  Renderer gewandert. Keine Verhaltensänderung.
 - **`ImportService` zerlegt** (Prüfbericht F-13, reines Refactoring ohne Verhaltensänderung):
   Aufteilung in fokussierte Kollaboratoren `RecordDataBuilder` (Record-Aufbereitung,
   von der Registry mitgenutzt statt Duplikat), `ExistingRecordLocator` (Herkunfts-Mapping-

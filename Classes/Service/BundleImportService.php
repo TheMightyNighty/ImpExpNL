@@ -68,6 +68,12 @@ class BundleImportService
             throw new \RuntimeException("Bundle nicht gefunden: $bundlePath");
         }
 
+        // Link-Member (Symlinks/Hardlinks) VOR dem Entpacken ablehnen: ein Archiv,
+        // das erst einen Symlink und danach eine Datei DURCH diesen Symlink enthält,
+        // könnte je nach tar-Implementierung schon beim Entpacken außerhalb des
+        // Zielverzeichnisses schreiben – der nachgelagerte Check käme dann zu spät.
+        $this->assertNoLinkMembersInArchive($bundlePath);
+
         $targetDir = Environment::getVarPath() . '/transient/impexpnl_bundle_' . bin2hex(random_bytes(6));
         GeneralUtility::mkdir_deep($targetDir);
 
@@ -77,8 +83,8 @@ class BundleImportService
             $this->extractWithPharData($bundlePath, $targetDir);
         }
 
-        // Symlink-Member wären ein Angriffsvektor (Lesen/Schreiben außerhalb des
-        // Entpack-Verzeichnisses); legitime Bundles enthalten nur reguläre Dateien.
+        // Zweite Verteidigungslinie nach dem Entpacken (deckt auch den PharData-
+        // Fallback ab, wenn der tar-Vorab-Check nicht laufen konnte).
         $this->assertNoSymlinks($targetDir, $bundlePath);
 
         $exportFile = $this->findExportFile($targetDir);
@@ -215,6 +221,57 @@ class BundleImportService
         } finally {
             unset($phar);
             @unlink($workCopy);
+        }
+    }
+
+    /**
+     * Prüft das Archiv-Inhaltsverzeichnis (`tar -tvf`) VOR dem Entpacken auf
+     * Link-Member: Typ `l` (Symlink) und `h` (Hardlink) als erstes Zeichen der
+     * Mode-Spalte. Solche Archive werden abgelehnt, statt erst nach dem Entpacken
+     * aufzuräumen. Best-effort: ohne proc_open/tar läuft der Check nicht (dann
+     * greift {@see assertNoSymlinks()} nach der Extraktion als zweite Linie).
+     */
+    private function assertNoLinkMembersInArchive(string $bundlePath): void
+    {
+        if (!\function_exists('proc_open')) {
+            return;
+        }
+        // `-tvf` liest nur das Inhaltsverzeichnis (GNU tar erkennt gzip beim Lesen
+        // automatisch); es wird nichts auf die Platte geschrieben.
+        $process = @proc_open(
+            ['tar', '-tvf', $bundlePath],
+            [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes
+        );
+        if (!\is_resource($process)) {
+            return;
+        }
+        $offender = null;
+        while (($line = fgets($pipes[1])) !== false) {
+            $type = $line[0] ?? '';
+            if ($type === 'l' || $type === 'h') {
+                $offender = trim($line);
+                break;
+            }
+        }
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        $exitCode = proc_close($process);
+
+        if ($offender !== null) {
+            throw new IntegrityException(sprintf(
+                'Bundle enthält ein Link-Member (Symlink/Hardlink) und wird abgelehnt: %s [%s]',
+                basename($bundlePath),
+                $offender
+            ));
+        }
+        if ($exitCode !== 0) {
+            // Listing fehlgeschlagen (defektes/fremdes Archiv): nicht hier raten –
+            // die Extraktion liefert die aussagekräftige Fehlermeldung.
+            $this->logger->warning('Bundle: tar-Listing (Vorab-Check auf Link-Member) fehlgeschlagen.', [
+                'bundle' => basename($bundlePath),
+                'exitCode' => $exitCode,
+            ]);
         }
     }
 

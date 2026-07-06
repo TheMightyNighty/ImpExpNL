@@ -82,4 +82,46 @@ class BundleImportServiceTest extends TestCase
             ['storage' => 1, 'identifier' => '/user_upload/bild.jpg', 'sha256' => hash('sha256', 'ANDERER-INHALT')],
         ]);
     }
+
+    #[Test]
+    public function bundleWithSymlinkMemberIsRejectedBeforeExtraction(): void
+    {
+        $bundle = $this->createBundleWithSymlinkMember();
+
+        $this->expectException(IntegrityException::class);
+        $this->expectExceptionMessageMatches('/Link-Member/');
+        try {
+            $this->subject->extract($bundle);
+        } finally {
+            @unlink($bundle);
+        }
+    }
+
+    /**
+     * Baut per nativem tar ein Archiv, das erst einen Symlink und danach eine
+     * Datei enthält – das Muster, mit dem eine Extraktion durch den Symlink
+     * außerhalb des Zielverzeichnisses schreiben könnte.
+     */
+    private function createBundleWithSymlinkMember(): string
+    {
+        $work = sys_get_temp_dir() . '/impexpnl_evil_' . bin2hex(random_bytes(4));
+        mkdir($work, 0775, true);
+        if (!@symlink('/tmp', $work . '/link')) {
+            self::markTestSkipped('symlink() auf diesem System nicht verfügbar.');
+        }
+        file_put_contents($work . '/export.json', '{}');
+        $bundle = $work . '.tar.gz';
+        exec(sprintf(
+            'tar -czf %s -C %s link export.json 2>/dev/null',
+            escapeshellarg($bundle),
+            escapeshellarg($work)
+        ), $ignored, $exitCode);
+        @unlink($work . '/link');
+        @unlink($work . '/export.json');
+        @rmdir($work);
+        if ($exitCode !== 0 || !is_file($bundle)) {
+            self::markTestSkipped('Natives tar auf diesem System nicht verfügbar.');
+        }
+        return $bundle;
+    }
 }

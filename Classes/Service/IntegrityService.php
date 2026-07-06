@@ -33,9 +33,7 @@ use Psr\Log\LoggerInterface;
  *     wird statt SHA256 ein HMAC-SHA256 gebildet. Ohne Kenntnis des Schlüssels
  *     kann die Signatur nicht neu erzeugt werden.
  *
- * Schlüssel-Quellen (in dieser Reihenfolge):
- *   $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey']
- *   Umgebungsvariable IMPEXPNL_SIGNING_KEY
+ * Schlüssel-Quellen: siehe {@see SigningKeyProvider} (ExtConf bzw. Umgebung).
  *
  * Key-Rotation (optional):
  *   Mit gesetzter Key-ID (['signingKeyId'] bzw. IMPEXPNL_SIGNING_KEY_ID) wird die
@@ -47,9 +45,18 @@ use Psr\Log\LoggerInterface;
  */
 class IntegrityService
 {
+    private readonly SigningKeyProvider $keys;
+
+    /**
+     * $keys ist optional, damit die Klasse ohne DI-Container konstruierbar bleibt
+     * (Unit-Tests, Standalone-Werkzeuge) – der Provider selbst ist abhängigkeitsfrei.
+     */
     public function __construct(
-        private readonly ?LoggerInterface $logger = null
-    ) {}
+        private readonly ?LoggerInterface $logger = null,
+        ?SigningKeyProvider $keys = null
+    ) {
+        $this->keys = $keys ?? new SigningKeyProvider($logger);
+    }
 
     /**
      * Version des Prüfsummen-/Export-Formats.
@@ -254,61 +261,19 @@ class IntegrityService
 
     private function getSigningKey(): ?string
     {
-        $key = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKey'] ?? null;
-        if (!is_string($key) || trim($key) === '') {
-            $env = getenv('IMPEXPNL_SIGNING_KEY');
-            $key = is_string($env) ? $env : '';
-        }
-        $key = trim((string)$key);
-        return $key !== '' ? $key : null;
+        return $this->keys->getSigningKey();
     }
 
-    /**
-     * Optionale Kennung des aktiven Schlüssels (für die Rotation). Quelle:
-     * ['signingKeyId'] bzw. IMPEXPNL_SIGNING_KEY_ID. Erlaubt sind nur
-     * [A-Za-z0-9._-], da die ID Teil des Signatur-Strings wird (kein ':').
-     */
     private function getSigningKeyId(): ?string
     {
-        $id = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeyId'] ?? null;
-        if (!is_string($id) || trim($id) === '') {
-            $env = getenv('IMPEXPNL_SIGNING_KEY_ID');
-            $id = is_string($env) ? $env : '';
-        }
-        $id = trim((string)$id);
-        if ($id === '') {
-            return null;
-        }
-        if (preg_match('/^[A-Za-z0-9._-]+$/', $id) !== 1) {
-            $this->logger?->warning("Signing-Key-ID '$id' enthält unzulässige Zeichen und wird ignoriert (erlaubt: A-Z a-z 0-9 . _ -).");
-            return null;
-        }
-        return $id;
+        return $this->keys->getSigningKeyId();
     }
 
     /**
-     * Alle für die Verifikation zulässigen Schlüssel: der aktive Schlüssel
-     * (unter seiner Key-ID bzw. '' ohne ID) plus hinterlegte Alt-Schlüssel aus
-     * ['signingKeys'] (Map key-id => Schlüssel). Der aktive Schlüssel gewinnt
-     * bei ID-Kollision.
-     *
      * @return array<string, string> key-id => Schlüssel
      */
     private function getVerificationKeys(): array
     {
-        $keys = [];
-        $configured = $GLOBALS['TYPO3_CONF_VARS']['EXTENSIONS']['imp_exp_nl']['signingKeys'] ?? [];
-        if (is_array($configured)) {
-            foreach ($configured as $id => $key) {
-                if (is_string($key) && trim($key) !== '') {
-                    $keys[(string)$id] = trim($key);
-                }
-            }
-        }
-        $active = $this->getSigningKey();
-        if ($active !== null) {
-            $keys[$this->getSigningKeyId() ?? ''] = $active;
-        }
-        return $keys;
+        return $this->keys->getVerificationKeys();
     }
 }

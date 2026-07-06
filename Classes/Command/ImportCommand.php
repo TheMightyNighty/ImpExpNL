@@ -31,8 +31,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use TYPO3\CMS\Core\Information\Typo3Version;
-use TYPO3\CMS\Core\Utility\ExtensionManagementUtility;
 use TYPO3\CMS\Core\Utility\GeneralUtility;
 
 #[AsCommand(name: 'impexpnl:import', description: 'Importiert Seiten und Inhalte aus einer JSON-Datei.')]
@@ -40,7 +38,8 @@ class ImportCommand extends Command
 {
     public function __construct(
         private readonly ImportService $importService,
-        private readonly ProfileService $profileService
+        private readonly ProfileService $profileService,
+        private readonly DryRunPreviewRenderer $previewRenderer
     ) {
         parent::__construct();
     }
@@ -208,9 +207,9 @@ class ImportCommand extends Command
                 $output->writeln((string)json_encode(['success' => $exitCode === ExitCode::OK] + $result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
             } else {
                 if ($isDryRun) {
-                    $this->renderDryRunPreview($io, $output, $result);
+                    $this->previewRenderer->renderDryRunPreview($io, $output, $result);
                     if (isset($result['assets'])) {
-                        $this->renderAssetPreflight($io, $result['assets']);
+                        $this->previewRenderer->renderAssetPreflight($io, $result['assets']);
                     }
                     $io->success('Dry-Run abgeschlossen — keine Änderungen geschrieben.');
                 } elseif ($errors > 0) {
@@ -232,164 +231,6 @@ class ImportCommand extends Command
                 $output->writeln('');
             }
             return $this->fail($io, $output, $jsonOutput, $e);
-        }
-    }
-
-    /**
-     * Dry-Run-Vorschau. Die „reiche" Variante (Header, OK-Block, DIFF PREVIEW mit Balken,
-     * farbige Labels) wird NUR bei dekoriertem Output gerendert (interaktives TTY) – bei
-     * --no-ansi/Pipe/CI/--json greift die schlichte Tabelle, damit keine ANSI-/Balken-Zeilen
-     * Logs zumüllen. Es wird nichts blockiert (keine Eingabe, kein ProgressBar).
-     *
-     * @param array<string, mixed> $result
-     */
-    private function renderDryRunPreview(SymfonyStyle $io, OutputInterface $output, array $result): void
-    {
-        $diff = $result['diff'] ?? [];
-        $preview = $result['preview'] ?? [];
-        $new = (int)($diff['pages']['new'] ?? 0) + (int)($diff['tt_content']['new'] ?? 0);
-        $updated = (int)($diff['pages']['changed'] ?? 0) + (int)($diff['tt_content']['changed'] ?? 0);
-        $unchanged = (int)($diff['pages']['identical'] ?? 0) + (int)($diff['tt_content']['identical'] ?? 0);
-        $conflicts = 0; // im Dry-Run nicht separat ermittelt
-        $errors = 0;
-        $assetTotal = (int)($result['assets']['total'] ?? 0);
-
-        // Nicht-dekoriert (CI/Pipe/--no-ansi): schlichte Tabelle, keine Balken/Farben.
-        if (!$output->isDecorated()) {
-            $io->section('Dry-Run – Diff-Vorschau');
-            $io->table(['', 'Anzahl'], [
-                ['new', $new],
-                ['updated', $updated],
-                ['unchanged', $unchanged],
-                ['conflicts', $conflicts],
-                ['errors', $errors],
-                ['assets (Manifest)', $assetTotal],
-            ]);
-            return;
-        }
-
-        $tv = 'unknown';
-        try {
-            $tv = GeneralUtility::makeInstance(Typo3Version::class)->getVersion();
-        } catch (\Throwable) {
-        }
-        $ev = '';
-        try {
-            $ev = ExtensionManagementUtility::getExtensionVersion('imp_exp_nl');
-        } catch (\Throwable) {
-        }
-        // Nur echte Release-Versionen zeigen (nicht „dev-main" o. Ä. aus Path-Repos).
-        $versionLabel = preg_match('/^\d+\.\d+/', $ev) === 1 ? ' ' . $ev : '';
-
-        $io->newLine();
-        $output->writeln(sprintf(
-            '  <options=bold>ImpExpNL</>%s   <fg=gray>TYPO3 %s   ·   package:</> %s',
-            $versionLabel,
-            $tv,
-            (string)($preview['package'] ?? '')
-        ));
-        $io->newLine();
-
-        if (!empty($preview['checksum'])) {
-            $this->okLine($output, 'checksum verified', '<fg=gray>' . $this->shortHash((string)$preview['checksum']) . '</>');
-        } else {
-            $this->okLine($output, 'checksum', '<fg=gray>keine Signatur</>');
-        }
-        $this->okLine($output, 'import lock', !empty($preview['lockFree']) ? 'frei' : '<fg=red>aktiv</>');
-        $this->okLine($output, 'mode', 'dry-run' . (!empty($preview['delta']) ? ' + delta' : ''));
-
-        $io->newLine();
-        $output->writeln('  <fg=blue;options=bold>DIFF PREVIEW</>');
-        $max = max(1, $new, $updated, $unchanged, $conflicts, $errors);
-        $this->diffRow($output, '+', 'green', 'new', $new, $max);
-        $this->diffRow($output, '~', 'yellow', 'updated', $updated, $max);
-        $this->diffRow($output, '=', 'gray', 'unchanged', $unchanged, $max);
-        $this->diffRow($output, '!', 'red', 'conflicts', $conflicts, $max);
-        $this->diffRow($output, 'x', 'red', 'errors', $errors, $max);
-
-        $samples = $diff['samples'] ?? [];
-        $io->newLine();
-        if (isset($samples['new'])) {
-            $output->writeln(sprintf(
-                '  <fg=black;bg=green> NEW </>   %-10s "%s" <fg=gray>-></> %s',
-                (string)$samples['new']['table'],
-                (string)$samples['new']['title'],
-                (string)$samples['new']['slug']
-            ));
-        }
-        if (isset($samples['changed'])) {
-            $output->writeln(sprintf(
-                '  <fg=black;bg=yellow> UPD </>   %-10s <fg=gray>uid</> %d <fg=gray>·</> %s changed',
-                (string)$samples['changed']['table'],
-                (int)$samples['changed']['uid'],
-                (string)$samples['changed']['field']
-            ));
-        }
-        if ($assetTotal > 0) {
-            $output->writeln(sprintf(
-                '  <fg=black;bg=blue> ASSET </> %-9s <fg=gray>referenziert im Manifest</>',
-                $assetTotal . ' files'
-            ));
-        }
-        $io->newLine();
-    }
-
-    private function okLine(OutputInterface $output, string $label, string $value): void
-    {
-        $output->writeln(sprintf('  <fg=green>OK</>  %-20s %s', $label, $value));
-    }
-
-    private function diffRow(OutputInterface $output, string $symbol, string $color, string $label, int $count, int $max): void
-    {
-        $width = 22;
-        $filled = $max > 0 ? (int)round($count / $max * $width) : 0;
-        $filled = max(0, min($width, $filled));
-        $bar = sprintf('<fg=%s>%s</><fg=gray>%s</>', $color, str_repeat('█', $filled), str_repeat('░', $width - $filled));
-        $output->writeln(sprintf(
-            '  <fg=%s>%s</>  %-12s <fg=%s>%5d</>  %s',
-            $color,
-            $symbol,
-            $label,
-            $color,
-            $count,
-            $bar
-        ));
-    }
-
-    private function shortHash(string $checksum): string
-    {
-        $hash = str_contains($checksum, ':') ? substr($checksum, (int)strrpos($checksum, ':') + 1) : $checksum;
-        if (strlen($hash) <= 12) {
-            return $checksum;
-        }
-        return 'sha256:' . substr($hash, 0, 4) . '…' . substr($hash, -4);
-    }
-
-    /**
-     * Asset-Preflight im Dry-Run: fehlende / inhaltlich abweichende Dateien auf dem Ziel.
-     *
-     * @param array{total:int, missing:list<string>, mismatch:list<string>} $assets
-     */
-    private function renderAssetPreflight(SymfonyStyle $io, array $assets): void
-    {
-        $total = $assets['total'];
-        if ($total === 0) {
-            return;
-        }
-        $missing = $assets['missing'];
-        $mismatch = $assets['mismatch'];
-
-        if ($missing === [] && $mismatch === []) {
-            $io->text(sprintf('Asset-Preflight: %d Datei(en) im Manifest, alle auf dem Ziel vorhanden und inhaltsgleich.', $total));
-            return;
-        }
-        if ($missing !== []) {
-            $io->warning(sprintf('%d von %d Asset-Datei(en) fehlen auf dem Ziel — vor dem Import übertragen (z. B. via rsync):', count($missing), $total));
-            $io->listing(array_slice($missing, 0, 20));
-        }
-        if ($mismatch !== []) {
-            $io->note(sprintf('%d Asset-Datei(en) haben auf dem Ziel abweichenden Inhalt — die bestehende Datei bleibt beim Import erhalten:', count($mismatch)));
-            $io->listing(array_slice($mismatch, 0, 20));
         }
     }
 
