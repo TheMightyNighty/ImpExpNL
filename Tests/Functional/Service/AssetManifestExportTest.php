@@ -32,11 +32,10 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 class AssetManifestExportTest extends FunctionalTestCase
 {
+    private const FILE_CONTENT = 'ImpExpNL asset manifest fixture';
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
-
-    private const FILE_CONTENT = 'ImpExpNL asset manifest fixture';
 
     protected function setUp(): void
     {

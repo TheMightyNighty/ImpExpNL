@@ -37,11 +37,11 @@ class BundleRoundtripTest extends FunctionalTestCase
 {
     use UidMapTestTrait;
 
+    private const FILE_CONTENT = 'ImpExpNL roundtrip asset';
+
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
-
-    private const FILE_CONTENT = 'ImpExpNL roundtrip asset';
 
     #[Test]
     public function bundleCarriesAssetToTargetAndReferenceResolves(): void

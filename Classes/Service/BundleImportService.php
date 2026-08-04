@@ -176,7 +176,7 @@ class BundleImportService
      */
     private function extractWithTar(string $bundlePath, string $targetDir): bool
     {
-        if (!\function_exists('proc_open')) {
+        if (!function_exists('proc_open')) {
             return false;
         }
         $process = @proc_open(
@@ -186,7 +186,7 @@ class BundleImportService
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes
         );
-        if (!\is_resource($process)) {
+        if (!is_resource($process)) {
             return false;
         }
         fclose($pipes[1]);
@@ -233,7 +233,7 @@ class BundleImportService
      */
     private function assertNoLinkMembersInArchive(string $bundlePath): void
     {
-        if (!\function_exists('proc_open')) {
+        if (!function_exists('proc_open')) {
             return;
         }
         // `-tvf` liest nur das Inhaltsverzeichnis (GNU tar erkennt gzip beim Lesen
@@ -243,7 +243,7 @@ class BundleImportService
             [1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
             $pipes
         );
-        if (!\is_resource($process)) {
+        if (!is_resource($process)) {
             return;
         }
         $offender = null;

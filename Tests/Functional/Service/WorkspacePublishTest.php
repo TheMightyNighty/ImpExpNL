@@ -38,6 +38,8 @@ class WorkspacePublishTest extends FunctionalTestCase
 {
     use UidMapTestTrait;
 
+    private const WS = 1;
+
     protected array $coreExtensionsToLoad = [
         'workspaces',
     ];
@@ -45,8 +47,6 @@ class WorkspacePublishTest extends FunctionalTestCase
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
-
-    private const WS = 1;
 
     private string $exportFile = '';
 

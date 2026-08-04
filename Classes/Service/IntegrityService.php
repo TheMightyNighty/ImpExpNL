@@ -45,6 +45,12 @@ use Psr\Log\LoggerInterface;
  */
 class IntegrityService
 {
+    /**
+     * Version des Prüfsummen-/Export-Formats.
+     * 1 = Legacy (SHA256 nur über pages + tt_content)
+     * 2 = SHA256/HMAC über den gesamten Datenblock (mit Schema-Präfix)
+     */
+    public const FORMAT_VERSION = 2;
     private readonly SigningKeyProvider $keys;
 
     /**
@@ -57,13 +63,6 @@ class IntegrityService
     ) {
         $this->keys = $keys ?? new SigningKeyProvider($logger);
     }
-
-    /**
-     * Version des Prüfsummen-/Export-Formats.
-     * 1 = Legacy (SHA256 nur über pages + tt_content)
-     * 2 = SHA256/HMAC über den gesamten Datenblock (mit Schema-Präfix)
-     */
-    public const FORMAT_VERSION = 2;
 
     /**
      * Berechnet die Prüfsumme/Signatur über den gesamten Datenblock.

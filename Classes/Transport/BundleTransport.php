@@ -143,7 +143,7 @@ class BundleTransport implements TransportInterface
      */
     private function packWithTar(array $entries, string $gzPath, string $compressor, string $workBase): ?string
     {
-        if ($compressor === '' || !\function_exists('proc_open')) {
+        if ($compressor === '' || !function_exists('proc_open')) {
             return null;
         }
         $stage = $workBase . '/.impexpnl_bundle_' . bin2hex(random_bytes(6));
@@ -175,7 +175,7 @@ class BundleTransport implements TransportInterface
                 array_keys($topLevel)
             );
             $process = @proc_open($cmd, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-            if (!\is_resource($process)) {
+            if (!is_resource($process)) {
                 return null;
             }
             fclose($pipes[1]);
