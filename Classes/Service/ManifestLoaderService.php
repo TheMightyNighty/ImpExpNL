@@ -51,6 +51,12 @@ class ManifestLoaderService
      */
     public const LARGE_JSON_WARN_BYTES = 16 * 1024 * 1024;
 
+    /**
+     * Geschätzter Speicherfaktor: dekodiertes PHP-Array vs. JSON-Dateigröße.
+     * Konservativ gewählt (viele kleine Strings/Arrays je Record).
+     */
+    private const MEMORY_FACTOR = 8;
+
     public function __construct(
         private readonly ConfigurationService $configurationService,
         private readonly IntegrityService $integrityService,
@@ -197,12 +203,6 @@ class ManifestLoaderService
             . 'configured key (IMPEXPNL_SIGNING_KEY).'
         );
     }
-
-    /**
-     * Geschätzter Speicherfaktor: dekodiertes PHP-Array vs. JSON-Dateigröße.
-     * Konservativ gewählt (viele kleine Strings/Arrays je Record).
-     */
-    private const MEMORY_FACTOR = 8;
 
     private function assertMemoryHeadroom(int $fileSize): void
     {

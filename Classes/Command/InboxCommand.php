@@ -32,6 +32,13 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 )]
 class InboxCommand extends Command
 {
+    /**
+     * Größen-Obergrenze für die Signatur-Vorschau: PharData lädt das Archiv in den
+     * Speicher; große Bundles (mit eingepackten Assets) würden das memory_limit
+     * sprengen. Oberhalb dieser Grenze wird die Spalte übersprungen ('—'). Die
+     * verbindliche Signaturprüfung passiert ohnehin erst beim Import.
+     */
+    private const SIGNATURE_PEEK_MAX_BYTES = 25 * 1024 * 1024;
     public function __construct(
         private readonly ConfigurationService $configurationService
     ) {
@@ -119,14 +126,6 @@ class InboxCommand extends Command
         usort($packages, static fn(array $a, array $b): int => $a['mtime'] <=> $b['mtime']);
         return $packages;
     }
-
-    /**
-     * Größen-Obergrenze für die Signatur-Vorschau: PharData lädt das Archiv in den
-     * Speicher; große Bundles (mit eingepackten Assets) würden das memory_limit
-     * sprengen. Oberhalb dieser Grenze wird die Spalte übersprungen ('—'). Die
-     * verbindliche Signaturprüfung passiert ohnehin erst beim Import.
-     */
-    private const SIGNATURE_PEEK_MAX_BYTES = 25 * 1024 * 1024;
 
     /**
      * Best-effort-Vorschau des Signatur-Präfixes aus der im Bundle enthaltenen

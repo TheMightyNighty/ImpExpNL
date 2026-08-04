@@ -38,9 +38,9 @@ class BundleRollbackGcTest extends FunctionalTestCase
 {
     use UidMapTestTrait;
 
-    protected array $testExtensionsToLoad = ['typo3conf/ext/imp_exp_nl'];
-
     private const FILE_CONTENT = 'ImpExpNL rollback-gc asset';
+
+    protected array $testExtensionsToLoad = ['typo3conf/ext/imp_exp_nl'];
 
     #[Test]
     public function rollbackRemovesAssetsPlacedByBundleImport(): void

@@ -33,12 +33,11 @@ use TYPO3\TestingFramework\Core\Functional\FunctionalTestCase;
  */
 class AssetIntegrityTest extends FunctionalTestCase
 {
+    private const ORIGINAL = 'ORIGINAL asset content';
+    private const CHANGED = 'COMPLETELY DIFFERENT content on target';
     protected array $testExtensionsToLoad = [
         'typo3conf/ext/imp_exp_nl',
     ];
-
-    private const ORIGINAL = 'ORIGINAL asset content';
-    private const CHANGED = 'COMPLETELY DIFFERENT content on target';
 
     private string $fileadmin = '';
 
