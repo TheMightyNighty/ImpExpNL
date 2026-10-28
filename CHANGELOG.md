@@ -2,6 +2,19 @@
 
 ## Unveröffentlicht
 
+## 2.5.0 — Transfer-Nachweis & Sicherheits-Mindestversion (2026-10-28)
+
+**Kein Schema-Update nötig.** Abgesichert mit der Functional-Suite (SQLite +
+MariaDB) und dem Real-World-E2E über zwei Instanzen, jeweils gegen TYPO3 14.3.10.
+
+### Sicherheit
+- **Mindestversion TYPO3 14.3.7:** `typo3/cms-core` jetzt `^14.3.7`
+  (`ext_emconf.php`: `14.3.7-14.99.99`). Damit lässt sich die Extension nicht
+  mehr neben einem Core installieren, der von TYPO3-CORE-SA-2026-021 (Broken
+  Access Control, behoben in 14.3.6) bzw. TYPO3-CORE-SA-2026-022 (Information
+  Disclosure, behoben in 14.3.7) betroffen ist. Betreiber auf älteren
+  14.x-Ständen müssen vor dem Update den Core aktualisieren.
+
 ### Neu
 - **Signierter Transfer-Nachweis (`impexpnl:report`):** erzeugt zu einem
   abgeschlossenen Import ein kleines, selbsttragendes Audit-Artefakt
@@ -11,6 +24,15 @@
   ohne Schlüssel bloße Prüfsumme mit Hinweis). `--output` schreibt das
   JSON-Artefakt, `--verify` prüft es später (Exit-Code 4 bei Manipulation,
   Downgrade-Sperre wie beim Import). Kein Schema-Update.
+
+### Intern
+- **Wöchentlicher CI-Lauf + `composer audit`:** Die CI läuft zusätzlich montags
+  per Cron (und manuell per `workflow_dispatch`) und prüft die frisch
+  aufgelöste Abhängigkeits-Landschaft mit `composer audit`. Da kein
+  `composer.lock` getrackt wird, fallen Brüche durch neue TYPO3-/Symfony-Releases
+  und neue Advisories so auch ohne Push auf.
+- **Dev-Toolchain:** `typo3/coding-standards` `^0.9` (PER-CS 3.0); Code-Stil
+  entsprechend angepasst, keine Verhaltensänderung.
 
 ## 2.4.0 — Internationalisierung & TER-Reife (2026-07-06)
 

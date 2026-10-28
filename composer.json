@@ -77,7 +77,7 @@
     "extra": {
         "typo3/cms": {
             "extension-key": "imp_exp_nl",
-            "version": "2.4.0",
+            "version": "2.5.0",
             "Package": {
                 "providesPackages": {}
             }
