@@ -65,7 +65,7 @@ To make clear what ImpExpNL is **not** intended for:
 ## System requirements
 
 - PHP 8.2 or higher
-- TYPO3 14 LTS
+- TYPO3 14 LTS (14.3.7 or later — includes the core security fixes TYPO3-CORE-SA-2026-021/-022)
 - Composer-based TYPO3 installation
 
 > **Quick try-out:** A ready-to-run DDEV demo project (vanilla TYPO3 v14, extension via path repository) is available under [`Build/demo/`](Build/demo/README.md) — run `ddev start` and go.
