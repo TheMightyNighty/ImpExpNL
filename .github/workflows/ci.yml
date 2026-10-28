@@ -4,8 +4,34 @@ on:
   push:
     branches: [ main ]
   pull_request:
+  # Wöchentlicher Lauf ohne Push: Kein composer.lock getrackt → jede Installation
+  # löst frisch auf. Der Cron fängt Brüche durch neue TYPO3-/Symfony-Releases und
+  # neue Advisories ab, auch wenn am Repo gerade niemand arbeitet.
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
 
 jobs:
+  audit:
+    name: "Composer Audit"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --no-progress --no-interaction --prefer-dist
+
+      - name: Composer Audit
+        run: composer audit --no-interaction --abandoned=report
+
+
   static:
     name: "Lint, CGL & PHPStan (PHP ${{ matrix.php }})"
     runs-on: ubuntu-latest
