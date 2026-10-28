@@ -85,7 +85,7 @@ generally not necessary.
 
 - **`main`** is the current v14 development line (`2.x` releases).
 - **`13.x`** continues to maintain the v13.4 line (`1.x` releases) — e.g. for GSB 11.
-- Fixes are developed in the oldest affected branch and forward-merged into `main`.
+- Security fixes are developed on `main` and ported manually to `13.x` (the lines differ architecturally, so no cherry-picks).
 
 Example for explicit pinning (only if needed):
 
@@ -120,7 +120,7 @@ The installation is verified with:
 vendor/bin/typo3 list impexpnl
 ```
 
-The following commands are listed: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock` and `impexpnl:migrate-legacy-schema`.
+The following commands are listed: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock`, `impexpnl:inbox`, `impexpnl:report` and `impexpnl:migrate-legacy-schema`.
 
 ### Other sources
 
@@ -189,6 +189,7 @@ ddev exec vendor/bin/typo3 impexpnl:export <start-PID> <target-path> [options]
 | `--content-types=text,textmedia` | Restricts the export to specific CTypes. All other content elements are not exported. |
 | `--csv` | Generates additional CSV files (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). These files can be opened in spreadsheet programs to review the exported data in tabular form before import, or to reconcile it against other data sources. |
 | `--bundle-baseline=<manifest>` | Incremental bundle (only with `--transport=bundle`): path to the **target's** asset manifest (`impexpnl_assets.json`, e.g. fetched in advance via the data lock). Files already listed there with identical content (sha256) are not packed — the bundle only contains new/changed assets. If a skipped file unexpectedly turns out to be missing on the target, the import reports this via the asset preflight (exit code `7`); no silent loss occurs. |
+| `--outbox=<dir>` | Target directory for `--transport=push`; overrides `assetTransports.<name>.outbox` from the configuration. See "Outbound transfer (`push`) and inbox". |
 | `--jsonl` | JSONL format written line by line (one JSON object per line) — compact and memory-friendly during export (no single `json_encode` over the whole block). The target file should end in `.jsonl`; the import detects the format automatically. The default JSON format remains fully usable. **Recommendation: use JSONL for large exports (from a few thousand records)** — only this format is streamed record by record on import and dry-run diff (constant memory); `.json` is parsed entirely into memory. See the "Chunked processing" section. |
 
 ### Generated files

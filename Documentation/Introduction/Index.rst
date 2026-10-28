@@ -51,7 +51,9 @@ Rollback
 
 Operations
     Cluster-wide import lock with stale detection, differentiated exit codes
-    for CI/CD, JSON output for all commands, status and history commands.
+    for CI/CD, JSON output for all commands, status and history commands,
+    and a signed transfer report per import (``impexpnl:report``) as an
+    audit artifact.
 
 ..  _comparison-impexp:
 

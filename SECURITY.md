@@ -4,7 +4,7 @@
 
 | Version | TYPO3 | Status |
 |---------|-------|--------|
-| 2.x (`main`) | v14 LTS | aktiv (Features + Sicherheits-Fixes) |
+| 2.x (`main`) | v14 LTS (ab 2.5.0: mindestens 14.3.7) | aktiv (Features + Sicherheits-Fixes) |
 | 1.x (`13.x`) | v13.4 LTS / GSB 11 | Wartung (Sicherheits-Fixes) |
 
 Ältere Versionen erhalten keine Fixes — bitte auf die jeweils aktuelle Linie aktualisieren.

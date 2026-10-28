@@ -87,7 +87,7 @@ in der Regel nicht nötig.
 
 - **`main`** ist die aktuelle v14-Entwicklungslinie (Releases `2.x`).
 - **`13.x`** pflegt die v13.4-Linie weiter (Releases `1.x`) — z. B. für GSB 11.
-- Fixes werden im ältesten betroffenen Branch entwickelt und nach `main` vorgemerged.
+- Sicherheits-Fixes entstehen auf `main` und werden manuell nach `13.x` portiert (die Linien unterscheiden sich architektonisch, daher keine Cherry-Picks).
 
 Beispiel für gezieltes Pinnen (nur falls nötig):
 
@@ -122,7 +122,7 @@ Die Installation wird geprüft mit:
 vendor/bin/typo3 list impexpnl
 ```
 
-Es werden folgende Befehle ausgegeben: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock` und `impexpnl:migrate-legacy-schema`.
+Es werden folgende Befehle ausgegeben: `impexpnl:export`, `impexpnl:import`, `impexpnl:undo`, `impexpnl:status`, `impexpnl:list`, `impexpnl:check`, `impexpnl:validate-config`, `impexpnl:unlock`, `impexpnl:inbox`, `impexpnl:report` und `impexpnl:migrate-legacy-schema`.
 
 ### Weitere Bezugswege
 
@@ -191,6 +191,7 @@ ddev exec vendor/bin/typo3 impexpnl:export <Start-PID> <Zielpfad> [Optionen]
 | `--content-types=text,textmedia` | Einschränkung auf bestimmte CTypes. Alle anderen Inhaltselemente werden nicht exportiert. |
 | `--csv` | Erzeugung zusätzlicher CSV-Dateien (`impexpnl_pages.csv`, `impexpnl_tt_content.csv`). Diese Dateien können in Tabellenkalkulationsprogrammen geöffnet werden, um die Exportdaten vor dem Import tabellarisch zu prüfen oder mit anderen Datenquellen abzugleichen. |
 | `--bundle-baseline=<manifest>` | Inkrementelles Bundle (nur mit `--transport=bundle`): Pfad zum Asset-Manifest des **Ziels** (`impexpnl_assets.json`, z. B. vorab per Schleuse geholt). Dateien, die dort bereits inhaltsgleich (sha256) gelistet sind, werden nicht eingepackt — das Bundle enthält nur neue/geänderte Assets. Fehlt eine übersprungene Datei auf dem Ziel wider Erwarten, meldet der Import das über den Asset-Preflight (Exit-Code `7`); es entsteht kein stiller Verlust. |
+| `--outbox=<verzeichnis>` | Zielverzeichnis für `--transport=push`; überschreibt `assetTransports.<name>.outbox` aus der Konfiguration. Siehe „Ausgehender Transfer (`push`) und Inbox". |
 | `--jsonl` | Zeilenweise geschriebenes JSONL-Format (ein JSON-Objekt pro Zeile) — kompakt und speicherschonend beim Export (kein einzelnes `json_encode` über den gesamten Block). Die Zieldatei sollte auf `.jsonl` enden; der Import erkennt das Format automatisch. Das Standard-JSON-Format bleibt unverändert nutzbar. **Empfehlung: Für große Exporte (ab einigen tausend Records) JSONL verwenden** — nur dieses Format wird beim Import und Dry-Run-Diff records-weise gestreamt (konstanter Speicher); `.json` wird vollständig in den Speicher geparst. Siehe Abschnitt „Chunked Verarbeitung". |
 
 ### Erzeugte Dateien

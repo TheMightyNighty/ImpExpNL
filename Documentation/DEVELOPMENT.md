@@ -41,8 +41,14 @@ undo-then-retry sowie Rollback auf die exakte Baseline. Funktionaltests stellen
 einzelne dieser Eigenschaften sicher, aber nicht ihr Zusammenspiel.
 
 Die GitHub-CI (`.github/workflows/ci.yml`) fährt Stufe 1 und 2 automatisch über
-die PHP-Matrix 8.2/8.3/8.4 (Functional gegen SQLite); Rector läuft dort advisory.
-Stufe 3 und 4 sind bewusst lokale Läufe und Release-Pflicht.
+die PHP-Matrix 8.2/8.3/8.4 (Functional gegen SQLite), zusätzlich die
+Functional-Suite gegen MariaDB 10.11 und 11.4 sowie `composer audit`; Rector
+läuft dort advisory. Sie startet bei Push auf `main`, bei Pull Requests,
+**wöchentlich per Cron** (montags) und manuell per `workflow_dispatch`. Weil
+kein `composer.lock` getrackt wird, löst jeder Lauf die Abhängigkeiten frisch
+auf — der Cron-Lauf meldet so Brüche durch neue TYPO3-/Symfony-Releases und
+neue Advisories, auch wenn am Repo niemand arbeitet. Der lokale MariaDB-Lauf
+(Stufe 3, mit dem Runner-Stand) und der E2E (Stufe 4) bleiben Release-Pflicht.
 
 ### Zuordnung nach Art der Änderung
 
@@ -82,8 +88,14 @@ Container werden einzeln gepflegt und von den `Build/`-Skripten vorausgesetzt.
 
   Das vergessene Sync ist die häufigste Fehlerquelle („Test grün, obwohl die
   Änderung kaputt ist" — der Container testete den alten Stand).
-- `vendor/` existiert **nur im Container** (`composer install` dort); das
-  Host-Repo hat kein `vendor/`.
+- Der Baum-Sync (auch der in `Build/test-functional-mariadb.sh`) kopiert das
+  lokale `composer.lock` mit. Nach einem `composer update` im Runner das Lock
+  deshalb zurückholen (`docker cp impexpnl-runner:/app/composer.lock .`),
+  sonst testet der nächste Lauf gegen ein veraltetes Lock.
+- `vendor/` entsteht **im Container** (`composer install`/`update` dort). Ein
+  `vendor/` im Host-Repo ist höchstens eine Kopie davon (gitignored) und wird
+  vom Baum-Sync ausgenommen; Teile davon können root gehören → Löschen/chown
+  über einen Hilfscontainer.
 - DB-Umgebung ist im Container vorgesetzt: `typo3DatabaseDriver=mysqli`,
   Host `impexpnl-mariadb`, Datenbank `typo3_ci`, root/root. Die SQLite-Suite
   braucht keine DB.
@@ -158,7 +170,8 @@ Reihenfolge für ein Release auf `main` (2.x / TYPO3 v14):
 6. Version anheben in `ext_emconf.php` **und** `composer.json`
    (`extra.typo3/cms.version`) — beide müssen übereinstimmen.
 7. Commit, Tag `vX.Y.Z`, GitHub-Release mit den CHANGELOG-Highlights.
-   Packagist zieht das Release automatisch über den GitHub-Hook.
+   Packagist zieht das Release über den GitHub-Hook nach — **Voraussetzung:**
+   das Paket ist auf packagist.org registriert (Stand 2.5.0: noch nicht).
 
 Konventionen:
 
