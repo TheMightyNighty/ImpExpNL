@@ -10,7 +10,7 @@ Requirements
 ============
 
 ===========  =========================================
-TYPO3        14.x LTS (2.x line) / 13.4 LTS (1.x line)
+TYPO3        14.3.7+ LTS (2.x line) / 13.4 LTS (1.x line)
 PHP          8.2 – 8.4
 Database     MariaDB / MySQL (PostgreSQL untested)
 CLI access   required (all operations are commands)
